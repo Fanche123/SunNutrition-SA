@@ -1,0 +1,872 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SunNutrition</title>
+  <link rel="stylesheet" href="assets/css/styles.css?v=20260702-149">
+</head>
+<body class="view-results-active">
+  <div class="app-shell">
+    <!-- Navegación principal de la app. Cada botón activa una sección del main. -->
+    <aside class="sidebar" aria-label="Menu principal">
+      <div class="brand">
+        <strong>SunNutrition</strong>
+      </div>
+
+      <nav class="nav">
+        <button class="nav-item" data-view="dashboard" type="button">Dashboard</button>
+        <button class="nav-item active" data-view="results" type="button">Estado de Resultados</button>
+        <button class="nav-item" data-view="cashflow" type="button">Cashflow</button>
+        <button class="nav-item" data-view="data-entry" type="button">Carga de datos</button>
+        <button class="nav-item" data-view="imports" type="button">Imports</button>
+        <button class="nav-item" data-view="settings" type="button">Configuracion</button>
+      </nav>
+    </aside>
+
+    <!-- Contenido de trabajo. Todas las pantallas viven aquí y se alternan por JS. -->
+    <main class="main">
+      <!-- Selector global de período: afecta el Estado de Resultados y la lista de ventas. -->
+      <header class="topbar">
+        <div class="result-page-heading">
+          <h1 id="page-title">Estado de Resultados</h1>
+          <p id="page-subtitle">Resultado mensual estimado desde egresos, ventas e inventario.</p>
+        </div>
+        <div class="period-picker">
+          <label for="comparison-select">Comparar</label>
+          <select id="comparison-select">
+            <option value="none">Sin comparación</option>
+            <option value="previousMonth">Mes anterior</option>
+            <option value="previousYear">Mismo mes año anterior</option>
+          </select>
+          <label for="period-select">Período</label>
+          <select id="period-select"></select>
+        </div>
+      </header>
+
+      <!-- Reporte financiero mensual con grupos desplegables. -->
+      <section class="view active" id="view-results" aria-labelledby="page-title">
+        <div class="summary-grid">
+          <article class="metric metric-units-card metric-top-row">
+            <span class="metric-icon-box"><img src="assets/icons/unidades-vendidas.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Unidades vendidas</span>
+              <strong id="metric-units">0</strong>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-units-customers">Clientes: -</small>
+            </div>
+          </article>
+          <article class="metric metric-production-card metric-top-row">
+            <span class="metric-icon-box"><img src="assets/icons/produccion.svg?v=20260701-72" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Produccion</span>
+              <strong id="metric-production">0</strong>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-production-hour">Barritas/Hora: -</small>
+            </div>
+          </article>
+          <article class="metric metric-sales-card metric-top-row">
+            <span class="metric-icon-box"><img src="assets/icons/ventas-netas.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Facturacion</span>
+              <div class="metric-value-row">
+                <strong id="metric-sales">$ 0</strong>
+                <small class="metric-rate" id="metric-sales-rate">100,0%</small>
+              </div>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-sales-unit">Por Ud: -</small>
+            </div>
+          </article>
+          <article class="metric metric-cost-card metric-bottom-row">
+            <span class="metric-icon-box"><img src="assets/icons/costo-de-ventas.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Costo de ventas</span>
+              <div class="metric-value-row">
+                <strong id="metric-cogs">$ 0</strong>
+                <small class="metric-rate" id="metric-cogs-rate">-</small>
+              </div>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-cogs-unit">Por Ud: -</small>
+            </div>
+          </article>
+          <article class="metric metric-operating-card metric-bottom-row">
+            <span class="metric-icon-box"><img src="assets/icons/gastos-operativos.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Gastos operativos</span>
+              <div class="metric-value-row">
+                <strong id="metric-operating-expenses">$ 0</strong>
+                <small class="metric-rate" id="metric-operating-expenses-rate">-</small>
+              </div>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-operating-expenses-unit">Por Ud: -</small>
+              <small id="metric-operating-expenses-produced-unit">Por Ud Producida: -</small>
+            </div>
+          </article>
+          <article class="metric metric-non-operating-card metric-bottom-row">
+            <span class="metric-icon-box"><img src="assets/icons/gastos-no-operativos.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Gastos no operativos</span>
+              <div class="metric-value-row">
+                <strong id="metric-margin">$ 0</strong>
+                <small class="metric-rate" id="metric-margin-rate">-</small>
+              </div>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-margin-unit">Por Ud: -</small>
+            </div>
+          </article>
+          <article class="metric metric-net-card metric-bottom-row">
+            <span class="metric-icon-box"><img src="assets/icons/utilidad.svg?v=20260701-50" alt="" class="metric-icon"></span>
+            <div class="metric-content">
+              <span>Utilidad</span>
+              <div class="metric-value-row">
+                <strong id="metric-net">$ 0</strong>
+                <small class="metric-rate" id="metric-net-rate">-</small>
+              </div>
+            </div>
+            <div class="metric-footer">
+              <small id="metric-net-unit">Por Ud: -</small>
+              <small id="metric-net-produced-unit">Por Ud Producida: -</small>
+            </div>
+          </article>
+        </div>
+
+        <div id="warnings" class="notice-stack"></div>
+
+        <section class="panel statement-panel">
+          <div class="panel-header">
+            <h2 class="statement-title">Estado de Resultados Mensual</h2>
+            <span id="period-label"></span>
+          </div>
+          <table class="statement-table">
+            <tbody id="statement-body"></tbody>
+          </table>
+        </section>
+
+        <section class="panel" id="review-panel">
+          <div class="panel-header">
+            <h2>Egresos para revisar</h2>
+            <span id="review-count">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Proveedor</th>
+                  <th>Categoria</th>
+                  <th class="num">Subtotal</th>
+                  <th>Origen</th>
+                </tr>
+              </thead>
+              <tbody id="uncategorized-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+      </section>
+
+      <section class="view" id="view-cashflow">
+        <div class="status-grid cashflow-summary-grid">
+          <div class="cashflow-card cashflow-card-green">
+            <img src="assets/icons/banco.svg?v=20260702-4" alt="" class="cashflow-card-icon">
+            <div class="cashflow-card-content">
+              <span>Bancos</span>
+              <strong id="financial-cash-banks">$ 0</strong>
+            </div>
+          </div>
+          <div class="cashflow-card cashflow-card-green">
+            <img src="assets/icons/efectivo.svg?v=20260702-3" alt="" class="cashflow-card-icon cashflow-card-icon-cash">
+            <div class="cashflow-card-content">
+              <span>Efectivo</span>
+              <strong id="financial-cash-cash">$ 0</strong>
+            </div>
+          </div>
+          <div class="cashflow-card cashflow-card-blue">
+            <img src="assets/icons/cheques.svg?v=20260702-3" alt="" class="cashflow-card-icon cashflow-card-icon-checks">
+            <div class="cashflow-card-content">
+              <span>Cheques</span>
+              <strong id="financial-checks-on-hand">$ 0</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="status-grid cashflow-summary-grid">
+          <div class="cashflow-card cashflow-card-blue">
+            <img src="assets/icons/por-cobrar.svg?v=20260702-3" alt="" class="cashflow-card-icon">
+            <div class="cashflow-card-content">
+              <span>Por Cobrar</span>
+              <strong id="financial-month-balance">$ 0</strong>
+            </div>
+          </div>
+          <div class="cashflow-card cashflow-card-red">
+            <img src="assets/icons/deudas.svg?v=20260702-3" alt="" class="cashflow-card-icon">
+            <div class="cashflow-card-content">
+              <span>Deudas</span>
+              <strong id="financial-overdue-balance">$ 0</strong>
+            </div>
+          </div>
+          <div class="cashflow-card cashflow-card-red">
+            <img src="assets/icons/cheques-a-cubrir.svg?v=20260702-3" alt="" class="cashflow-card-icon cashflow-card-icon-checks-cover">
+            <div class="cashflow-card-content">
+              <span>Cheques a cubrir</span>
+              <strong id="financial-checks-to-cover">$ 0</strong>
+            </div>
+          </div>
+        </div>
+        <section class="panel">
+          <div class="panel-header">
+            <div class="cashflow-search">
+              <label for="cashflow-search">Buscar</label>
+              <input id="cashflow-search" type="search" placeholder="Cheques, Diaz Velez, proveedor...">
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="cashflow-week-table">
+              <thead>
+                <tr>
+                  <th>Semana</th>
+                  <th class="num">Ingresos</th>
+                  <th class="num">Egresos</th>
+                  <th class="num">Saldo proyectado</th>
+                </tr>
+              </thead>
+              <tbody id="cashflow-timeline"></tbody>
+            </table>
+          </div>
+        </section>
+
+      </section>
+
+      <!-- Resumen rápido del volumen de datos guardados localmente. -->
+      <section class="view" id="view-dashboard">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Resumen operativo</h2>
+            <span>Datos guardados localmente</span>
+          </div>
+          <div class="status-grid">
+            <div><span>Ventas</span><strong id="count-sales">0</strong></div>
+            <div><span>Egresos</span><strong id="count-expenses">0</strong></div>
+            <div><span>Inventario</span><strong id="count-inventory">0</strong></div>
+            <div><span>Detalle inventario</span><strong id="count-inventory-details">0</strong></div>
+            <div><span>Detalle pedidos</span><strong id="count-order-details">0</strong></div>
+            <div><span>Sueldos</span><strong id="count-payroll">0</strong></div>
+            <div><span>Errores</span><strong id="count-errors">0</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Importación, revisión y clasificación de egresos. -->
+      <section class="view" id="view-data-entry">
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cargar inventario</h2>
+              <span>Agrega una fila en la planilla de inventario</span>
+            </div>
+          </div>
+          <form class="data-entry-form" id="inventory-entry-form">
+            <label>
+              Fecha
+              <input id="inventory-date-input" type="date" required>
+            </label>
+            <label>
+              Empleado responsable
+              <input id="inventory-employee-input" type="text" required placeholder="Nombre del empleado" list="creditor-employee-options">
+              <datalist id="creditor-employee-options"></datalist>
+            </label>
+            <fieldset class="shift-checks">
+              <legend>Turnos realizados</legend>
+              <label><input type="checkbox" id="inventory-shift-dawn" data-inventory-shift="dawn"> Madrugada</label>
+              <label><input type="checkbox" id="inventory-shift-morning" data-inventory-shift="morning"> Mañana</label>
+              <label><input type="checkbox" id="inventory-shift-afternoon" data-inventory-shift="afternoon"> Tarde</label>
+            </fieldset>
+            <small class="form-help">La fecha y el empleado se envian junto con el detalle en un solo click.</small>
+          </form>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cargar detalle de inventario</h2>
+              <span>Completa solo las columnas manuales de Detalle_Inventario</span>
+            </div>
+            <button type="button" id="inventory-detail-load">Preparar detalle</button>
+          </div>
+          <form id="inventory-detail-form">
+            <div class="inventory-detail-meta">
+              <strong id="inventory-detail-id-label">Id inventario: -</strong>
+            </div>
+            <div class="photo-import-box">
+              <label>
+                Foto del inventario
+                <input id="inventory-photo-input" type="file" accept="image/*">
+              </label>
+              <button type="button" id="inventory-photo-read">Leer foto y completar</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-entry-table">
+                <thead>
+                  <tr>
+                    <th>Id Inventario</th>
+                    <th>Id Item</th>
+                    <th>Nombre Item</th>
+                    <th class="num">Turno tarde</th>
+                    <th class="num">Turno mañana</th>
+                    <th class="num">Stock teorico</th>
+                    <th class="num">Dif. %</th>
+                    <th class="num">Turno madrugada</th>
+                  </tr>
+                </thead>
+                <tbody id="inventory-detail-body">
+                  <tr><td class="empty" colspan="8">Elegí una fecha y prepará el detalle.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="theoretical-stock-breakdown" id="theoretical-stock-breakdown" hidden></div>
+            <div class="photo-transcription-panel" id="inventory-photo-transcription" hidden></div>
+            <div class="actions">
+              <button type="submit" id="inventory-detail-submit">Enviar inventario completo</button>
+            </div>
+            <p class="form-status" id="inventory-detail-status" role="status"></p>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-imports">
+        <div class="imports-toolbar">
+          <button type="button" id="refresh-imports">Refrescar imports</button>
+        </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cargar imports financieros</h2>
+              <span>Caja y cheques</span>
+            </div>
+          </div>
+          <div class="import-grid" data-kind="cash">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de caja" data-url="cash">
+              <button type="button" data-load-url="cash">Cargar ahora</button>
+              <button type="button" data-edit-url="cash">Editar URL</button>
+            </div>
+          </div>
+          <div class="import-grid" data-kind="issuedChecks">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de cheques entregados" data-url="issuedChecks">
+              <button type="button" data-load-url="issuedChecks">Cargar ahora</button>
+              <button type="button" data-edit-url="issuedChecks">Editar URL</button>
+            </div>
+          </div>
+          <div class="import-grid" data-kind="receivedChecks">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de cheques recibidos" data-url="receivedChecks">
+              <button type="button" data-load-url="receivedChecks">Cargar ahora</button>
+              <button type="button" data-edit-url="receivedChecks">Editar URL</button>
+            </div>
+          </div>
+        </section>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar egresos</h2>
+            <span>CSV de Google Sheets</span>
+          </div>
+          <div class="import-grid" data-kind="expenses">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de egresos" data-url="expenses">
+              <button type="button" data-load-url="expenses">Cargar ahora</button>
+              <button type="button" data-edit-url="expenses">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar ventas</h2>
+            <span>CSV de Google Sheets</span>
+          </div>
+          <div class="import-grid" data-kind="sales">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de ventas" data-url="sales">
+              <button type="button" data-load-url="sales">Cargar ahora</button>
+              <button type="button" data-edit-url="sales">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar detalle de pedidos</h2>
+            <span>Producto, cliente y unidades individuales</span>
+          </div>
+          <div class="import-grid" data-kind="orderDetails">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de detalle_pedidos" data-url="orderDetails">
+              <button type="button" data-load-url="orderDetails">Cargar ahora</button>
+              <button type="button" data-edit-url="orderDetails">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar inventario</h2>
+            <span>Valor monetizado diario</span>
+          </div>
+          <div class="import-grid" data-kind="inventory">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de inventario" data-url="inventory">
+              <button type="button" data-load-url="inventory">Cargar ahora</button>
+              <button type="button" data-edit-url="inventory">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar detalle de inventario</h2>
+            <span>Productos y unidades individuales</span>
+          </div>
+          <div class="import-grid" data-kind="inventoryDetails">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de detalle_inventario" data-url="inventoryDetails">
+              <button type="button" data-load-url="inventoryDetails">Cargar ahora</button>
+              <button type="button" data-edit-url="inventoryDetails">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar sueldos y horas</h2>
+            <span>Empleados, mes y horas trabajadas</span>
+          </div>
+          <div class="import-grid" data-kind="payroll">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de sueldos" data-url="payroll">
+              <button type="button" data-load-url="payroll">Cargar ahora</button>
+              <button type="button" data-edit-url="payroll">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar acreedores</h2>
+            <span>CSV de Google Sheets</span>
+          </div>
+          <div class="import-grid" data-kind="creditors">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de acreedores" data-url="creditors">
+              <button type="button" data-load-url="creditors">Cargar ahora</button>
+              <button type="button" data-edit-url="creditors">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar recetas</h2>
+            <span>Productos, subproductos e insumos</span>
+          </div>
+          <div class="import-grid" data-kind="recipes">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de recetas" data-url="recipes">
+              <button type="button" data-load-url="recipes">Cargar ahora</button>
+              <button type="button" data-edit-url="recipes">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Egresos importados</h2>
+            <span id="expenses-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Fecha</th>
+                  <th>Acreedor</th>
+                  <th>Categoria</th>
+                  <th>Factura</th>
+                  <th class="num">Subtotal</th>
+                  <th class="num">IVA</th>
+                  <th class="num">Per./Ret. IVA</th>
+                  <th class="num">Per./Ret. IIBB</th>
+                  <th class="num">Imp. internos</th>
+                  <th class="num">Total</th>
+                </tr>
+              </thead>
+              <tbody id="expenses-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Categorias clasificadas</h2>
+            <span id="expense-categories-count">0 categorias</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Categoria</th>
+                  <th class="num">Registros</th>
+                  <th class="num">Subtotal</th>
+                  <th>Clasificacion actual</th>
+                </tr>
+              </thead>
+              <tbody id="expense-categories-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Categorias sin clasificar</h2>
+            <span id="unclassified-categories-count">0 categorias</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Categoria</th>
+                  <th class="num">Registros</th>
+                  <th class="num">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody id="unclassified-categories-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+      <!-- Importación y visualización mensual de ventas. -->
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Ventas importadas</h2>
+            <span id="sales-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Cliente</th>
+                  <th>Fecha</th>
+                  <th>Factura</th>
+                  <th class="num">IVA</th>
+                  <th class="num">Per./Ret. IVA</th>
+                  <th class="num">Per./Ret. IIBB</th>
+                  <th class="num">Ret. Ganancias</th>
+                  <th class="num">Subtotal</th>
+                  <th class="num">Total</th>
+                </tr>
+              </thead>
+              <tbody id="sales-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Detalle de pedidos importado</h2>
+            <span id="order-details-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Cliente</th>
+                  <th class="num">Cantidad individual</th>
+                </tr>
+              </thead>
+              <tbody id="order-details-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Unidades por cliente</h2>
+            <span id="customer-units-count-label">0 clientes</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th class="num">Unidades individuales</th>
+                </tr>
+              </thead>
+              <tbody id="customer-units-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+      <!-- Importación del valor monetizado diario del inventario. -->
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Produccion mensual</h2>
+            <span id="production-count-label">Periodo seleccionado</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Ventas</th>
+                  <th>Inventario final</th>
+                  <th>Inventario inicial</th>
+                  <th class="num">Produccion calculada</th>
+                </tr>
+              </thead>
+              <tbody id="production-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Inventario importado</h2>
+            <span id="inventory-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th class="num">Valor monetizado</th>
+                </tr>
+              </thead>
+              <tbody id="inventory-body"></tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Detalle de inventario importado</h2>
+            <span id="inventory-details-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Producto</th>
+                  <th class="num">Cantidad receta basica</th>
+                  <th class="num">Unidades individuales</th>
+                </tr>
+              </thead>
+              <tbody id="inventory-details-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Resumen del periodo</h2>
+            <span id="payroll-summary-label">0 empleados</span>
+          </div>
+          <div class="status-grid payroll-summary-grid">
+            <div><span>Empleados</span><strong id="payroll-employee-count">0</strong></div>
+            <div><span>Horas totales</span><strong id="payroll-hours-total">0</strong></div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Horas por empleado</h2>
+            <span id="payroll-count-label">0 registros del periodo</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th>Mes</th>
+                  <th class="num">Horas trabajadas + extra</th>
+                </tr>
+              </thead>
+              <tbody id="payroll-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+
+<section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Pagos previstos</h2>
+              <span>Deudas pendientes desde egresos</span>
+            </div>
+            <span id="financial-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha gasto</th>
+                  <th>Acreedor</th>
+                  <th>Tipo factura</th>
+                  <th>Nro factura</th>
+                  <th class="num">Monto</th>
+                  <th>Fecha prevista pago</th>
+                </tr>
+              </thead>
+              <tbody id="financial-payments-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Facturas por cobrar</h2>
+              <span>Saldos pendientes desde ventas</span>
+            </div>
+            <span id="financial-receivables-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha venta</th>
+                  <th>Cliente</th>
+                  <th>Tipo factura</th>
+                  <th>Nro factura</th>
+                  <th class="num">Monto</th>
+                  <th>Fecha prevista cobro</th>
+                </tr>
+              </thead>
+              <tbody id="financial-receivables-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cheques recibidos pendientes</h2>
+              <span>Cheques en mano todavía pendientes</span>
+            </div>
+            <span id="financial-received-checks-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha recibido</th>
+                  <th>Cliente</th>
+                  <th>Nro cheque</th>
+                  <th>Fecha de uso</th>
+                  <th>Banco</th>
+                  <th class="num">Monto</th>
+                </tr>
+              </thead>
+              <tbody id="financial-received-checks-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cheques entregados pendientes</h2>
+              <span>Cheques propios todavía no debitados</span>
+            </div>
+            <span id="financial-issued-checks-count-label">0 registros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha entregado</th>
+                  <th>Acreedor</th>
+                  <th>Nro cheque</th>
+                  <th>Fecha de uso</th>
+                  <th class="num">Monto</th>
+                </tr>
+              </thead>
+              <tbody id="financial-issued-checks-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <!-- Configuración histórica de categorías; se conserva para futuras reglas editables. -->
+      <section class="view" id="view-settings">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>Categorias configurables</h2>
+            <span>Separadas por coma</span>
+          </div>
+          <div class="settings-grid">
+            <label>
+              Compras productivas
+              <textarea id="productive-categories"></textarea>
+            </label>
+            <label>
+              Gastos comerciales
+              <textarea id="commercial-categories"></textarea>
+            </label>
+            <label>
+              Gastos administrativos
+              <textarea id="admin-categories"></textarea>
+            </label>
+            <label>
+              Sueldos
+              <textarea id="salary-categories"></textarea>
+            </label>
+            <label>
+              Alquileres
+              <textarea id="rent-categories"></textarea>
+            </label>
+            <label>
+              Servicios
+              <textarea id="service-categories"></textarea>
+            </label>
+            <label>
+              Logistica
+              <textarea id="logistics-categories"></textarea>
+            </label>
+            <label>
+              Mantenimiento
+              <textarea id="maintenance-categories"></textarea>
+            </label>
+            <label>
+              Marketing
+              <textarea id="marketing-categories"></textarea>
+            </label>
+            <label>
+              Impuestos
+              <textarea id="tax-categories"></textarea>
+            </label>
+            <label>
+              Gastos financieros
+              <textarea id="finance-categories"></textarea>
+            </label>
+            <label>
+              Otros gastos
+              <textarea id="other-categories"></textarea>
+            </label>
+          </div>
+          <div class="actions">
+            <button type="button" id="save-settings">Guardar configuracion</button>
+            <button type="button" class="secondary" id="reset-settings">Restaurar ejemplo</button>
+            <button type="button" class="danger" id="clear-data">Borrar datos cargados</button>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script src="assets/js/app.js?v=20260703-002"></script>
+</body>
+</html>
