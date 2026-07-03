@@ -1264,9 +1264,21 @@ button.danger {
   font-weight: 800;
 }
 
-.theoretical-stock-cell.missing-theoretical-stock {
-  color: #b45309;
-  background: #fff7ed;
+.morning-stock-cell,
+.morning-stock-heading {
+  padding-right: 4px;
+}
+
+.theoretical-stock-heading,
+.theoretical-diff-heading,
+.theoretical-stock-cell,
+.theoretical-diff-cell {
+  width: 76px;
+  min-width: 76px;
+  padding-left: 4px;
+  padding-right: 4px;
+  text-align: left;
+  color: #64748b;
 }
 
 .theoretical-diff-cell {
@@ -1275,11 +1287,11 @@ button.danger {
 }
 
 .theoretical-diff-cell.diff-positive {
-  color: #0f766e;
+  color: #64748b;
 }
 
 .theoretical-diff-cell.diff-negative {
-  color: #b91c1c;
+  color: #64748b;
 }
 
 .theoretical-diff-cell.diff-neutral {

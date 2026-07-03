@@ -558,7 +558,7 @@ function renderInventoryDetailTemplate(template) {
       <td>${escapeHtml(row.itemId)}</td>
       <td>${escapeHtml(row.itemName)}</td>
       <td class="num"><input class="detail-quantity-input" data-detail-field="afternoon" type="number" step="any"></td>
-      <td class="num"><input class="detail-quantity-input" data-detail-field="morning" type="number" step="any"></td>
+      <td class="num morning-stock-cell"><input class="detail-quantity-input" data-detail-field="morning" type="number" step="any"></td>
       <td class="num theoretical-stock-cell">-</td>
       <td class="num theoretical-diff-cell">-</td>
       <td class="num"><input class="detail-quantity-input" data-detail-field="dawn" type="number" step="any"></td>
@@ -1169,8 +1169,8 @@ function granelDulceIngredientCoefficient(itemName) {
 
 function markTheoreticalStockMissing(cell, message) {
   if (!cell) return;
-  cell.textContent = "Revisar";
-  cell.classList.add("missing-theoretical-stock");
+  cell.textContent = "-";
+  cell.classList.remove("missing-theoretical-stock");
   cell.title = message;
 }
 
