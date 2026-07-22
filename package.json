@@ -4,6 +4,7 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "check": "powershell -ExecutionPolicy Bypass -File tools/check-js.ps1"
   }
 }

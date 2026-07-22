@@ -1,0 +1,55 @@
+{
+  "version": 2,
+  "generatedFrom": "modelo ERP definido el 2026-07-07",
+  "defaultWorkbookDir": "C:/Users/benja/Downloads",
+  "tables": [
+    { "name": "etiquetas", "label": "Etiquetas", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Etiquetas", "primaryKey": "Id_Etiqueta" },
+    { "name": "acreedores", "label": "Acreedores", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Acreedores", "primaryKey": "Id_Acreedor" },
+    { "name": "otros_acreedores", "label": "Otros acreedores", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Acreedores", "primaryKey": "Id_Otro_Acreedor", "synthetic": true },
+    { "name": "acreedores_etiquetas", "label": "Acreedores etiquetas", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Acreedores_Etiquetas", "primaryKey": "Id_Acreedor_Etiqueta" },
+    { "name": "proveedores", "label": "Proveedores", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Proveedores", "primaryKey": "Id_Proveedor" },
+    { "name": "clientes", "label": "Clientes", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Clientes", "primaryKey": "Id_Cliente" },
+    { "name": "empleados", "label": "Empleados", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Empleados", "primaryKey": "Id_Empleado" },
+    { "name": "canales", "label": "Canales", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Canales", "primaryKey": "Id_Canal" },
+    { "name": "fletes", "label": "Fletes", "module": "maestros", "workbook": "Informacion.xlsx", "sheet": "Fletes", "primaryKey": "Id_Flete" },
+    { "name": "datos_bancarios", "label": "Datos bancarios", "module": "tesoreria", "workbook": "", "sheet": "Datos_Bancarios", "primaryKey": "Id_Dato_Bancario", "synthetic": true },
+    { "name": "movimientos_bancarios", "label": "Movimientos bancarios", "module": "tesoreria", "workbook": "", "sheet": "Movimientos_Bancarios", "primaryKey": "Id_Movimiento_Bancario", "synthetic": true },
+
+    { "name": "items", "label": "Items", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Items", "primaryKey": "Id_Item" },
+    { "name": "productos", "label": "Productos", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Productos", "primaryKey": "Id_Producto" },
+    { "name": "subproductos", "label": "Subproductos", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Subproductos", "primaryKey": "Id_Subproducto", "synthetic": true },
+    { "name": "insumos", "label": "Insumos", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Insumos", "primaryKey": "Id_Insumo" },
+    { "name": "insumos_proveedores", "label": "Insumos proveedores", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Insumos", "primaryKey": "Id_Insumos_Proveedores" },
+    { "name": "recetas", "label": "Recetas", "module": "inventario", "workbook": "Informacion.xlsx", "sheet": "Recetas", "primaryKey": "Id_Receta" },
+
+    { "name": "pedidos", "label": "Pedidos", "module": "ventas", "workbook": "Pedidos.xlsx", "sheet": "Pedidos_Recibidos", "primaryKey": "Id_Pedido" },
+    { "name": "detalle_pedidos", "label": "Detalle de pedidos", "module": "ventas", "workbook": "Pedidos.xlsx", "sheet": "Detalles_Pedidos", "primaryKey": "Id_Detalle_Pedido" },
+    { "name": "entregas", "label": "Entregas", "module": "ventas", "workbook": "Logistica.xlsx", "sheet": "Entregas", "primaryKey": "Id_Entrega" },
+    { "name": "entregas_detalle", "label": "Entregas detalle", "module": "ventas", "workbook": "Logistica.xlsx", "sheet": "EntregasPedidos", "primaryKey": "Id_Entrega_Pedido" },
+    { "name": "ventas", "label": "Ventas", "module": "ventas", "workbook": "Ventas (1).xlsx", "sheet": "Ventas", "primaryKey": "Id_Venta" },
+    { "name": "cobros", "label": "Cobros", "module": "ventas", "workbook": "Cobros.xlsx", "sheet": "Cobros", "primaryKey": "Id_Cobro" },
+    { "name": "cobros_detalle", "label": "Cobros detalle", "module": "ventas", "workbook": "Cobros.xlsx", "sheet": "Cobros_Ventas", "primaryKey": "Id_Cobro_Venta" },
+    { "name": "retenciones_ganancias", "label": "Retenciones ganancias", "module": "ventas", "workbook": "", "sheet": "Retenciones_Ganancias", "primaryKey": "Id_Retencion_Ganancias", "synthetic": true },
+    { "name": "retenciones_iibb", "label": "Retenciones IIBB", "module": "ventas", "workbook": "", "sheet": "Retenciones_IIBB", "primaryKey": "Id_Retencion_IIBB", "synthetic": true },
+    { "name": "caja", "label": "Caja", "module": "tesoreria", "workbook": "Caja (1).xlsx", "sheet": "Caja", "primaryKey": "Formato" },
+    { "name": "cheques_entregados", "label": "Cheques entregados", "module": "tesoreria", "workbook": "Caja (1).xlsx", "sheet": "ChequesEntregados", "primaryKey": "Id_ChequeEntregado" },
+    { "name": "cheques_recibidos", "label": "Cheques recibidos", "module": "ventas", "workbook": "Caja (1).xlsx", "sheet": "ChequesRecibidos", "primaryKey": "Id_ChequeRecibido" },
+
+    { "name": "compras", "label": "Compras", "module": "compras", "workbook": "Compras.xlsx", "sheet": "Compras", "primaryKey": "Id_Compra" },
+    { "name": "detalle_compras", "label": "Detalle de compras", "module": "compras", "workbook": "Compras.xlsx", "sheet": "Detalle_Compras", "primaryKey": "Id_Detalle_Compra" },
+    { "name": "recepciones", "label": "Recepciones", "module": "compras", "workbook": "Recepciones.xlsx", "sheet": "Recepciones", "primaryKey": "Id_Recepcion" },
+    { "name": "detalle_recepciones", "label": "Detalle de recepciones", "module": "compras", "workbook": "Recepciones.xlsx", "sheet": "Detalle_Recepciones", "primaryKey": "Id_Detalle_Recepcion" },
+    { "name": "otros_gastos", "label": "Otros gastos", "module": "compras", "workbook": "OtrosGastos.xlsx", "sheet": "Gasto", "primaryKey": "Id_Gasto" },
+    { "name": "aportes_socios", "label": "Aportes de socios", "module": "compras", "workbook": "", "sheet": "Aportes_Socios", "primaryKey": "Id_Aporte_Socio", "synthetic": true },
+    { "name": "egresos", "label": "Egresos", "module": "compras", "workbook": "Egresos.xlsx", "sheet": "Egresos", "primaryKey": "Id_Egreso" },
+    { "name": "pagos", "label": "Pagos", "module": "compras", "workbook": "Pagos.xlsx", "sheet": "Pagos", "primaryKey": "Id_Pago" },
+    { "name": "detalle_pagos", "label": "Detalle pagos", "module": "compras", "workbook": "Pagos.xlsx", "sheet": "PagosFacturas", "primaryKey": "Id_Pago_Egreso" },
+
+    { "name": "comisiones", "label": "Comisiones", "module": "compras", "workbook": "", "sheet": "Comisiones", "primaryKey": "Id_Comision", "synthetic": true },
+    { "name": "sueldos", "label": "Sueldos", "module": "compras", "workbook": "Sueldos.xlsx", "sheet": "Sueldos", "primaryKey": "Id_Sueldo" },
+    { "name": "sueldos_calculo", "label": "Sueldos calculo", "module": "compras", "workbook": "Sueldos.xlsx", "sheet": "Calculo", "primaryKey": "Id_Sueldo", "hidden": true },
+
+    { "name": "inventarios", "label": "Inventarios", "module": "inventario", "workbook": "Inventario.xlsx", "sheet": "Inventario", "primaryKey": "Id_Inventario" },
+    { "name": "detalle_inventarios", "label": "Detalle inventarios", "module": "inventario", "workbook": "Inventario.xlsx", "sheet": "Detalle_Inventario", "primaryKey": "Id_Detalle_Inventario" }
+  ]
+}

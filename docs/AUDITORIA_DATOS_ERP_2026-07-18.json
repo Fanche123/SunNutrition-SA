@@ -1,0 +1,3870 @@
+{
+  "generatedAt": "2026-07-18T13:46:58.042Z",
+  "sourceCache": "C:\\Users\\benja\\Documents\\ERP\\tmp\\backend-data-cache.json",
+  "sourceGeneratedAt": "2026-07-18T03:48:05.371Z",
+  "sourceErrors": [
+    {
+      "table": "acreedores_etiquetas",
+      "workbook": "Informacion.xlsx",
+      "sheet": "Acreedores_Etiquetas",
+      "error": "Unable to parse range: 'Acreedores_Etiquetas'. Se conservaron los datos anteriores."
+    }
+  ],
+  "summary": {
+    "tableCount": 39,
+    "totalRows": 67567,
+    "tablesWithoutRows": [
+      "datos_bancarios",
+      "movimientos_bancarios",
+      "comisiones"
+    ],
+    "completelyEmptyColumnCount": 29,
+    "tablesWithDuplicatePrimaryKeys": [
+      "caja"
+    ],
+    "effectivelyEmptyRows": 1
+  },
+  "tableProfiles": [
+    {
+      "name": "etiquetas",
+      "rowCount": 33,
+      "columnCount": 3,
+      "primaryKey": "id_etiqueta",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "categoria_pnl"
+      ],
+      "columns": [
+        {
+          "column": "id_etiqueta",
+          "populated": 33,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "etiqueta",
+          "populated": 33,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "categoria_pnl",
+          "populated": 0,
+          "blank": 33,
+          "fillRate": 0,
+          "completelyEmpty": true
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Etiquetas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "acreedores",
+      "rowCount": 86,
+      "columnCount": 6,
+      "primaryKey": "id_acreedor",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_acreedor",
+          "populated": 86,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "origen_tipo_acreedor",
+          "populated": 86,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "origen_id_acreedor",
+          "populated": 86,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cuit_cuil",
+          "populated": 56,
+          "blank": 30,
+          "fillRate": 65.12,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cbu_alias",
+          "populated": 32,
+          "blank": 54,
+          "fillRate": 37.21,
+          "completelyEmpty": false
+        },
+        {
+          "column": "acuerdo_de_pago",
+          "populated": 86,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Acreedores",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "otros_acreedores",
+      "rowCount": 19,
+      "columnCount": 2,
+      "primaryKey": "id_otro_acreedor",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_otro_acreedor",
+          "populated": 19,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_otro_acreedor",
+          "populated": 19,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "syntheticFrom": [
+          "acreedores"
+        ]
+      }
+    },
+    {
+      "name": "acreedores_etiquetas",
+      "rowCount": 182,
+      "columnCount": 3,
+      "primaryKey": "id_acreedor_etiqueta",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 182,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor",
+          "populated": 182,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_etiqueta",
+          "populated": 182,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "manualCsv": "C:\\Users\\benja\\Downloads\\Hoja de cálculo sin título - Sheet9.csv"
+      }
+    },
+    {
+      "name": "proveedores",
+      "rowCount": 25,
+      "columnCount": 6,
+      "primaryKey": "id_proveedor",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_proveedor",
+          "populated": 25,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre",
+          "populated": 25,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "telefono",
+          "populated": 8,
+          "blank": 17,
+          "fillRate": 32,
+          "completelyEmpty": false
+        },
+        {
+          "column": "email",
+          "populated": 8,
+          "blank": 17,
+          "fillRate": 32,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tiempo_estimado_entrega",
+          "populated": 25,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "pedido_minimo",
+          "populated": 3,
+          "blank": 22,
+          "fillRate": 12,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Proveedores",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "clientes",
+      "rowCount": 47,
+      "columnCount": 12,
+      "primaryKey": "id_cliente",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_cliente",
+          "populated": 47,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_cliente",
+          "populated": 47,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cuit",
+          "populated": 36,
+          "blank": 11,
+          "fillRate": 76.6,
+          "completelyEmpty": false
+        },
+        {
+          "column": "direccion",
+          "populated": 44,
+          "blank": 3,
+          "fillRate": 93.62,
+          "completelyEmpty": false
+        },
+        {
+          "column": "localidad",
+          "populated": 44,
+          "blank": 3,
+          "fillRate": 93.62,
+          "completelyEmpty": false
+        },
+        {
+          "column": "contacto",
+          "populated": 13,
+          "blank": 34,
+          "fillRate": 27.66,
+          "completelyEmpty": false
+        },
+        {
+          "column": "telefono",
+          "populated": 2,
+          "blank": 45,
+          "fillRate": 4.26,
+          "completelyEmpty": false
+        },
+        {
+          "column": "email",
+          "populated": 5,
+          "blank": 42,
+          "fillRate": 10.64,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_canal",
+          "populated": 47,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tipo",
+          "populated": 47,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tipo_comprobante",
+          "populated": 35,
+          "blank": 12,
+          "fillRate": 74.47,
+          "completelyEmpty": false
+        },
+        {
+          "column": "plazo_cobro",
+          "populated": 47,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Clientes",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "empleados",
+      "rowCount": 25,
+      "columnCount": 10,
+      "primaryKey": "id_empleado",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_empleado",
+          "populated": 25,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_empleado",
+          "populated": 25,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "categoria_empleado",
+          "populated": 22,
+          "blank": 3,
+          "fillRate": 88,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_alta",
+          "populated": 14,
+          "blank": 11,
+          "fillRate": 56,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_baja",
+          "populated": 7,
+          "blank": 18,
+          "fillRate": 28,
+          "completelyEmpty": false
+        },
+        {
+          "column": "dni",
+          "populated": 16,
+          "blank": 9,
+          "fillRate": 64,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_nacimiento",
+          "populated": 10,
+          "blank": 15,
+          "fillRate": 40,
+          "completelyEmpty": false
+        },
+        {
+          "column": "direccion_empleado",
+          "populated": 15,
+          "blank": 10,
+          "fillRate": 60,
+          "completelyEmpty": false
+        },
+        {
+          "column": "localidad_empleado",
+          "populated": 13,
+          "blank": 12,
+          "fillRate": 52,
+          "completelyEmpty": false
+        },
+        {
+          "column": "contratacion",
+          "populated": 7,
+          "blank": 18,
+          "fillRate": 28,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Empleados",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "canales",
+      "rowCount": 7,
+      "columnCount": 3,
+      "primaryKey": "id_canal",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_canal",
+          "populated": 7,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre",
+          "populated": 7,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "comision",
+          "populated": 7,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Canales",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "fletes",
+      "rowCount": 10,
+      "columnCount": 4,
+      "primaryKey": "id_flete",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_flete",
+          "populated": 10,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_flete",
+          "populated": 10,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "telefono_flete",
+          "populated": 3,
+          "blank": 7,
+          "fillRate": 30,
+          "completelyEmpty": false
+        },
+        {
+          "column": "email_flete",
+          "populated": 1,
+          "blank": 9,
+          "fillRate": 10,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Fletes",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "datos_bancarios",
+      "rowCount": 0,
+      "columnCount": 4,
+      "primaryKey": "id_dato_bancario",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "id_dato_bancario",
+        "detalle",
+        "id_acreedor",
+        "id_etiqueta"
+      ],
+      "columns": [
+        {
+          "column": "id_dato_bancario",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "detalle",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_acreedor",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_etiqueta",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "",
+        "sheet": "Datos_Bancarios"
+      }
+    },
+    {
+      "name": "movimientos_bancarios",
+      "rowCount": 0,
+      "columnCount": 14,
+      "primaryKey": "id_movimiento_bancario",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "id_movimiento_bancario",
+        "banco",
+        "fecha",
+        "cod_concepto",
+        "concepto",
+        "detalle",
+        "cuit",
+        "nro_cheque",
+        "debito",
+        "credito",
+        "importe",
+        "saldo",
+        "id_pago",
+        "id_cobro"
+      ],
+      "columns": [
+        {
+          "column": "id_movimiento_bancario",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "banco",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "fecha",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "cod_concepto",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "concepto",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "detalle",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "cuit",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "nro_cheque",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "debito",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "credito",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "importe",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "saldo",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_pago",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_cobro",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "",
+        "sheet": "Movimientos_Bancarios",
+        "synthetic": true,
+        "preserved": false
+      }
+    },
+    {
+      "name": "items",
+      "rowCount": 124,
+      "columnCount": 4,
+      "primaryKey": "id_item",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_item",
+          "populated": 124,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "origen_tipo",
+          "populated": 124,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_origen",
+          "populated": 124,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "ud_conteo",
+          "populated": 53,
+          "blank": 71,
+          "fillRate": 42.74,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Items",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "productos",
+      "rowCount": 46,
+      "columnCount": 8,
+      "primaryKey": "id_producto",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_producto",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_item",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_producto",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "capacidad_palet",
+          "populated": 25,
+          "blank": 21,
+          "fillRate": 54.35,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_individual",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "precio_base",
+          "populated": 18,
+          "blank": 28,
+          "fillRate": 39.13,
+          "completelyEmpty": false
+        },
+        {
+          "column": "costo_base",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "costo_ud_individual",
+          "populated": 46,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Productos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "subproductos",
+      "rowCount": 24,
+      "columnCount": 4,
+      "primaryKey": "id_subproducto",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_subproducto",
+          "populated": 24,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_item",
+          "populated": 24,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre_subproducto",
+          "populated": 24,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "ud_conteo",
+          "populated": 6,
+          "blank": 18,
+          "fillRate": 25,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "syntheticFrom": [
+          "productos",
+          "items",
+          "recetas"
+        ]
+      }
+    },
+    {
+      "name": "insumos",
+      "rowCount": 54,
+      "columnCount": 5,
+      "primaryKey": "id_insumo",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_insumo",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nombre",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "ud_receta",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_receta",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tipo",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Insumos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "insumos_proveedores",
+      "rowCount": 55,
+      "columnCount": 7,
+      "primaryKey": "id_insumos_proveedores",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_insumos_proveedores",
+          "populated": 55,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_insumo",
+          "populated": 55,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_proveedor",
+          "populated": 27,
+          "blank": 28,
+          "fillRate": 49.09,
+          "completelyEmpty": false
+        },
+        {
+          "column": "ud_proveedor",
+          "populated": 55,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_proveedor",
+          "populated": 50,
+          "blank": 5,
+          "fillRate": 90.91,
+          "completelyEmpty": false
+        },
+        {
+          "column": "precio",
+          "populated": 51,
+          "blank": 4,
+          "fillRate": 92.73,
+          "completelyEmpty": false
+        },
+        {
+          "column": "iva",
+          "populated": 28,
+          "blank": 27,
+          "fillRate": 50.91,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Insumos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "recetas",
+      "rowCount": 164,
+      "columnCount": 5,
+      "primaryKey": "id_receta",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_receta",
+          "populated": 164,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_item_resultado",
+          "populated": 164,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_item_componente",
+          "populated": 164,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_componente",
+          "populated": 164,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "unidad_base",
+          "populated": 164,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Informacion.xlsx",
+        "sheet": "Recetas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1J6byHbqScKH96vwVmQJdnQfTlMWDSt_bGNxfiIs850A/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "pedidos",
+      "rowCount": 1006,
+      "columnCount": 5,
+      "primaryKey": "id_pedido",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_pedido",
+          "populated": 1006,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_pedido",
+          "populated": 1006,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cliente",
+          "populated": 1006,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_entrega",
+          "populated": 1006,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_original",
+          "populated": 1006,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Pedidos.xlsx",
+        "sheet": "Pedidos_Recibidos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1ctyZE6Z35Z-IW6EA0xnhtBwAE7rIyMPEeOLe3NFVnpU/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "detalle_pedidos",
+      "rowCount": 1037,
+      "columnCount": 7,
+      "primaryKey": "id_detalle_pedido",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_detalle_pedido",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_pedido",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_producto",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_cajas",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "impuesto",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "precio_ud",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "bonificacion",
+          "populated": 1037,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Pedidos.xlsx",
+        "sheet": "Detalles_Pedidos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1ctyZE6Z35Z-IW6EA0xnhtBwAE7rIyMPEeOLe3NFVnpU/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "entregas",
+      "rowCount": 575,
+      "columnCount": 5,
+      "primaryKey": "id_entrega",
+      "blankPrimaryKeys": 1,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 1,
+      "completelyEmptyColumns": [
+        "id_acreedor_etiqueta"
+      ],
+      "columns": [
+        {
+          "column": "id_entrega",
+          "populated": 574,
+          "blank": 1,
+          "fillRate": 99.83,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha",
+          "populated": 574,
+          "blank": 1,
+          "fillRate": 99.83,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_flete",
+          "populated": 574,
+          "blank": 1,
+          "fillRate": 99.83,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 0,
+          "blank": 575,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_egreso",
+          "populated": 573,
+          "blank": 2,
+          "fillRate": 99.65,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Logistica.xlsx",
+        "sheet": "Entregas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1pMGGriKu1K6kqcDITRQxM2WtIjgIHj8WiTSL9qJE-c0/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "entregas_detalle",
+      "rowCount": 1007,
+      "columnCount": 3,
+      "primaryKey": "id_entregas_detalle",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_entregas_detalle",
+          "populated": 1007,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_entrega",
+          "populated": 1005,
+          "blank": 2,
+          "fillRate": 99.8,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_pedido",
+          "populated": 1007,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Logistica.xlsx",
+        "sheet": "EntregasPedidos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1pMGGriKu1K6kqcDITRQxM2WtIjgIHj8WiTSL9qJE-c0/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "ventas",
+      "rowCount": 1024,
+      "columnCount": 11,
+      "primaryKey": "id_venta",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_venta",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_pedido",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cliente",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_entrega",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tipo_factura",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nro_factura",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_factura",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_acordada",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "iva",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "subtotal",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "total",
+          "populated": 1024,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Ventas (1).xlsx",
+        "sheet": "Ventas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1O_RUJno7jZDfTv3LHzLJM7ooiXh4DLohxOFfJq1mVyY/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "cobros",
+      "rowCount": 778,
+      "columnCount": 6,
+      "primaryKey": "id_cobro",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_cobro",
+          "populated": 778,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_cobro",
+          "populated": 778,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "metodo",
+          "populated": 778,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cliente",
+          "populated": 778,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto",
+          "populated": 778,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "banco",
+          "populated": 317,
+          "blank": 461,
+          "fillRate": 40.75,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Cobros.xlsx",
+        "sheet": "Cobros",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1kO5XAEqKfZSBCXWdKsv6XQLQsXgiriTSlTSqwdtzD4g/edit#gid=609025549",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "cobros_detalle",
+      "rowCount": 1215,
+      "columnCount": 4,
+      "primaryKey": "id_cobros_detalle",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_cobros_detalle",
+          "populated": 1215,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cobro",
+          "populated": 1215,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_venta",
+          "populated": 1215,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto_cancelado",
+          "populated": 1215,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Cobros.xlsx",
+        "sheet": "Cobros_Ventas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1kO5XAEqKfZSBCXWdKsv6XQLQsXgiriTSlTSqwdtzD4g/edit#gid=609025549",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "caja",
+      "rowCount": 40,
+      "columnCount": 2,
+      "primaryKey": "cuenta",
+      "blankPrimaryKeys": 1,
+      "duplicatePrimaryKeyValues": 9,
+      "duplicatePrimaryKeyRows": 18,
+      "duplicatePrimaryKeySamples": [
+        {
+          "value": "Banco ICBC",
+          "count": 2
+        },
+        {
+          "value": "Banco GAL",
+          "count": 2
+        },
+        {
+          "value": "Efectivo",
+          "count": 2
+        },
+        {
+          "value": "Fondo ICBC",
+          "count": 2
+        },
+        {
+          "value": "Fondo GAL",
+          "count": 2
+        },
+        {
+          "value": "Mercado Pago",
+          "count": 2
+        },
+        {
+          "value": "Inviu",
+          "count": 2
+        },
+        {
+          "value": "A Pagar Echeq",
+          "count": 2
+        },
+        {
+          "value": "A Cobrar Echeq",
+          "count": 2
+        }
+      ],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "cuenta",
+          "populated": 39,
+          "blank": 1,
+          "fillRate": 97.5,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto",
+          "populated": 31,
+          "blank": 9,
+          "fillRate": 77.5,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Caja (1).xlsx",
+        "sheet": "Caja",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1BAusksHyttro_QxZtAUWTs9EHdzNUlQ6wqVABMsWRgQ/edit#gid=0",
+        "headerRow": 2
+      }
+    },
+    {
+      "name": "cheques_entregados",
+      "rowCount": 54,
+      "columnCount": 9,
+      "primaryKey": "id_cheque_entregado",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_cheque_entregado",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_pago",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nro_cheque",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_entregado",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_uso",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "banco",
+          "populated": 1,
+          "blank": 53,
+          "fillRate": 1.85,
+          "completelyEmpty": false
+        },
+        {
+          "column": "estado",
+          "populated": 54,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Caja (1).xlsx",
+        "sheet": "ChequesEntregados",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1BAusksHyttro_QxZtAUWTs9EHdzNUlQ6wqVABMsWRgQ/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "cheques_recibidos",
+      "rowCount": 589,
+      "columnCount": 10,
+      "primaryKey": "id_cheque_recibido",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_cheque_recibido",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cobro",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_entregado",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cliente",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_cliente",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nro_cheque",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_uso",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "estado",
+          "populated": 589,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "banco",
+          "populated": 459,
+          "blank": 130,
+          "fillRate": 77.93,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Caja (1).xlsx",
+        "sheet": "ChequesRecibidos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1BAusksHyttro_QxZtAUWTs9EHdzNUlQ6wqVABMsWRgQ/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "compras",
+      "rowCount": 188,
+      "columnCount": 4,
+      "primaryKey": "id_compra",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_compra",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_proveedor",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_pedido",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_entrega_prevista",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Compras.xlsx",
+        "sheet": "Compras",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1jq1-GDpWODoZyvzx2M1nM_AC1pBarfGJG5-R91CNdZ0/edit#gid=1339723983",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "detalle_compras",
+      "rowCount": 202,
+      "columnCount": 4,
+      "primaryKey": "id_detalle_compra",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_detalle_compra",
+          "populated": 202,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_compra",
+          "populated": 202,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_insumos_proveedores",
+          "populated": 202,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad",
+          "populated": 202,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Compras.xlsx",
+        "sheet": "Detalle_Compras",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1jq1-GDpWODoZyvzx2M1nM_AC1pBarfGJG5-R91CNdZ0/edit#gid=1339723983",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "recepciones",
+      "rowCount": 188,
+      "columnCount": 7,
+      "primaryKey": "id_recepcion",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_recepcion",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_recepcion",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_empleado",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_compra",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_egreso",
+          "populated": 188,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "archivo_recepcion",
+          "populated": 1,
+          "blank": 187,
+          "fillRate": 0.53,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Recepciones.xlsx",
+        "sheet": "Recepciones",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/11v68c5BZ6bhsnVF1Tvs-QqVmAQ55_45Wk7Vru7GeUpo/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "detalle_recepciones",
+      "rowCount": 203,
+      "columnCount": 4,
+      "primaryKey": "id_detalle_recepcion",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_detalle_recepcion",
+          "populated": 203,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_recepcion",
+          "populated": 202,
+          "blank": 1,
+          "fillRate": 99.51,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_insumo",
+          "populated": 202,
+          "blank": 1,
+          "fillRate": 99.51,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad_recibida",
+          "populated": 202,
+          "blank": 1,
+          "fillRate": 99.51,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Recepciones.xlsx",
+        "sheet": "Detalle_Recepciones",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/11v68c5BZ6bhsnVF1Tvs-QqVmAQ55_45Wk7Vru7GeUpo/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "otros_gastos",
+      "rowCount": 5526,
+      "columnCount": 6,
+      "primaryKey": "id_otros_gastos",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "id_acreedor_etiqueta"
+      ],
+      "columns": [
+        {
+          "column": "id_otros_gastos",
+          "populated": 5526,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_otros_gastos",
+          "populated": 5526,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor",
+          "populated": 5526,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 0,
+          "blank": 5526,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_egreso",
+          "populated": 5526,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "detalle",
+          "populated": 5526,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "OtrosGastos.xlsx",
+        "sheet": "Gasto",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1BKIRj76V8z0AoUeiqbBpW6ARBFxtD9STRSD2s4w4DVg/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "egresos",
+      "rowCount": 7803,
+      "columnCount": 12,
+      "primaryKey": "id_egreso",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_egreso",
+          "populated": 7803,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_factura",
+          "populated": 6779,
+          "blank": 1024,
+          "fillRate": 86.88,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_prevista_pago",
+          "populated": 7376,
+          "blank": 427,
+          "fillRate": 94.53,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_etiqueta",
+          "populated": 576,
+          "blank": 7227,
+          "fillRate": 7.38,
+          "completelyEmpty": false
+        },
+        {
+          "column": "tipo_factura",
+          "populated": 7803,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "nro_factura",
+          "populated": 6769,
+          "blank": 1034,
+          "fillRate": 86.75,
+          "completelyEmpty": false
+        },
+        {
+          "column": "iva",
+          "populated": 7795,
+          "blank": 8,
+          "fillRate": 99.9,
+          "completelyEmpty": false
+        },
+        {
+          "column": "per_ret_iva",
+          "populated": 7803,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "per_ret_iibb",
+          "populated": 7803,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "imp_internos",
+          "populated": 7803,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "subtotal",
+          "populated": 7755,
+          "blank": 48,
+          "fillRate": 99.38,
+          "completelyEmpty": false
+        },
+        {
+          "column": "total",
+          "populated": 7775,
+          "blank": 28,
+          "fillRate": 99.64,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Egresos.xlsx",
+        "sheet": "Egresos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1qUXEafy7wUoLm_S-axOk2ZOE2w-ArvQPzKIUlV56Bek/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "pagos",
+      "rowCount": 5804,
+      "columnCount": 5,
+      "primaryKey": "id_pago",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_pago",
+          "populated": 5804,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha_pago",
+          "populated": 5804,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "metodo",
+          "populated": 5804,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "banco",
+          "populated": 4990,
+          "blank": 814,
+          "fillRate": 85.98,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto",
+          "populated": 5804,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Pagos.xlsx",
+        "sheet": "Pagos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1FyXodZFT_H4pn71Hiq_ljb6T3FG-ppmc2VgEef2blOE/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "detalle_pagos",
+      "rowCount": 6567,
+      "columnCount": 4,
+      "primaryKey": "id_detalle_pago",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_detalle_pago",
+          "populated": 6567,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_pago",
+          "populated": 6567,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_egreso",
+          "populated": 6429,
+          "blank": 138,
+          "fillRate": 97.9,
+          "completelyEmpty": false
+        },
+        {
+          "column": "monto_cancelado",
+          "populated": 6567,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Pagos.xlsx",
+        "sheet": "PagosFacturas",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1FyXodZFT_H4pn71Hiq_ljb6T3FG-ppmc2VgEef2blOE/edit#gid=0",
+        "headerRow": 1
+      }
+    },
+    {
+      "name": "comisiones",
+      "rowCount": 0,
+      "columnCount": 7,
+      "primaryKey": "id_comision",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "id_comision",
+        "fecha",
+        "id_canal",
+        "id_acreedor_etiqueta",
+        "id_venta",
+        "subtotal",
+        "comision"
+      ],
+      "columns": [
+        {
+          "column": "id_comision",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "fecha",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_canal",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "id_venta",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "subtotal",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "comision",
+          "populated": 0,
+          "blank": 0,
+          "fillRate": 0,
+          "completelyEmpty": true
+        }
+      ],
+      "invalidDates": [],
+      "source": null
+    },
+    {
+      "name": "sueldos",
+      "rowCount": 968,
+      "columnCount": 14,
+      "primaryKey": "id_sueldo",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [
+        "id_egreso"
+      ],
+      "columns": [
+        {
+          "column": "id_sueldo",
+          "populated": 968,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha",
+          "populated": 968,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_empleado",
+          "populated": 968,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_acreedor_etiqueta",
+          "populated": 968,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_egreso",
+          "populated": 0,
+          "blank": 968,
+          "fillRate": 0,
+          "completelyEmpty": true
+        },
+        {
+          "column": "valor_remunerativo",
+          "populated": 402,
+          "blank": 566,
+          "fillRate": 41.53,
+          "completelyEmpty": false
+        },
+        {
+          "column": "valor_no_remunerativo",
+          "populated": 264,
+          "blank": 704,
+          "fillRate": 27.27,
+          "completelyEmpty": false
+        },
+        {
+          "column": "hs_trabajadas",
+          "populated": 373,
+          "blank": 595,
+          "fillRate": 38.53,
+          "completelyEmpty": false
+        },
+        {
+          "column": "hs_con_justificacion_medica",
+          "populated": 305,
+          "blank": 663,
+          "fillRate": 31.51,
+          "completelyEmpty": false
+        },
+        {
+          "column": "hs_feriado",
+          "populated": 283,
+          "blank": 685,
+          "fillRate": 29.24,
+          "completelyEmpty": false
+        },
+        {
+          "column": "hs_extra",
+          "populated": 54,
+          "blank": 914,
+          "fillRate": 5.58,
+          "completelyEmpty": false
+        },
+        {
+          "column": "premios",
+          "populated": 60,
+          "blank": 908,
+          "fillRate": 6.2,
+          "completelyEmpty": false
+        },
+        {
+          "column": "sueldo_bruto",
+          "populated": 446,
+          "blank": 522,
+          "fillRate": 46.07,
+          "completelyEmpty": false
+        },
+        {
+          "column": "sueldo_neto",
+          "populated": 968,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Sueldos.xlsx",
+        "sheet": "Sueldos",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1qQza5fHg7ZIhBbpz9M-o0ZhDUXVWoxEHForxpoSNMq0/edit#gid=1485340292",
+        "headerRow": 1,
+        "mergedFrom": [
+          "Sueldos.xlsx · Calculo"
+        ]
+      }
+    },
+    {
+      "name": "inventarios",
+      "rowCount": 1706,
+      "columnCount": 5,
+      "primaryKey": "id_inventario",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_inventario",
+          "populated": 1706,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "fecha",
+          "populated": 1706,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "turno",
+          "populated": 1706,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_empleado",
+          "populated": 1706,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "valor_total",
+          "populated": 1706,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Inventario.xlsx",
+        "sheet": "Inventario",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1G4lIvbfH2JFpEKVoFd7Hn0tOyCERtYYs7T7-8agtmbI/edit#gid=0",
+        "headerRow": 1,
+        "transformedFromLegacyTurns": true
+      }
+    },
+    {
+      "name": "detalle_inventarios",
+      "rowCount": 30186,
+      "columnCount": 6,
+      "primaryKey": "id_detalle_inventario",
+      "blankPrimaryKeys": 0,
+      "duplicatePrimaryKeyValues": 0,
+      "duplicatePrimaryKeyRows": 0,
+      "duplicatePrimaryKeySamples": [],
+      "effectivelyEmptyRows": 0,
+      "completelyEmptyColumns": [],
+      "columns": [
+        {
+          "column": "id_detalle_inventario",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_inventario",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "id_item",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "cantidad",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "costo_unitario_usado",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        },
+        {
+          "column": "valor_total",
+          "populated": 30186,
+          "blank": 0,
+          "fillRate": 100,
+          "completelyEmpty": false
+        }
+      ],
+      "invalidDates": [],
+      "source": {
+        "workbook": "Inventario.xlsx",
+        "sheet": "Detalle_Inventario",
+        "googleSheetUrl": "https://docs.google.com/spreadsheets/d/1G4lIvbfH2JFpEKVoFd7Hn0tOyCERtYYs7T7-8agtmbI/edit#gid=0",
+        "headerRow": 1,
+        "transformedFromLegacyTurns": true
+      }
+    }
+  ],
+  "foreignKeys": [
+    {
+      "relation": "acreedores_etiquetas.id_acreedor -> acreedores.id_acreedor",
+      "sourceRows": 182,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "acreedores_etiquetas.id_etiqueta -> etiquetas.id_etiqueta",
+      "sourceRows": 182,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 25,
+      "orphanSamples": [
+        {
+          "primaryId": "5",
+          "value": "37"
+        },
+        {
+          "primaryId": "6",
+          "value": "36"
+        },
+        {
+          "primaryId": "22",
+          "value": "33"
+        },
+        {
+          "primaryId": "24",
+          "value": "33"
+        },
+        {
+          "primaryId": "45",
+          "value": "36"
+        },
+        {
+          "primaryId": "50",
+          "value": "40"
+        },
+        {
+          "primaryId": "51",
+          "value": "42"
+        },
+        {
+          "primaryId": "60",
+          "value": "33"
+        }
+      ]
+    },
+    {
+      "relation": "clientes.id_canal -> canales.id_canal",
+      "sourceRows": 47,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "datos_bancarios.id_acreedor -> acreedores.id_acreedor",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "datos_bancarios.id_etiqueta -> etiquetas.id_etiqueta",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "movimientos_bancarios.id_pago -> pagos.id_pago",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "movimientos_bancarios.id_cobro -> cobros.id_cobro",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "productos.id_item -> items.id_item",
+      "sourceRows": 46,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "subproductos.id_item -> items.id_item",
+      "sourceRows": 24,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "insumos_proveedores.id_insumo -> insumos.id_insumo",
+      "sourceRows": 55,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "insumos_proveedores.id_proveedor -> proveedores.id_proveedor",
+      "sourceRows": 55,
+      "blank": 28,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recetas.id_item_resultado -> items.id_item",
+      "sourceRows": 164,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recetas.id_item_componente -> items.id_item",
+      "sourceRows": 164,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "pedidos.id_cliente -> clientes.id_cliente",
+      "sourceRows": 1006,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_pedidos.id_pedido -> pedidos.id_pedido",
+      "sourceRows": 1037,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_pedidos.id_producto -> productos.id_producto",
+      "sourceRows": 1037,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 4,
+      "orphanSamples": [
+        {
+          "primaryId": "172",
+          "value": "6"
+        },
+        {
+          "primaryId": "173",
+          "value": "6"
+        },
+        {
+          "primaryId": "176",
+          "value": "6"
+        },
+        {
+          "primaryId": "177",
+          "value": "6"
+        }
+      ]
+    },
+    {
+      "relation": "entregas.id_flete -> fletes.id_flete",
+      "sourceRows": 575,
+      "blank": 1,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "entregas.id_acreedor_etiqueta -> acreedores_etiquetas.id_acreedor_etiqueta",
+      "sourceRows": 575,
+      "blank": 575,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "entregas.id_egreso -> egresos.id_egreso",
+      "sourceRows": 575,
+      "blank": 2,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "entregas_detalle.id_entrega -> entregas.id_entrega",
+      "sourceRows": 1007,
+      "blank": 2,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "entregas_detalle.id_pedido -> pedidos.id_pedido",
+      "sourceRows": 1007,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "ventas.id_pedido -> pedidos.id_pedido",
+      "sourceRows": 1024,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "ventas.id_cliente -> clientes.id_cliente",
+      "sourceRows": 1024,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "ventas.id_entrega -> entregas.id_entrega",
+      "sourceRows": 1024,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cobros.id_cliente -> clientes.id_cliente",
+      "sourceRows": 778,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cobros_detalle.id_cobro -> cobros.id_cobro",
+      "sourceRows": 1215,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cobros_detalle.id_venta -> ventas.id_venta",
+      "sourceRows": 1215,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "retenciones_ganancias.id_cobro -> cobros.id_cobro",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "retenciones_ganancias.id_cliente -> clientes.id_cliente",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "retenciones_iibb.id_cobro -> cobros.id_cobro",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "retenciones_iibb.id_cliente -> clientes.id_cliente",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cheques_entregados.id_pago -> pagos.id_pago",
+      "sourceRows": 54,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cheques_entregados.id_acreedor -> acreedores.id_acreedor",
+      "sourceRows": 54,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cheques_recibidos.id_cobro -> cobros.id_cobro",
+      "sourceRows": 589,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "cheques_recibidos.id_cliente -> clientes.id_cliente",
+      "sourceRows": 589,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "compras.id_proveedor -> proveedores.id_proveedor",
+      "sourceRows": 188,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_compras.id_compra -> compras.id_compra",
+      "sourceRows": 202,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_compras.id_insumos_proveedores -> insumos_proveedores.id_insumos_proveedores",
+      "sourceRows": 202,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recepciones.id_empleado -> empleados.id_empleado",
+      "sourceRows": 188,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recepciones.id_compra -> compras.id_compra",
+      "sourceRows": 188,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recepciones.id_acreedor_etiqueta -> acreedores_etiquetas.id_acreedor_etiqueta",
+      "sourceRows": 188,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "recepciones.id_egreso -> egresos.id_egreso",
+      "sourceRows": 188,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_recepciones.id_recepcion -> recepciones.id_recepcion",
+      "sourceRows": 203,
+      "blank": 1,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_recepciones.id_insumo -> insumos.id_insumo",
+      "sourceRows": 203,
+      "blank": 1,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "otros_gastos.id_acreedor -> acreedores.id_acreedor",
+      "sourceRows": 5526,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "otros_gastos.id_acreedor_etiqueta -> acreedores_etiquetas.id_acreedor_etiqueta",
+      "sourceRows": 5526,
+      "blank": 5526,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "otros_gastos.id_egreso -> egresos.id_egreso",
+      "sourceRows": 5526,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "egresos.id_etiqueta -> etiquetas.id_etiqueta",
+      "sourceRows": 7803,
+      "blank": 7227,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_pagos.id_pago -> pagos.id_pago",
+      "sourceRows": 6567,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_pagos.id_egreso -> egresos.id_egreso",
+      "sourceRows": 6567,
+      "blank": 138,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "sueldos.id_empleado -> empleados.id_empleado",
+      "sourceRows": 968,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "sueldos.id_acreedor_etiqueta -> acreedores_etiquetas.id_acreedor_etiqueta",
+      "sourceRows": 968,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "sueldos.id_egreso -> egresos.id_egreso",
+      "sourceRows": 968,
+      "blank": 968,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "comisiones.id_canal -> canales.id_canal",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "comisiones.id_acreedor_etiqueta -> acreedores_etiquetas.id_acreedor_etiqueta",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": true,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "comisiones.id_venta -> ventas.id_venta",
+      "sourceRows": 0,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "inventarios.id_empleado -> empleados.id_empleado",
+      "sourceRows": 1706,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_inventarios.id_inventario -> inventarios.id_inventario",
+      "sourceRows": 30186,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    },
+    {
+      "relation": "detalle_inventarios.id_item -> items.id_item",
+      "sourceRows": 30186,
+      "blank": 0,
+      "blankIsOptional": false,
+      "orphan": 0,
+      "orphanSamples": []
+    }
+  ],
+  "duplicateBusinessKeys": [
+    {
+      "table": "acreedores_etiquetas",
+      "columns": [
+        "id_acreedor",
+        "id_etiqueta"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "datos_bancarios",
+      "columns": [
+        "detalle",
+        "id_acreedor",
+        "id_etiqueta"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "insumos_proveedores",
+      "columns": [
+        "id_insumo",
+        "id_proveedor",
+        "ud_proveedor"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "pedidos",
+      "columns": [
+        "id_cliente",
+        "fecha_pedido",
+        "fecha_entrega"
+      ],
+      "duplicateGroups": 38,
+      "affectedRows": 77,
+      "samples": [
+        {
+          "key": "23|2024 01 08|2024 01 12",
+          "ids": [
+            "143",
+            "144"
+          ]
+        },
+        {
+          "key": "11|2024 02 23|2024 02 29",
+          "ids": [
+            "161",
+            "162"
+          ]
+        },
+        {
+          "key": "11|2024 03 01|2024 03 06",
+          "ids": [
+            "168",
+            "169"
+          ]
+        },
+        {
+          "key": "1|2024 03 04|2024 03 05",
+          "ids": [
+            "171",
+            "172"
+          ]
+        },
+        {
+          "key": "11|2024 03 07|2024 03 14",
+          "ids": [
+            "178",
+            "179"
+          ]
+        },
+        {
+          "key": "23|2024 03 19|2024 03 30",
+          "ids": [
+            "190",
+            "191"
+          ]
+        },
+        {
+          "key": "11|2024 03 27|2024 04 11",
+          "ids": [
+            "204",
+            "205"
+          ]
+        },
+        {
+          "key": "23|2024 04 04|2024 04 10",
+          "ids": [
+            "208",
+            "209"
+          ]
+        }
+      ]
+    },
+    {
+      "table": "entregas_detalle",
+      "columns": [
+        "id_entrega",
+        "id_pedido"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "cobros_detalle",
+      "columns": [
+        "id_cobro",
+        "id_venta"
+      ],
+      "duplicateGroups": 8,
+      "affectedRows": 22,
+      "samples": [
+        {
+          "key": "224|242",
+          "ids": [
+            "320",
+            "321",
+            "322"
+          ]
+        },
+        {
+          "key": "268|240",
+          "ids": [
+            "329",
+            "330",
+            "331",
+            "332",
+            "334"
+          ]
+        },
+        {
+          "key": "392|370",
+          "ids": [
+            "513",
+            "552"
+          ]
+        },
+        {
+          "key": "417|396",
+          "ids": [
+            "555",
+            "556"
+          ]
+        },
+        {
+          "key": "417|408",
+          "ids": [
+            "557",
+            "558",
+            "559"
+          ]
+        },
+        {
+          "key": "655|675",
+          "ids": [
+            "902",
+            "903"
+          ]
+        },
+        {
+          "key": "682|741",
+          "ids": [
+            "948",
+            "949"
+          ]
+        },
+        {
+          "key": "700|813",
+          "ids": [
+            "1025",
+            "1026",
+            "1027"
+          ]
+        }
+      ]
+    },
+    {
+      "table": "detalle_compras",
+      "columns": [
+        "id_compra",
+        "id_insumos_proveedores"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "recepciones",
+      "columns": [
+        "id_compra"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "detalle_recepciones",
+      "columns": [
+        "id_recepcion",
+        "id_insumo"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "detalle_pagos",
+      "columns": [
+        "id_pago",
+        "id_egreso"
+      ],
+      "duplicateGroups": 2,
+      "affectedRows": 4,
+      "samples": [
+        {
+          "key": "753|2438",
+          "ids": [
+            "808",
+            "901"
+          ]
+        },
+        {
+          "key": "1030|1302",
+          "ids": [
+            "1109",
+            "1252"
+          ]
+        }
+      ]
+    },
+    {
+      "table": "sueldos",
+      "columns": [
+        "id_empleado",
+        "fecha"
+      ],
+      "duplicateGroups": 93,
+      "affectedRows": 193,
+      "samples": [
+        {
+          "key": "3|2023 06 01",
+          "ids": [
+            "5",
+            "9"
+          ]
+        },
+        {
+          "key": "4|2023 06 01",
+          "ids": [
+            "6",
+            "10"
+          ]
+        },
+        {
+          "key": "5|2023 06 01",
+          "ids": [
+            "7",
+            "11"
+          ]
+        },
+        {
+          "key": "3|2023 07 01",
+          "ids": [
+            "14",
+            "18"
+          ]
+        },
+        {
+          "key": "4|2023 07 01",
+          "ids": [
+            "15",
+            "19"
+          ]
+        },
+        {
+          "key": "5|2023 07 01",
+          "ids": [
+            "16",
+            "20"
+          ]
+        },
+        {
+          "key": "1|2023 08 01",
+          "ids": [
+            "22",
+            "27"
+          ]
+        },
+        {
+          "key": "3|2023 08 01",
+          "ids": [
+            "23",
+            "28"
+          ]
+        }
+      ]
+    },
+    {
+      "table": "inventarios",
+      "columns": [
+        "fecha",
+        "turno"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "detalle_inventarios",
+      "columns": [
+        "id_inventario",
+        "id_item"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "egresos",
+      "columns": [
+        "fecha_factura",
+        "nro_factura",
+        "total"
+      ],
+      "duplicateGroups": 5,
+      "affectedRows": 10,
+      "samples": [
+        {
+          "key": "2024 04 03|00000|0 00",
+          "ids": [
+            "1367",
+            "1368"
+          ]
+        },
+        {
+          "key": "2023 08 31|00033|235 019 48",
+          "ids": [
+            "2243",
+            "7343"
+          ]
+        },
+        {
+          "key": "2023 09 30|00043|263 428 00",
+          "ids": [
+            "2443",
+            "7353"
+          ]
+        },
+        {
+          "key": "2024 10 22|02732|15 580 365 00",
+          "ids": [
+            "4516",
+            "4517"
+          ]
+        },
+        {
+          "key": "2025 12 30|05012|0 00",
+          "ids": [
+            "6796",
+            "6800"
+          ]
+        }
+      ]
+    },
+    {
+      "table": "ventas",
+      "columns": [
+        "fecha_factura",
+        "nro_factura",
+        "total"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "cheques_entregados",
+      "columns": [
+        "nro_cheque",
+        "banco"
+      ],
+      "duplicateGroups": 0,
+      "affectedRows": 0,
+      "samples": []
+    },
+    {
+      "table": "cheques_recibidos",
+      "columns": [
+        "nro_cheque",
+        "banco"
+      ],
+      "duplicateGroups": 4,
+      "affectedRows": 8,
+      "samples": [
+        {
+          "key": "00000|icbc",
+          "ids": [
+            "18",
+            "19"
+          ]
+        },
+        {
+          "key": "70698418|gal",
+          "ids": [
+            "153",
+            "154"
+          ]
+        },
+        {
+          "key": "70724482|icbc",
+          "ids": [
+            "193",
+            "194"
+          ]
+        },
+        {
+          "key": "82139466|icbc",
+          "ids": [
+            "307",
+            "308"
+          ]
+        }
+      ]
+    }
+  ],
+  "masterData": {
+    "duplicateNames": [
+      {
+        "table": "proveedores",
+        "column": "nombre",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "clientes",
+        "column": "nombre_cliente",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "empleados",
+        "column": "nombre_empleado",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "canales",
+        "column": "nombre",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "fletes",
+        "column": "nombre_flete",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "otros_acreedores",
+        "column": "nombre_otro_acreedor",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "productos",
+        "column": "nombre_producto",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "subproductos",
+        "column": "nombre_subproducto",
+        "duplicateGroups": 0,
+        "samples": []
+      },
+      {
+        "table": "insumos",
+        "column": "nombre",
+        "duplicateGroups": 0,
+        "samples": []
+      }
+    ],
+    "creditorOriginIssues": [],
+    "labelsWithoutPnlCategory": 33,
+    "labelsWithoutPnlCategorySamples": [
+      {
+        "id": "1",
+        "name": "Herramientas_De_Trabajo"
+      },
+      {
+        "id": "2",
+        "name": "Otros"
+      },
+      {
+        "id": "3",
+        "name": "Mercaderia"
+      },
+      {
+        "id": "4",
+        "name": "Comisiones"
+      },
+      {
+        "id": "5",
+        "name": "Varios"
+      },
+      {
+        "id": "6",
+        "name": "Servicios"
+      },
+      {
+        "id": "7",
+        "name": "Sueldos_Extras"
+      },
+      {
+        "id": "8",
+        "name": "Incentivos_Personal"
+      },
+      {
+        "id": "9",
+        "name": "Cadeteria"
+      },
+      {
+        "id": "10",
+        "name": "Alquiler"
+      }
+    ],
+    "suppliesWithoutProvider": 0,
+    "suppliesWithoutProviderSamples": [],
+    "supplierRelationsWithoutPrice": 4,
+    "supplierRelationsWithoutVat": 27,
+    "clientsWithoutChannel": 0,
+    "clientsWithoutReceiptType": 12,
+    "activeEmployees": 7,
+    "activeEmployeesWithoutHiringType": 0
+  },
+  "operational": {
+    "purchasesWithoutReception": 0,
+    "purchasesWithoutDetail": 0,
+    "ordersWithoutDetail": 0,
+    "ordersWithoutDelivery": 0,
+    "ordersWithoutSale": 2,
+    "deliveriesWithoutEgress": 2,
+    "receptionsWithoutEgress": 0,
+    "salariesWithoutEgress": 968,
+    "otherExpensesWithoutEgress": 0,
+    "commissionsWithoutRows": true,
+    "bankMovementsWithoutRows": true,
+    "bankIdentityRulesWithoutRows": true
+  },
+  "sourceLinks": {
+    "sources": [
+      {
+        "table": "recepciones",
+        "rows": 188,
+        "linkedToEgress": 188,
+        "withoutEgress": 0,
+        "withoutEgressSamples": []
+      },
+      {
+        "table": "entregas",
+        "rows": 575,
+        "linkedToEgress": 573,
+        "withoutEgress": 2,
+        "withoutEgressSamples": [
+          "",
+          "574"
+        ]
+      },
+      {
+        "table": "otros_gastos",
+        "rows": 5526,
+        "linkedToEgress": 5526,
+        "withoutEgress": 0,
+        "withoutEgressSamples": []
+      },
+      {
+        "table": "sueldos",
+        "rows": 968,
+        "linkedToEgress": 0,
+        "withoutEgress": 968,
+        "withoutEgressSamples": [
+          "1",
+          "2",
+          "3",
+          "4",
+          "5",
+          "6",
+          "7",
+          "8"
+        ]
+      },
+      {
+        "table": "comisiones",
+        "rows": 0,
+        "linkedToEgress": 0,
+        "withoutEgress": 0,
+        "withoutEgressSamples": []
+      }
+    ],
+    "egressesWithoutReverseSource": 1517,
+    "egressesWithoutReverseSourceSamples": [
+      "188",
+      "189",
+      "190",
+      "191",
+      "192",
+      "193",
+      "194",
+      "195",
+      "196",
+      "197",
+      "198",
+      "199",
+      "200",
+      "201",
+      "202",
+      "203",
+      "204",
+      "205",
+      "206",
+      "207"
+    ]
+  },
+  "finance": {
+    "egresses": {
+      "count": 7803,
+      "total": 1031837830.91,
+      "paid": 895809651.95,
+      "outstanding": 190053610.61,
+      "outstandingCount": 1263,
+      "overpaidCount": 95,
+      "overpaidAmount": 54025431.64,
+      "arithmeticMismatchCount": 1,
+      "arithmeticMismatchSamples": [
+        "2091"
+      ]
+    },
+    "sales": {
+      "count": 1024,
+      "total": 1217281500.17,
+      "collected": 1129915440.46,
+      "outstanding": 88545862.32,
+      "outstandingCount": 72,
+      "overCollectedCount": 1,
+      "overCollectedAmount": 1179802.61,
+      "arithmeticMismatchCount": 537,
+      "arithmeticMismatchSamples": [
+        "1",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "15",
+        "16"
+      ]
+    }
+  },
+  "inventory": {
+    "inventories": 1706,
+    "detailRows": 30186,
+    "withoutDetails": 0,
+    "zeroOrBlankValue": 0,
+    "negativeDetailQuantity": 0,
+    "negativeDetailValue": 0,
+    "zeroCostWithQuantity": 761,
+    "medianPositiveInventoryValue": 27075162.99,
+    "percentile95InventoryValue": 43776758.11,
+    "maximumInventoryValue": 59974860.7,
+    "maximumInventorySamples": [
+      {
+        "id": "1451",
+        "date": "2026-02-10",
+        "shift": "Mañana",
+        "value": 59974860.7,
+        "detailRows": 21
+      },
+      {
+        "id": "1452",
+        "date": "2026-02-10",
+        "shift": "Tarde",
+        "value": 59974860.7,
+        "detailRows": 21
+      },
+      {
+        "id": "1453",
+        "date": "2026-02-11",
+        "shift": "Madrugada",
+        "value": 59974860.7,
+        "detailRows": 21
+      },
+      {
+        "id": "1448",
+        "date": "2026-02-09",
+        "shift": "Mañana",
+        "value": 59914642.68,
+        "detailRows": 21
+      },
+      {
+        "id": "1449",
+        "date": "2026-02-09",
+        "shift": "Tarde",
+        "value": 59914642.68,
+        "detailRows": 21
+      },
+      {
+        "id": "1450",
+        "date": "2026-02-10",
+        "shift": "Madrugada",
+        "value": 59914642.68,
+        "detailRows": 21
+      },
+      {
+        "id": "1439",
+        "date": "2026-02-03",
+        "shift": "Mañana",
+        "value": 59478521.01,
+        "detailRows": 21
+      },
+      {
+        "id": "1440",
+        "date": "2026-02-03",
+        "shift": "Tarde",
+        "value": 59478521.01,
+        "detailRows": 21
+      },
+      {
+        "id": "1441",
+        "date": "2026-02-04",
+        "shift": "Madrugada",
+        "value": 59478521.01,
+        "detailRows": 21
+      },
+      {
+        "id": "1445",
+        "date": "2026-02-05",
+        "shift": "Mañana",
+        "value": 59301175.32,
+        "detailRows": 21
+      }
+    ]
+  }
+}

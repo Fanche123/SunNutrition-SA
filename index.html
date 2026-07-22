@@ -3,8 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-store">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>SunNutrition</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=20260702-149">
+  <link rel="stylesheet" href="assets/css/styles.css?v=20260713-expense-creditors">
 </head>
 <body class="view-results-active">
   <div class="app-shell">
@@ -18,9 +21,42 @@
         <button class="nav-item" data-view="dashboard" type="button">Dashboard</button>
         <button class="nav-item active" data-view="results" type="button">Estado de Resultados</button>
         <button class="nav-item" data-view="cashflow" type="button">Cashflow</button>
-        <button class="nav-item" data-view="data-entry" type="button">Carga de datos</button>
-        <button class="nav-item" data-view="imports" type="button">Imports</button>
-        <button class="nav-item" data-view="settings" type="button">Configuracion</button>
+        <button class="nav-item" data-view="cashbox" type="button">Caja</button>
+        <div class="nav-group">
+          <button class="nav-item nav-group-title" data-nav-toggle="data-entry" type="button" aria-expanded="true">Carga de datos</button>
+          <span class="nav-section-label">Egresos</span>
+          <button class="nav-item nav-subitem nav-level-1" data-view="expense-entry" type="button">Egresos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="reception-entry" type="button">Recepciones</button>
+          <button class="nav-item nav-subitem nav-level-3" data-view="purchase-entry" type="button">Compras</button>
+          <button class="nav-item nav-subitem nav-level-4" data-view="data-entry" type="button">Inventario</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="salary-entry" type="button">Sueldos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="logistics-entry" type="button">Logistica</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="other-expenses-entry" type="button">Otros gastos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="commissions-entry" type="button">Comisiones</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="payment-plans" type="button">Planes de pago</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="partner-contributions-entry" type="button">Aportes de socios</button>
+          <span class="nav-section-label">Pagos</span>
+          <button class="nav-item nav-subitem nav-level-1" data-view="payments-entry" type="button">Pagos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="issued-check-entry" type="button">Cheques entregados</button>
+          <span class="nav-section-label">Ventas</span>
+          <button class="nav-item nav-subitem nav-level-1" data-view="sales-entry" type="button">Ventas</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="orders-entry" type="button">Pedidos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="logistics-entry" type="button">Logistica</button>
+          <span class="nav-section-label">Cobros</span>
+          <button class="nav-item nav-subitem nav-level-1" data-view="collections-entry" type="button">Cobros</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="received-check-entry" type="button">Cheques recibidos</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="deposited-checks-entry" type="button">Cheques depositados</button>
+          <button class="nav-item nav-subitem nav-level-2" data-view="commissions-entry" type="button">Comisiones</button>
+          <button class="nav-item nav-subitem" data-view="bank-reconciliation" type="button">Conciliacion bancaria</button>
+          <button class="nav-item nav-subitem" data-view="creditor-entry" type="button">Acreedores</button>
+        </div>
+        <div class="nav-group">
+          <button class="nav-item nav-group-title" data-nav-toggle="data" type="button" aria-expanded="true">Datos</button>
+          <button class="nav-item nav-subitem" data-view="imports" type="button">Imports</button>
+          <button class="nav-item nav-subitem" data-view="data-editor" type="button">Editor de datos</button>
+          <button class="nav-item nav-subitem" data-view="data-map" type="button">Mapa de datos</button>
+          <button class="nav-item nav-subitem" data-view="sql" type="button">Consultas SQL</button>
+        </div>
       </nav>
     </aside>
 
@@ -244,98 +280,1763 @@
       </section>
 
       <!-- Resumen rápido del volumen de datos guardados localmente. -->
-      <section class="view" id="view-dashboard">
-        <div class="panel">
-          <div class="panel-header">
-            <h2>Resumen operativo</h2>
-            <span>Datos guardados localmente</span>
+      <section class="view" id="view-payment-plans">
+        <div class="data-entry-page-heading">
+          <h2>Planes de pago</h2>
+          <p>Seguimiento de cuotas, vencimientos y pagos de ARCA.</p>
+        </div>
+        <div class="payment-plans-summary" id="payment-plans-summary"></div>
+        <div class="payment-plans-list" id="payment-plans-list"></div>
+      </section>
+
+      <section class="view" id="view-bank-reconciliation">
+        <div class="data-entry-page-heading">
+          <h2>Conciliacion bancaria</h2>
+          <p>Comparacion del extracto bancario contra pagos, cobros y egresos del backend.</p>
+        </div>
+        <section class="panel bank-reconciliation-panel">
+          <div class="bank-reconciliation-controls">
+            <label>
+              Banco
+              <select id="bank-reconciliation-bank">
+                <option value="ICBC">ICBC</option>
+                <option value="GAL">GAL</option>
+              </select>
+            </label>
+            <label class="bank-file-drop-zone" id="bank-reconciliation-drop-zone">
+              <input id="bank-reconciliation-file" type="file" accept=".csv,text/csv">
+              <span>
+                <strong>Seleccionar extracto CSV</strong>
+                <small>Arrastra el archivo del banco aca o elegilo desde el equipo</small>
+              </span>
+              <span class="bank-file-button">Elegir archivo</span>
+            </label>
+            <div class="bank-file-chip is-empty" id="bank-reconciliation-file-chip">
+              <div>
+                <strong id="bank-reconciliation-file-name">Sin archivo</strong>
+                <small id="bank-reconciliation-file-size"></small>
+              </div>
+              <button type="button" id="bank-reconciliation-file-clear" aria-label="Quitar archivo">x</button>
+            </div>
+            <button type="button" id="bank-reconciliation-analyze">Analizar movimientos</button>
           </div>
-          <div class="status-grid">
-            <div><span>Ventas</span><strong id="count-sales">0</strong></div>
-            <div><span>Egresos</span><strong id="count-expenses">0</strong></div>
-            <div><span>Inventario</span><strong id="count-inventory">0</strong></div>
-            <div><span>Detalle inventario</span><strong id="count-inventory-details">0</strong></div>
-            <div><span>Detalle pedidos</span><strong id="count-order-details">0</strong></div>
-            <div><span>Sueldos</span><strong id="count-payroll">0</strong></div>
-            <div><span>Errores</span><strong id="count-errors">0</strong></div>
+        </section>
+
+        <div class="status-grid bank-reconciliation-summary">
+          <div>
+            <span>Saldo banco</span>
+            <strong id="bank-reconciliation-real-balance">$ 0</strong>
+          </div>
+          <div>
+            <span>Movimientos conciliados</span>
+            <strong id="bank-reconciliation-reconciled">0</strong>
+          </div>
+          <div>
+            <span>Movimientos a revisar</span>
+            <strong id="bank-reconciliation-pending">0</strong>
+          </div>
+          <div>
+            <span>Diferencia pendiente</span>
+            <strong id="bank-reconciliation-net-pending">$ 0</strong>
           </div>
         </div>
+
+        <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h2>Movimientos bancarios</h2>
+              <span id="bank-reconciliation-status">Carga un extracto para comparar contra el backend.</span>
+            </div>
+            <button type="button" id="bank-reconciliation-apply" class="secondary">Conciliar</button>
+          </div>
+            <div class="table-wrap">
+              <table class="bank-reconciliation-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Detalle</th>
+                  <th>CUIT</th>
+                  <th>Nro de cheque</th>
+                  <th>Acreedor</th>
+                  <th>Etiqueta</th>
+                  <th class="num">Debito/Credito</th>
+                  <th class="num">Saldo</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                  <th>Coincidencia</th>
+                </tr>
+              </thead>
+              <tbody id="bank-reconciliation-body">
+                <tr><td class="empty" colspan="11">Todavia no hay extracto analizado.</td></tr>
+              </tbody>
+            </table>
+            </div>
+          </section>
+
+          <section class="panel bank-check-deposit-panel" id="bank-check-deposit-panel-legacy" hidden aria-hidden="true">
+            <div class="panel-header">
+              <div>
+                <h2 id="bank-check-deposit-title-legacy">Deposito de cheques</h2>
+                <span id="bank-check-deposit-status">Selecciona los cheques que integran este depósito.</span>
+              </div>
+              <button type="button" class="secondary" id="bank-check-deposit-close-legacy">Cerrar</button>
+            </div>
+            <div class="bank-check-deposit-summary">
+              <div><span>Credito del banco</span><strong id="bank-check-deposit-credit-legacy">$ 0,00</strong></div>
+              <div><span>Cheques seleccionados</span><strong id="bank-check-deposit-total-legacy">$ 0,00</strong></div>
+              <div><span>Diferencia</span><strong id="bank-check-deposit-difference-legacy">$ 0,00</strong></div>
+            </div>
+            <div class="table-wrap">
+              <table class="bank-stage-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Nro de cheque</th>
+                    <th>Cliente</th>
+                    <th>Fecha recibido</th>
+                    <th class="num">Monto</th>
+                  </tr>
+                </thead>
+                <tbody id="bank-check-deposit-body-legacy"></tbody>
+              </table>
+            </div>
+            <div class="bank-stage-actions">
+              <button type="button" id="bank-check-deposit-confirm-legacy">Confirmar deposito</button>
+            </div>
+          </section>
+
+          <div class="bank-reconciliation-stages">
+            <section class="panel bank-stage-panel" id="bank-expense-stage">
+              <div class="panel-header">
+                <div>
+                  <h2>Gastos para agregar</h2>
+                  <span>Movimientos identificados que todavia no tienen un gasto de origen.</span>
+                </div>
+                <strong class="bank-stage-count" id="bank-expense-stage-count">0</strong>
+              </div>
+              <div class="table-wrap">
+                <table class="bank-stage-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Acreedor</th>
+                      <th>Etiqueta</th>
+                      <th>Destino</th>
+                      <th>Detalle</th>
+                      <th class="num">Importe</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bank-expense-stage-body">
+                    <tr><td class="empty" colspan="6">No hay gastos para agregar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="bank-stage-actions">
+                <button type="button" id="bank-create-expenses">Agregar gastos</button>
+              </div>
+            </section>
+
+            <section class="panel bank-stage-panel" id="bank-egress-stage">
+              <div class="panel-header">
+                <div>
+                  <h2>Egresos para agregar</h2>
+                  <span>Gastos existentes que todavia no tienen su factura o egreso asociado.</span>
+                </div>
+                <strong class="bank-stage-count" id="bank-egress-stage-count">0</strong>
+              </div>
+              <div class="table-wrap">
+                <table class="bank-stage-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Acreedor</th>
+                      <th>Gasto de origen</th>
+                      <th>Etiqueta</th>
+                      <th>Tipo factura</th>
+                      <th class="num">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bank-egress-stage-body">
+                    <tr><td class="empty" colspan="6">No hay egresos para agregar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="bank-stage-actions">
+                <button type="button" id="bank-create-egresses">Agregar egresos</button>
+              </div>
+            </section>
+
+            <section class="panel bank-stage-panel" id="bank-payment-stage">
+              <div class="panel-header">
+                <div>
+                  <h2>Pagos para agregar</h2>
+                  <span>Egresos encontrados en el extracto que todavia no tienen su pago.</span>
+                </div>
+                <strong class="bank-stage-count" id="bank-payment-stage-count">0</strong>
+              </div>
+              <div class="table-wrap">
+                <table class="bank-stage-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Acreedor</th>
+                      <th>Egreso / factura</th>
+                      <th>Banco</th>
+                      <th>Metodo de pago</th>
+                      <th class="num">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bank-payment-stage-body">
+                    <tr><td class="empty" colspan="6">No hay pagos para agregar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="bank-stage-actions">
+                <button type="button" id="bank-create-payments">Agregar pagos</button>
+              </div>
+            </section>
+          </div>
+          <datalist id="bank-invoice-type-options"></datalist>
+          <datalist id="bank-payment-method-options"></datalist>
+        </section>
+
+      <section class="view" id="view-dashboard">
+        <section class="dashboard-widget-grid">
+          <article class="dashboard-widget" id="dashboard-checks-widget" role="button" tabindex="0">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Tesoreria</span>
+                <h2>Cheques a cubrir</h2>
+              </div>
+              <strong id="dashboard-checks-count">0</strong>
+            </div>
+            <p id="dashboard-next-check">Cargando cheques pendientes...</p>
+            <div class="dashboard-widget-list" id="dashboard-week-checks"></div>
+          </article>
+
+          <article class="dashboard-widget" id="dashboard-inventory-widget" role="button" tabindex="0">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Inventario</span>
+                <h2>Dias sin cargar</h2>
+              </div>
+              <strong id="dashboard-inventory-count">0</strong>
+            </div>
+            <p id="dashboard-inventory-summary">Cargando calendario de inventario...</p>
+            <div class="dashboard-widget-list" id="dashboard-inventory-list"></div>
+          </article>
+
+          <article class="dashboard-widget" id="dashboard-purchases-widget" role="button" tabindex="0">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Compras</span>
+                <h2>Pendientes de recibir</h2>
+              </div>
+              <strong id="dashboard-purchases-count">0</strong>
+            </div>
+            <p id="dashboard-purchases-summary">Cargando compras pendientes...</p>
+            <div class="dashboard-widget-list" id="dashboard-purchases-list"></div>
+          </article>
+
+          <article class="dashboard-widget" id="dashboard-orders-widget" role="button" tabindex="0">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Logistica</span>
+                <h2>Pedidos sin entregar</h2>
+              </div>
+              <strong id="dashboard-orders-count">0</strong>
+            </div>
+            <p id="dashboard-orders-summary">Cargando pedidos pendientes...</p>
+            <div class="dashboard-widget-list" id="dashboard-orders-list"></div>
+          </article>
+        </section>
       </section>
 
       <!-- Importación, revisión y clasificación de egresos. -->
       <section class="view" id="view-data-entry">
+        <div class="data-entry-page-heading">
+          <h2>Inventario</h2>
+          <p>Carga operativa directa hacia la planilla de inventario.</p>
+        </div>
         <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Cargar inventario</h2>
-              <span>Agrega una fila en la planilla de inventario</span>
-            </div>
-          </div>
-          <form class="data-entry-form" id="inventory-entry-form">
-            <label>
+          <form id="inventory-detail-form">
+            <div class="inventory-entry-card">
+            <div class="inventory-entry-bar">
+              <label>
               Fecha
               <input id="inventory-date-input" type="date" required>
-            </label>
-            <label>
+              </label>
+              <label>
               Empleado responsable
               <input id="inventory-employee-input" type="text" required placeholder="Nombre del empleado" list="creditor-employee-options">
               <datalist id="creditor-employee-options"></datalist>
-            </label>
-            <fieldset class="shift-checks">
+              </label>
+              <fieldset class="shift-checks">
               <legend>Turnos realizados</legend>
               <label><input type="checkbox" id="inventory-shift-dawn" data-inventory-shift="dawn"> Madrugada</label>
               <label><input type="checkbox" id="inventory-shift-morning" data-inventory-shift="morning"> Mañana</label>
               <label><input type="checkbox" id="inventory-shift-afternoon" data-inventory-shift="afternoon"> Tarde</label>
-            </fieldset>
-            <small class="form-help">La fecha y el empleado se envian junto con el detalle en un solo click.</small>
-          </form>
-        </section>
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>Cargar detalle de inventario</h2>
-              <span>Completa solo las columnas manuales de Detalle_Inventario</span>
+              </fieldset>
             </div>
-            <button type="button" id="inventory-detail-load">Preparar detalle</button>
-          </div>
-          <form id="inventory-detail-form">
-            <div class="inventory-detail-meta">
-              <strong id="inventory-detail-id-label">Id inventario: -</strong>
             </div>
-            <div class="photo-import-box">
-              <label>
-                Foto del inventario
+            <div class="inventory-photo-card">
+              <div class="inventory-action-bar">
+              <label class="photo-drop-zone" id="inventory-photo-drop-zone">
                 <input id="inventory-photo-input" type="file" accept="image/*">
+                <span class="photo-drop-copy">
+                  <strong>Seleccionar foto</strong>
+                  <small>Arrastra una foto aca o elegila desde el equipo</small>
+                </span>
+                <span class="photo-drop-button">Elegir archivo</span>
               </label>
+              <div class="photo-file-chip is-empty" id="inventory-photo-file-chip">
+                <div>
+                  <strong id="inventory-photo-file-name">Sin archivo</strong>
+                  <span id="inventory-photo-file-size">-</span>
+                </div>
+                <button type="button" id="inventory-photo-clear" aria-label="Quitar foto">×</button>
+              </div>
+              <button type="button" id="inventory-detail-load">Preparar detalle</button>
               <button type="button" id="inventory-photo-read">Leer foto y completar</button>
             </div>
+            </div>
+            <div class="inventory-table-card">
             <div class="table-wrap">
-              <table class="data-entry-table">
+              <table class="data-entry-table inventory-detail-table">
+                <colgroup>
+                  <col class="inventory-col-id">
+                  <col class="inventory-col-item-id">
+                  <col class="inventory-col-name">
+                  <col class="inventory-col-qty">
+                  <col class="inventory-col-theoretical">
+                  <col class="inventory-col-diff">
+                  <col class="inventory-col-qty">
+                  <col class="inventory-col-theoretical">
+                  <col class="inventory-col-diff">
+                  <col class="inventory-col-qty">
+                  <col class="inventory-col-theoretical">
+                  <col class="inventory-col-diff">
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Id Inventario</th>
-                    <th>Id Item</th>
-                    <th>Nombre Item</th>
-                    <th class="num">Turno tarde</th>
-                    <th class="num morning-stock-heading">Turno mañana</th>
+                    <th rowspan="2">Id Inventario</th>
+                    <th rowspan="2">Id Item</th>
+                    <th rowspan="2">Nombre Item</th>
+                    <th class="num inventory-shift-group" colspan="3">Madrugada</th>
+                    <th class="num inventory-shift-group" colspan="3">Mañana</th>
+                    <th class="num inventory-shift-group" colspan="3">Tarde</th>
+                  </tr>
+                  <tr>
+                    <th class="num dawn-stock-heading">Cantidad</th>
                     <th class="num theoretical-stock-heading">Stock teorico</th>
                     <th class="num theoretical-diff-heading">Dif. %</th>
-                    <th class="num">Turno madrugada</th>
+                    <th class="num morning-stock-heading">Cantidad</th>
+                    <th class="num theoretical-stock-heading">Stock teorico</th>
+                    <th class="num theoretical-diff-heading">Dif. %</th>
+                    <th class="num afternoon-stock-heading">Cantidad</th>
+                    <th class="num theoretical-stock-heading afternoon-theoretical-heading">Stock teorico</th>
+                    <th class="num theoretical-diff-heading afternoon-diff-heading">Dif. %</th>
                   </tr>
                 </thead>
                 <tbody id="inventory-detail-body">
-                  <tr><td class="empty" colspan="8">Elegí una fecha y prepará el detalle.</td></tr>
+                  <tr><td class="empty" colspan="12">Elegí una fecha y prepará el detalle.</td></tr>
                 </tbody>
               </table>
             </div>
-            <div class="theoretical-stock-breakdown" id="theoretical-stock-breakdown" hidden></div>
-            <div class="photo-transcription-panel" id="inventory-photo-transcription" hidden></div>
+            <div class="purchase-threshold-panel">
+              <div class="purchase-threshold-header">
+                <strong>Control minimo de compra</strong>
+                <span>Calculo provisional por ultimo proveedor, dias corridos de entrega y dias habiles de consumo</span>
+              </div>
+              <div class="table-wrap purchase-threshold-wrap">
+                <table class="purchase-threshold-table">
+                  <thead>
+                    <tr>
+                      <th>Insumo</th>
+                      <th>Stock actual</th>
+                      <th>Ultimo proveedor</th>
+                      <th>Dias entrega</th>
+                      <th>Consumo diario</th>
+                      <th>Stock minimo</th>
+                      <th>Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody id="purchase-threshold-body">
+                    <tr><td class="empty" colspan="7">Prepara el detalle para ver el calculo.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
             <div class="actions">
-              <button type="submit" id="inventory-detail-submit">Enviar inventario completo</button>
+              <button type="submit" id="inventory-detail-submit">Enviar inventario</button>
             </div>
             <p class="form-status" id="inventory-detail-status" role="status"></p>
+            </div>
           </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-purchase-entry">
+        <div class="data-entry-page-heading">
+          <h2>Compras</h2>
+          <p>Carga de pedidos a proveedores y detalle de insumos.</p>
+        </div>
+        <div class="purchase-entry-layout">
+          <section class="panel purchase-entry-panel">
+            <form id="purchase-form" class="purchase-form">
+              <div class="purchase-form-grid">
+                <div class="purchase-section-heading">1. Informacion general</div>
+                <label class="purchase-required-label">
+                  <span class="purchase-field-title">
+                    <span>Insumo *</span>
+                    <input type="checkbox" data-purchase-order-toggle="item" checked>
+                  </span>
+                  <select id="purchase-item-name" required>
+                    <option value="">Elegir insumo</option>
+                  </select>
+                  <input id="purchase-item-id" type="hidden">
+                </label>
+                <label class="purchase-required-label">
+                  <span class="purchase-field-title">
+                    <span>Proveedor *</span>
+                    <input type="checkbox" data-purchase-order-toggle="provider" checked>
+                  </span>
+                  <select id="purchase-provider" required>
+                    <option value="">Elegir proveedor</option>
+                  </select>
+                  <input id="purchase-supplier-id" type="hidden">
+                </label>
+                <div class="purchase-section-heading">2. Fechas</div>
+                <label class="purchase-required-label">
+                  <span class="purchase-field-title">
+                    <span>Fecha del pedido *</span>
+                    <input type="checkbox" data-purchase-order-toggle="orderDate">
+                  </span>
+                  <input id="purchase-order-date" type="date" required>
+                </label>
+                <label class="purchase-required-label">
+                  <span class="purchase-field-title">
+                    <span>Entrega prevista *</span>
+                    <input type="checkbox" data-purchase-order-toggle="delivery" checked>
+                  </span>
+                  <input id="purchase-expected-date" type="date" required>
+                </label>
+                <div class="purchase-section-heading">3. Cantidades</div>
+                <label>
+                  <span class="purchase-field-title">
+                    <span>Unidad de receta</span>
+                    <input type="checkbox" data-purchase-order-toggle="recipeQuantity">
+                  </span>
+                  <span class="unit-input">
+                    <input id="purchase-recipe-quantity" type="number" step="any" min="0">
+                    <span id="purchase-recipe-unit">-</span>
+                  </span>
+                </label>
+                <label>
+                  <span class="purchase-field-title">
+                    <span>Unidad de conteo</span>
+                    <input type="checkbox" data-purchase-order-toggle="buyQuantity" checked>
+                  </span>
+                  <span class="unit-input">
+                    <input id="purchase-quantity" type="number" step="any" min="0">
+                    <span id="purchase-quantity-unit">-</span>
+                  </span>
+                </label>
+                <label class="purchase-supplier-presentation purchase-required-label">
+                  <span class="purchase-field-title">
+                    <span>Unidad del proveedor *</span>
+                    <input type="checkbox" data-purchase-order-toggle="presentation" checked>
+                  </span>
+                  <span class="purchase-presentation-row">
+                    <span class="unit-input">
+                      <input id="purchase-supplier-quantity" type="number" step="any" min="0" required>
+                      <span id="purchase-unit">-</span>
+                    </span>
+                  </span>
+                </label>
+                <section class="purchase-pricing-block" aria-label="Facturacion de compra">
+                  <div class="purchase-pricing-title">4. Facturacion</div>
+                  <div class="purchase-pricing-grid">
+                    <label>
+                      <span class="purchase-field-title">
+                        <span>Tipo de factura *</span>
+                        <input type="checkbox" data-purchase-order-toggle="invoiceType" checked>
+                      </span>
+                      <select id="purchase-invoice-type">
+                        <option value="Factura_A" selected>Factura A</option>
+                        <option value="Remito_X">Remito X</option>
+                      </select>
+                    </label>
+                    <label>
+                      <span class="purchase-field-title">
+                        <span>Subtotal</span>
+                        <input type="checkbox" data-purchase-order-toggle="subtotal" checked>
+                      </span>
+                      <span class="unit-input money-input">
+                        <input id="purchase-subtotal" type="number" step="any" min="0">
+                        <span>$</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span class="purchase-field-title">
+                        <span>IVA</span>
+                        <input type="checkbox" data-purchase-order-toggle="iva" checked>
+                      </span>
+                      <span class="unit-input money-input">
+                        <input id="purchase-iva" type="number" step="any" min="0">
+                        <span id="purchase-iva-rate">0%</span>
+                      </span>
+                    </label>
+                    <label>
+                      <span class="purchase-field-title">
+                        <span>Total</span>
+                        <input type="checkbox" data-purchase-order-toggle="total" checked>
+                      </span>
+                      <span class="unit-input money-input">
+                        <input id="purchase-total" type="number" step="any" min="0" readonly>
+                        <span>$</span>
+                      </span>
+                    </label>
+                  </div>
+                </section>
+              </div>
+              <div class="actions purchase-actions">
+                <button type="submit" id="purchase-submit">Enviar compra</button>
+                <p class="form-status" id="purchase-status" role="status"></p>
+              </div>
+            </form>
+          </section>
+
+          <aside class="panel purchase-summary-panel" aria-label="Orden de compra">
+            <div class="purchase-summary-title">
+              <img src="assets/icons/purchase-order.svg" alt="">
+              <span>Orden de Compra</span>
+            </div>
+            <div class="purchase-order-body" id="purchase-order-body"></div>
+            <button type="button" class="purchase-download-button" id="purchase-download-png">Descargar PNG</button>
+          </aside>
+        </div>
+      </section>
+
+      <section class="view" id="view-reception-entry">
+        <div class="data-entry-page-heading">
+          <h2>Recepcion de mercaderia</h2>
+          <p>Carga de mercaderia recibida asociada a una compra.</p>
+        </div>
+        <div class="reception-entry-stack">
+          <section class="panel reception-pending-list">
+            <div class="panel-header compact-panel-header">
+              <div>
+                <h2>Compras pendientes de recibir</h2>
+                <span>Ordenadas por entrega prevista</span>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table class="reception-pending-table">
+                <thead>
+                  <tr>
+                    <th>Entrega prevista</th>
+                    <th>Insumo</th>
+                    <th>Proveedor</th>
+                    <th class="num">Unidad proveedor</th>
+                    <th class="num">Unidad conteo</th>
+                  </tr>
+                </thead>
+                <tbody id="reception-pending-body">
+                  <tr><td class="empty" colspan="5">Cargando compras pendientes...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <form id="reception-form" class="reception-form">
+            <section class="panel reception-form-panel">
+              <div class="reception-field-grid operational-entry-grid">
+              <div class="purchase-section-heading">Recepcion</div>
+              <select id="reception-purchase-id" class="visually-hidden" required>
+                <option value="">Elegir compra pendiente</option>
+              </select>
+              <label>
+                <span>Fecha recepcion *</span>
+                <input id="reception-date" type="date" required>
+              </label>
+              <label>
+                <span>Empleado</span>
+                <input id="reception-employee-id" type="text" list="reception-employee-options">
+                <datalist id="reception-employee-options"></datalist>
+              </label>
+              <label>
+                <span>Proveedor</span>
+                <input id="reception-provider" type="text" readonly>
+              </label>
+              <div class="purchase-section-heading">Mercaderia recibida</div>
+              <label>
+                <span>Insumo</span>
+                <input id="reception-supply-name" type="text" readonly>
+                <input id="reception-supply-id" type="hidden">
+              </label>
+              <label>
+                <span>Cantidad proveedor</span>
+                <span class="unit-input">
+                  <input id="reception-supplier-quantity" type="number" step="any" min="0">
+                  <span id="reception-supplier-unit">-</span>
+                </span>
+              </label>
+              <label>
+                <span>Cantidad conteo *</span>
+                <span class="unit-input">
+                  <input id="reception-quantity" type="number" step="any" min="0" required>
+                  <span id="reception-count-unit">-</span>
+                </span>
+              </label>
+              <label>
+                <span>Cantidad receta</span>
+                <span class="unit-input">
+                  <input id="reception-recipe-quantity" type="number" step="any" min="0">
+                  <span id="reception-recipe-unit">-</span>
+                </span>
+              </label>
+              </div>
+            </section>
+              <section class="panel reception-expense-panel">
+                <div class="purchase-section-heading">Factura / egreso</div>
+                <div class="reception-invoice-action-bar">
+                  <label class="photo-drop-zone" id="reception-file-drop-zone">
+                    <input id="reception-file" type="file" accept=".pdf,image/*">
+                    <span class="photo-drop-copy">
+                      <strong>Seleccionar factura o remito</strong>
+                      <small>Arrastra el archivo aca o elegilo desde el equipo</small>
+                    </span>
+                    <span class="photo-drop-button">Elegir archivo</span>
+                  </label>
+                  <div class="photo-file-chip is-empty" id="reception-file-chip">
+                    <div>
+                      <strong id="reception-file-name">Sin archivo</strong>
+                      <span id="reception-file-size">-</span>
+                    </div>
+                    <button type="button" id="reception-file-clear" aria-label="Quitar factura">×</button>
+                  </div>
+                  <button type="button" id="reception-invoice-read">Leer factura</button>
+                  <label class="reception-no-file-label">
+                    <span>Sin remito ni factura</span>
+                    <input id="reception-without-file" type="checkbox">
+                  </label>
+                </div>
+                <div class="reception-expense-grid">
+                  <label>
+                    <span>Tipo factura *</span>
+                    <select id="reception-expense-invoice-type" required>
+                      <option value="Factura_A">Factura A</option>
+                      <option value="Factura_B">Factura B</option>
+                      <option value="Factura_C">Factura C</option>
+                      <option value="Remito_X">Remito X</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>Nro factura / remito *</span>
+                    <input id="reception-expense-invoice-number" type="text" required>
+                  </label>
+                  <label>
+                    <span>Fecha factura *</span>
+                    <input id="reception-expense-invoice-date" type="date" required>
+                  </label>
+                  <label>
+                    <span>Fecha prevista pago</span>
+                    <input id="reception-expense-payment-date" type="date">
+                  </label>
+                  <label>
+                    <span>Subtotal</span>
+                    <span class="unit-input reference-input">
+                      <input id="reception-expense-subtotal" type="number" step="any" min="0">
+                      <span id="reception-expense-subtotal-ref">-</span>
+                    </span>
+                  </label>
+                  <label>
+                    <span>IVA</span>
+                    <span class="unit-input reference-input">
+                      <input id="reception-expense-iva" type="number" step="any" min="0">
+                      <span id="reception-expense-iva-ref">-</span>
+                    </span>
+                  </label>
+                  <label>
+                    <span>Per/Ret IVA</span>
+                    <input id="reception-expense-vat-retention" type="number" step="any" min="0">
+                  </label>
+                  <label>
+                    <span>Per/Ret IIBB</span>
+                    <input id="reception-expense-iibb-retention" type="number" step="any" min="0">
+                  </label>
+                  <label>
+                    <span>Imp. internos</span>
+                    <input id="reception-expense-internal-taxes" type="number" step="any" min="0">
+                  </label>
+                  <label>
+                    <span>Total</span>
+                    <span class="unit-input reference-input">
+                      <input id="reception-expense-total" type="number" step="any" min="0">
+                      <span id="reception-expense-total-ref">-</span>
+                    </span>
+                  </label>
+                </div>
+              </section>
+            <div class="actions purchase-actions">
+              <button type="submit" id="reception-submit">Enviar recepcion</button>
+              <p class="form-status" id="reception-status" role="status"></p>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="view" id="view-issued-check-entry">
+        <div class="data-entry-page-heading">
+          <h2>Cheques entregados</h2>
+          <p>Carga de cheques propios entregados a acreedores.</p>
+        </div>
+        <section class="panel issued-check-pending-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Pagos con cheque pendientes</h2>
+              <span>Pagos ya cargados que todavia no tienen cheque entregado asociado.</span>
+            </div>
+            <span id="issued-check-pending-count">0 pagos</span>
+          </div>
+          <div class="table-wrap">
+            <table class="issued-check-pending-table">
+              <thead>
+                <tr>
+                  <th>Fecha pago</th>
+                  <th>Acreedor</th>
+                  <th>Factura / egreso</th>
+                  <th>Banco</th>
+                  <th>Monto</th>
+                </tr>
+              </thead>
+              <tbody id="issued-check-pending-body">
+                <tr><td class="empty" colspan="5">No hay pagos con cheque pendientes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+        <section class="panel purchase-entry-panel operational-entry-panel issued-check-detail-panel">
+          <form id="issued-check-form" class="purchase-form">
+            <input id="issued-check-payment-id" type="hidden">
+            <input id="issued-check-creditor-id" type="hidden">
+            <div class="purchase-form-grid operational-entry-grid">
+              <div class="purchase-section-heading">Cheque seleccionado</div>
+              <label>
+                <span>Pago</span>
+                <input id="issued-check-payment-label" type="text" readonly>
+              </label>
+              <label>
+                <span>Acreedor</span>
+                <input id="issued-check-creditor-name" type="text" readonly>
+              </label>
+              <label>
+                <span>Factura / egreso</span>
+                <input id="issued-check-expense-label" type="text" readonly>
+              </label>
+              <label>
+                <span>Monto</span>
+                <input id="issued-check-amount" type="number" step="any" min="0" readonly required>
+              </label>
+              <label>
+                <span>Nro cheque *</span>
+                <input id="issued-check-number" type="text" required>
+              </label>
+              <label>
+                <span>Fecha entregado *</span>
+                <input id="issued-check-date" type="date" required>
+              </label>
+              <label>
+                <span>Fecha de uso *</span>
+                <input id="issued-check-use-date" type="date" required>
+              </label>
+              <label>
+                <span>Banco</span>
+                <select id="issued-check-bank">
+                  <option value="ICBC">ICBC</option>
+                  <option value="GAL">GAL</option>
+                  <option value="">Otro / sin banco</option>
+                </select>
+              </label>
+              <label>
+                <span>Estado</span>
+                <select id="issued-check-state">
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Debitado">Debitado</option>
+                  <option value="Anulado">Anulado</option>
+                </select>
+              </label>
+            </div>
+            <div class="actions purchase-actions">
+              <button type="submit" id="issued-check-submit">Enviar cheque entregado</button>
+              <p class="form-status" id="issued-check-message" role="status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-cashbox">
+        <section class="panel commercial-entry-panel">
+          <h2>Caja</h2>
+          <p>Visualizacion de caja y saldos reales. No forma parte de carga de datos.</p>
+        </section>
+      </section>
+
+      <section class="view" id="view-expense-entry">
+        <section class="panel expense-debt-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Deudas por factura</h2>
+              <span id="expense-debt-summary">Deudas abiertas agrupadas por etiqueta.</span>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="expense-debt-table">
+              <thead>
+                <tr>
+                  <th>Fecha prevista pago</th>
+                  <th>Fecha factura</th>
+                  <th>Acreedor</th>
+                  <th>Tipo factura</th>
+                  <th>Nro factura</th>
+                  <th class="num">Total</th>
+                  <th class="num">Pagado</th>
+                  <th class="num">Saldo</th>
+                </tr>
+              </thead>
+              <tbody id="expense-debt-body">
+                <tr>
+                  <td colspan="8" class="empty">Cargando deudas desde backend.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-salary-entry">
+        <div class="data-entry-page-heading">
+          <h2>Sueldos</h2>
+          <p>Carga mensual de horas, novedades y liquidacion estimada.</p>
+        </div>
+        <section class="panel salary-entry-panel">
+          <div class="salary-top-grid">
+            <label>
+              Mes de trabajo
+              <select id="salary-period-select"></select>
+            </label>
+            <label>
+              Escala salarial
+              <span class="salary-scale-upload">
+                <input id="salary-scale-file" type="file" accept="application/pdf">
+                <span id="salary-scale-file-name">Sin escala cargada</span>
+                <button type="button" id="salary-scale-read">Leer escala</button>
+              </span>
+            </label>
+            <div class="salary-period-summary">
+              <span id="salary-period-summary">Calculando periodo.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel salary-entry-panel">
+          <div class="salary-actions-bar">
+            <div>
+              <h2>Liquidacion mensual</h2>
+              <p id="salary-table-caption">Valores predeterminados segun dias habiles, feriados y novedades cargadas.</p>
+            </div>
+            <div class="salary-actions-group">
+              <button type="button" id="salary-add-exception">Agregar novedad</button>
+              <button type="button" id="salary-save-backend">Guardar sueldos</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-entry-table salary-entry-table">
+              <thead>
+                <tr>
+                  <th>Empleado</th>
+                  <th>Categoria</th>
+                  <th class="num">Remunerativo</th>
+                  <th class="num">No remunerativo</th>
+                  <th class="num">Hs trabajadas</th>
+                  <th class="num">Hs justificadas</th>
+                  <th class="num">Hs feriado</th>
+                  <th class="num">Hs extra</th>
+                  <th class="num">Premios</th>
+                  <th class="num">Bruto</th>
+                  <th class="num">Neto estimado</th>
+                </tr>
+              </thead>
+              <tbody id="salary-entry-body">
+                <tr><td class="empty" colspan="11">Cargando empleados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="salary-labor-costs" id="salary-labor-costs"></div>
+          <p class="form-status" id="salary-entry-status" role="status"></p>
+        </section>
+
+        <section class="panel salary-entry-panel">
+          <div class="salary-actions-bar">
+            <div>
+              <h2>Novedades del mes</h2>
+              <p>Rangos de faltas, tardanzas, salidas tempranas y horas extra que modifican la base automatica.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-entry-table salary-exceptions-table">
+              <thead>
+                <tr>
+                  <th>Desde</th>
+                  <th>Hasta</th>
+                  <th>Empleado</th>
+                  <th>Tipo</th>
+                  <th class="num">Horas</th>
+                  <th>Detalle</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="salary-exceptions-body">
+                <tr><td class="empty" colspan="7">Todavia no hay novedades cargadas.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel salary-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Factura / egreso de sueldos</h2>
+              <span>Selecciona empleados o cooperativa que correspondan a una misma factura.</span>
+            </div>
+            <span id="salary-expense-selection">0 liquidaciones seleccionadas</span>
+          </div>
+          <form id="salary-expense-form" class="commercial-form salary-expense-form">
+            <div class="table-wrap salary-expense-salaries">
+              <table class="data-entry-table salary-expense-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Empleado / acreedor</th>
+                    <th>Concepto</th>
+                    <th>Periodo</th>
+                    <th class="num">Monto</th>
+                  </tr>
+                </thead>
+                <tbody id="salary-expense-salary-body">
+                  <tr><td class="empty" colspan="5">Guarda sueldos para poder asociarlos a un egreso.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="reception-invoice-action-bar salary-expense-file-bar">
+              <label class="photo-drop-zone" id="salary-expense-file-drop-zone">
+                <input id="salary-expense-file" type="file" accept=".pdf,image/*">
+                <span class="photo-drop-copy">
+                  <strong>Seleccionar factura o remito</strong>
+                  <small>Arrastra el archivo aca o elegilo desde el equipo</small>
+                </span>
+                <span class="photo-drop-button">Elegir archivo</span>
+              </label>
+              <div class="photo-file-chip is-empty" id="salary-expense-file-chip">
+                <div>
+                  <strong id="salary-expense-file-name">Sin archivo</strong>
+                  <span id="salary-expense-file-size">-</span>
+                </div>
+                <button type="button" id="salary-expense-file-clear" aria-label="Quitar archivo">&times;</button>
+              </div>
+              <button type="button" id="salary-expense-invoice-read">Leer factura</button>
+              <label class="reception-no-file-label">
+                <span>Sin remito ni factura</span>
+                <input id="salary-expense-without-file" type="checkbox">
+              </label>
+            </div>
+
+            <div class="reception-expense-grid salary-expense-grid">
+              <label>
+                Tipo factura *
+                <select id="salary-expense-invoice-type" required>
+                  <option value="Factura_C">Factura C</option>
+                  <option value="Recibo_Sueldo">Recibo de Sueldo</option>
+                  <option value="Remito_X">Remito X</option>
+                </select>
+              </label>
+              <label>
+                Nro factura / remito *
+                <input id="salary-expense-invoice-number" type="text" required>
+              </label>
+              <label>
+                Fecha factura *
+                <input id="salary-expense-invoice-date" type="date" required>
+              </label>
+              <label>
+                Fecha prevista pago
+                <input id="salary-expense-payment-date" type="date">
+              </label>
+              <label>
+                Subtotal
+                <input id="salary-expense-subtotal" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                IVA
+                <input id="salary-expense-iva" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                Per./Ret. IVA
+                <input id="salary-expense-vat-retention" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                Per./Ret. IIBB
+                <input id="salary-expense-iibb-retention" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                Imp. internos
+                <input id="salary-expense-internal-taxes" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                Total *
+                <input id="salary-expense-total" type="number" min="0" step="0.01" required>
+              </label>
+            </div>
+
+            <div class="commercial-form-actions">
+              <button type="submit" id="salary-expense-submit">Guardar egreso de sueldos</button>
+              <p id="salary-expense-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+      <section class="view" id="view-logistics-entry">
+        <section class="panel commercial-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Pedidos pendientes de entrega</h2>
+              <span>Ordenados por fecha de entrega prevista.</span>
+            </div>
+            <span id="logistics-order-selection">0 pedidos seleccionados</span>
+          </div>
+          <div class="commercial-form logistics-delivery-controls">
+            <label>
+              Flete
+              <select id="logistics-delivery-fleet"></select>
+            </label>
+            <label>
+              Fecha entrega
+              <input type="date" id="logistics-delivery-date">
+            </label>
+            <button type="button" id="logistics-delivery-create">Crear entrega</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Entrega prevista</th>
+                  <th>Cliente</th>
+                  <th>Pedido</th>
+                  <th>Detalle</th>
+                </tr>
+              </thead>
+              <tbody id="logistics-pending-body">
+                <tr><td class="empty" colspan="5">No hay pedidos pendientes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="logistics-status" class="form-status"></p>
+        </section>
+        <section class="panel commercial-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Factura / egreso de logistica</h2>
+              <span>Selecciona las entregas que corresponden a una misma factura.</span>
+            </div>
+            <span id="logistics-expense-selection">0 entregas seleccionadas</span>
+          </div>
+          <form id="logistics-expense-form" class="commercial-form logistics-expense-form">
+            <div class="table-wrap logistics-expense-deliveries">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Fecha</th>
+                    <th>Flete</th>
+                    <th>Pedidos</th>
+                  </tr>
+                </thead>
+                <tbody id="logistics-expense-delivery-body">
+                  <tr><td class="empty" colspan="4">No hay entregas sin egreso asociado.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="reception-invoice-action-bar logistics-invoice-action-bar">
+              <label class="photo-drop-zone" id="logistics-file-drop-zone">
+                <input id="logistics-file" type="file" accept=".pdf,image/*">
+                <span class="photo-drop-copy">
+                  <strong>Seleccionar factura o remito</strong>
+                  <small>Arrastra el archivo aca o elegilo desde el equipo</small>
+                </span>
+                <span class="photo-drop-button">Elegir archivo</span>
+              </label>
+              <div class="photo-file-chip is-empty" id="logistics-file-chip">
+                <div>
+                  <strong id="logistics-file-name">Sin archivo</strong>
+                  <span id="logistics-file-size">-</span>
+                </div>
+                <button type="button" id="logistics-file-clear" aria-label="Quitar factura">×</button>
+              </div>
+              <button type="button" id="logistics-invoice-read">Leer factura</button>
+              <label class="reception-no-file-label">
+                <span>Sin remito ni factura</span>
+                <input id="logistics-without-file" type="checkbox">
+              </label>
+            </div>
+            <div class="reception-expense-grid logistics-expense-grid">
+              <label>
+                <span>Tipo factura *</span>
+                <select id="logistics-expense-invoice-type" required>
+                  <option value="Factura_A">Factura A</option>
+                  <option value="Factura_B">Factura B</option>
+                  <option value="Factura_C">Factura C</option>
+                  <option value="Remito_X">Remito X</option>
+                </select>
+              </label>
+              <label>
+                <span>Nro factura / remito *</span>
+                <input id="logistics-expense-invoice-number" type="text" required>
+              </label>
+              <label>
+                <span>Fecha factura *</span>
+                <input id="logistics-expense-invoice-date" type="date" required>
+              </label>
+              <label>
+                <span>Fecha prevista pago</span>
+                <input id="logistics-expense-payment-date" type="date">
+              </label>
+              <label>
+                <span>Subtotal</span>
+                <span class="unit-input reference-input">
+                  <input id="logistics-expense-subtotal" type="number" min="0" step="0.01">
+                  <span id="logistics-expense-subtotal-ref">-</span>
+                </span>
+              </label>
+              <label>
+                <span>IVA</span>
+                <span class="unit-input reference-input">
+                  <input id="logistics-expense-iva" type="number" min="0" step="0.01">
+                  <span id="logistics-expense-iva-ref">-</span>
+                </span>
+              </label>
+              <label>
+                <span>Per./Ret. IVA</span>
+                <input id="logistics-expense-vat-retention" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                <span>Per./Ret. IIBB</span>
+                <input id="logistics-expense-iibb-retention" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                <span>Imp. internos</span>
+                <input id="logistics-expense-internal-taxes" type="number" min="0" step="0.01">
+              </label>
+              <label>
+                <span>Total *</span>
+                <span class="unit-input reference-input">
+                  <input id="logistics-expense-total" type="number" min="0" step="0.01" required>
+                  <span id="logistics-expense-total-ref">-</span>
+                </span>
+              </label>
+            </div>
+            <div class="commercial-form-actions">
+              <button type="submit" id="logistics-expense-submit">Guardar egreso logistico</button>
+              <p id="logistics-expense-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+      <section class="view" id="view-other-expenses-entry">
+        <section class="panel">
+          <form id="other-expense-form" class="purchase-form">
+            <div class="purchase-form-grid">
+              <h3 class="purchase-section-heading">1. Gasto</h3>
+              <label class="purchase-required-label">
+                <span>Fecha *</span>
+                <input id="other-expense-date" type="date" required>
+              </label>
+              <label class="purchase-required-label">
+                <span>Acreedor *</span>
+                <div class="creditor-combobox">
+                  <input id="other-expense-creditor-search" placeholder="Escribi para buscar un acreedor" autocomplete="off" required>
+                  <div id="other-expense-creditor-suggestions" class="creditor-suggestions" role="listbox" hidden></div>
+                </div>
+                <input id="other-expense-creditor" type="hidden" required>
+              </label>
+              <label class="purchase-required-label">
+                <span>Etiqueta *</span>
+                <select id="other-expense-creditor-tag" required>
+                  <option value="">Elegir etiqueta</option>
+                </select>
+              </label>
+              <label>
+                <span>Detalle</span>
+                <input id="other-expense-detail" type="text" placeholder="Descripcion opcional del gasto">
+              </label>
+
+              <h3 class="purchase-section-heading">2. Factura / egreso</h3>
+              <div class="reception-invoice-action-bar other-expense-invoice-action-bar">
+                <label class="photo-drop-zone" id="other-expense-file-drop-zone">
+                  <input id="other-expense-file" type="file" accept=".pdf,image/*">
+                  <span class="photo-drop-copy">
+                    <strong>Seleccionar factura o remito</strong>
+                    <small>Arrastra el archivo aca o elegilo desde el equipo</small>
+                  </span>
+                  <span class="photo-drop-button">Elegir archivo</span>
+                </label>
+                <div class="photo-file-chip is-empty" id="other-expense-file-chip">
+                  <div>
+                    <strong id="other-expense-file-name">Sin archivo</strong>
+                    <span id="other-expense-file-size">-</span>
+                  </div>
+                  <button type="button" id="other-expense-file-clear" aria-label="Quitar factura">&times;</button>
+                </div>
+                <button type="button" id="other-expense-invoice-read">Leer factura</button>
+              </div>
+              <label class="purchase-required-label">
+                <span>Tipo factura *</span>
+                <select id="other-expense-invoice-type" required>
+                  <option value="Factura_A">Factura A</option>
+                  <option value="Factura_B">Factura B</option>
+                  <option value="Factura_C">Factura C</option>
+                  <option value="Remito_X">Remito X</option>
+                </select>
+              </label>
+              <label class="purchase-required-label">
+                <span>Nro factura / remito *</span>
+                <input id="other-expense-invoice-number" type="text" required>
+              </label>
+              <label class="purchase-required-label">
+                <span>Fecha factura *</span>
+                <input id="other-expense-invoice-date" type="date" required>
+              </label>
+              <label>
+                <span>Fecha prevista pago</span>
+                <input id="other-expense-payment-date" type="date">
+              </label>
+              <label>
+                <span>Subtotal</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-subtotal" type="number" min="0" step="0.01">
+                  <span>$</span>
+                </span>
+              </label>
+              <label>
+                <span>IVA</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-iva" type="number" min="0" step="0.01">
+                  <span>$</span>
+                </span>
+              </label>
+              <label>
+                <span>Per./Ret. IVA</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-vat-retention" type="number" min="0" step="0.01">
+                  <span>$</span>
+                </span>
+              </label>
+              <label>
+                <span>Per./Ret. IIBB</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-iibb-retention" type="number" min="0" step="0.01">
+                  <span>$</span>
+                </span>
+              </label>
+              <label>
+                <span>Imp. internos</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-internal-taxes" type="number" min="0" step="0.01">
+                  <span>$</span>
+                </span>
+              </label>
+              <label class="purchase-required-label">
+                <span>Total *</span>
+                <span class="unit-input money-input">
+                  <input id="other-expense-total" type="number" min="0" step="0.01" required>
+                  <span>$</span>
+                </span>
+              </label>
+            </div>
+            <div class="commercial-form-actions">
+              <button type="submit" id="other-expense-submit">Guardar otro gasto</button>
+              <p id="other-expense-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-partner-contributions-entry">
+        <section class="panel">
+          <form id="partner-contribution-form" class="purchase-form">
+            <div class="purchase-form-grid">
+              <h3 class="purchase-section-heading">Aporte o retiro de socio</h3>
+              <label class="purchase-required-label">
+                <span>Fecha *</span>
+                <input id="partner-contribution-date" type="date" required>
+              </label>
+              <label class="purchase-required-label">
+                <span>Socio *</span>
+                <select id="partner-contribution-name" required>
+                  <option value="">Elegir socio</option>
+                  <option value="Bautista de Mayo">Bautista de Mayo</option>
+                  <option value="Benjamin de Mayo">Benjamin de Mayo</option>
+                  <option value="Miguel de Mayo">Miguel de Mayo</option>
+                  <option value="Alejandro Ganzabal">Alejandro Ganzabal</option>
+                  <option value="Facundo Aragon">Facundo Aragon</option>
+                </select>
+              </label>
+              <label class="purchase-required-label">
+                <span>Movimiento *</span>
+                <select id="partner-contribution-type" required>
+                  <option value="Aporte">Aporte</option>
+                  <option value="Retiro">Retiro</option>
+                </select>
+              </label>
+              <label class="purchase-required-label">
+                <span>Monto *</span>
+                <span class="unit-input money-input">
+                  <input id="partner-contribution-amount" type="number" min="0" step="0.01" required>
+                  <span>$</span>
+                </span>
+              </label>
+            </div>
+            <div class="commercial-form-actions">
+              <button type="submit">Guardar aporte / retiro</button>
+              <p id="partner-contribution-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+        <section class="panel">
+          <div class="panel-heading"><h3>Movimientos registrados</h3></div>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Fecha</th><th>Socio</th><th>Movimiento</th><th>Monto</th><th>Egreso vinculado</th></tr></thead>
+              <tbody id="partner-contributions-history-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-commissions-entry">
+        <section class="panel commercial-entry-panel commissions-entry-panel">
+          <h2>Comisiones</h2>
+          <div class="commercial-filter-row">
+            <label>
+              <span>Mes de cobro</span>
+              <input id="commissions-month-filter" type="month">
+            </label>
+            <label>
+              <span>Canal</span>
+              <select id="commissions-channel-filter">
+                <option value="">Todos los canales</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="status-grid commissions-summary-grid">
+            <div>
+              <span>Cobros del periodo</span>
+              <strong id="commissions-summary-collections">0</strong>
+            </div>
+            <div>
+              <span>Subtotal comisionable</span>
+              <strong id="commissions-summary-subtotal">$ 0</strong>
+            </div>
+            <div>
+              <span>Comision estimada</span>
+              <strong id="commissions-summary-commission">$ 0</strong>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Fecha cobro</th>
+                  <th>Cliente</th>
+                  <th>Canal</th>
+                  <th>Facturas</th>
+                  <th>Metodo</th>
+                  <th class="num">Cobrado</th>
+                  <th class="num">Subtotal comisionable</th>
+                  <th class="num">% comision</th>
+                  <th class="num">Comision</th>
+                </tr>
+              </thead>
+              <tbody id="commissions-collection-body">
+                <tr><td class="empty" colspan="10">Cargando cobros del mes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p id="commissions-status" class="form-status"></p>
+        </section>
+
+        <section class="panel commercial-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Factura / egreso de comisiones</h2>
+              <span>Selecciona cobros de un mismo canal para agruparlos en una factura.</span>
+            </div>
+            <span id="commissions-expense-selection">0 cobros seleccionados</span>
+          </div>
+          <form id="commissions-expense-form" class="commercial-form">
+            <div class="reception-expense-grid">
+              <label><span>Tipo factura *</span><select id="commissions-expense-invoice-type" required><option value="Factura_A">Factura A</option><option value="Factura_B">Factura B</option><option value="Factura_C" selected>Factura C</option><option value="Remito_X">Remito X</option></select></label>
+              <label><span>Nro factura / remito *</span><input id="commissions-expense-invoice-number" type="text" required></label>
+              <label><span>Fecha factura *</span><input id="commissions-expense-invoice-date" type="date" required></label>
+              <label><span>Fecha prevista pago</span><input id="commissions-expense-payment-date" type="date"></label>
+              <label><span>Subtotal</span><input id="commissions-expense-subtotal" type="number" min="0" step="0.01"></label>
+              <label><span>IVA</span><input id="commissions-expense-iva" type="number" min="0" step="0.01"></label>
+              <label><span>Per./Ret. IVA</span><input id="commissions-expense-vat-retention" type="number" min="0" step="0.01"></label>
+              <label><span>Per./Ret. IIBB</span><input id="commissions-expense-iibb-retention" type="number" min="0" step="0.01"></label>
+              <label><span>Imp. internos</span><input id="commissions-expense-internal-taxes" type="number" min="0" step="0.01"></label>
+              <label><span>Total *</span><input id="commissions-expense-total" type="number" min="0" step="0.01" required></label>
+            </div>
+            <div class="commercial-form-actions">
+              <button type="submit" id="commissions-expense-submit">Guardar egreso de comisiones</button>
+              <p id="commissions-expense-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-payments-entry">
+        <section class="panel payment-entry-panel">
+          <form id="payment-form">
+            <div class="payment-form-grid">
+              <label>
+                <span>Fecha de pago *</span>
+                <input id="payment-date" type="date" required>
+              </label>
+              <label>
+                <span>Metodo *</span>
+                <select id="payment-method" required>
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Debito">Debito</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                <span>Banco</span>
+                <select id="payment-bank">
+                  <option value="ICBC">ICBC</option>
+                  <option value="GAL">GAL</option>
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="">Otro / sin banco</option>
+                </select>
+              </label>
+              <label>
+                <span>Monto del movimiento</span>
+                <input id="payment-bank-amount" type="number" min="0" step="0.01" placeholder="0,00">
+              </label>
+              <label>
+                <span>Acreedor</span>
+                <select id="payment-creditor-filter">
+                  <option value="">Todos los acreedores</option>
+                </select>
+              </label>
+              <label>
+                <span>Buscar deuda</span>
+                <input id="payment-search" type="search" placeholder="Acreedor, factura, etiqueta...">
+              </label>
+            </div>
+
+            <div class="panel-header payment-entry-header">
+              <div>
+                <h2>Facturas pendientes</h2>
+                <span id="payment-summary">Cargando deudas desde backend.</span>
+              </div>
+              <div class="payment-total-block">
+                <strong id="payment-selected-total">$ 0</strong>
+                <span id="payment-movement-comparison"></span>
+              </div>
+            </div>
+
+            <div class="table-wrap payment-table-wrap">
+              <table class="payment-entry-table">
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Fecha prevista</th>
+                    <th>Acreedor</th>
+                    <th>Etiqueta</th>
+                    <th>Factura</th>
+                    <th class="num">Saldo</th>
+                    <th class="num">Monto a pagar</th>
+                  </tr>
+                </thead>
+                <tbody id="payment-pending-body">
+                  <tr><td class="empty" colspan="7">Cargando deudas desde backend.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="actions purchase-actions">
+              <button type="submit" id="payment-submit">Guardar pago</button>
+              <p class="form-status" id="payment-status" role="status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-sales-entry">
+        <section class="panel commercial-entry-panel">
+          <div class="commercial-filter-row">
+            <label>
+              Cliente
+              <select id="sales-client-filter"></select>
+            </label>
+            <button type="button" id="sales-debt-download">Descargar resumen PNG</button>
+          </div>
+          <div class="sales-debt-card" id="sales-debt-card">
+            <div>
+              <span>Saldo pendiente</span>
+              <strong id="sales-client-debt-total">$ 0</strong>
+            </div>
+            <div>
+              <span>Facturas pendientes</span>
+              <strong id="sales-client-debt-count">0</strong>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Factura</th>
+                  <th>Fecha</th>
+                  <th class="num">Total</th>
+                  <th class="num">Pagado</th>
+                  <th class="num">Saldo</th>
+                </tr>
+              </thead>
+              <tbody id="sales-pending-body">
+                <tr><td class="empty" colspan="6">No hay ventas pendientes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+      <section class="view" id="view-orders-entry">
+        <section class="panel commercial-entry-panel">
+          <form id="orders-form" class="commercial-form">
+            <label>
+              Cliente *
+              <select id="order-client" required></select>
+            </label>
+            <label>
+              Fecha pedido *
+              <input type="date" id="order-date" required>
+            </label>
+            <label>
+              Fecha entrega *
+              <input type="date" id="order-delivery-date" required>
+            </label>
+            <label>
+              Fecha original
+              <input type="date" id="order-original-date">
+            </label>
+            <label>
+              Producto *
+              <select id="order-product" required></select>
+            </label>
+            <label>
+              Cantidad cajas *
+              <input type="number" id="order-boxes" min="0" step="1" required>
+            </label>
+            <label>
+              Impuesto
+              <select id="order-tax">
+                <option value="A">A</option>
+                <option value="B">B</option>
+              </select>
+            </label>
+            <label>
+              Precio unidad
+              <input type="number" id="order-unit-price" min="0" step="0.01">
+            </label>
+            <label>
+              Bonificacion
+              <input type="number" id="order-discount" min="0" step="0.01">
+            </label>
+            <div class="commercial-form-actions">
+              <button type="submit">Guardar pedido</button>
+              <p id="orders-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+      <section class="view" id="view-collections-entry">
+        <section class="panel commercial-entry-panel">
+          <form id="collections-form" class="collections-form">
+            <div class="commercial-form compact">
+              <label>
+                Cliente *
+                <select id="collection-client" required></select>
+              </label>
+              <label>
+                Fecha cobro *
+                <input type="date" id="collection-date" required>
+              </label>
+              <label>
+                Metodo *
+                <select id="collection-method" required>
+                  <option value="Transferencia">Transferencia</option>
+                  <option value="Cheque">Cheque</option>
+                  <option value="Efectivo">Efectivo</option>
+                  <option value="Otro">Otro</option>
+                </select>
+              </label>
+              <label>
+                Banco
+                <input type="text" id="collection-bank" placeholder="Banco o caja">
+              </label>
+              <label>
+                Cobro recibido *
+                <input type="number" id="collection-received-total" min="0" step="0.01" value="0" required>
+              </label>
+              <label>
+                Ret. Ganancias
+                <input type="number" id="collection-income-tax-retention" min="0" step="0.01" value="0">
+              </label>
+              <label>
+                Ret. IIBB
+                <input type="number" id="collection-iibb-retention" min="0" step="0.01" value="0">
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Factura</th>
+                    <th>Fecha</th>
+                    <th class="num">Saldo</th>
+                    <th>Completo</th>
+                    <th class="num">Monto a saldar</th>
+                  </tr>
+                </thead>
+                <tbody id="collections-invoice-body">
+                  <tr><td class="empty" colspan="6">Elegi un cliente para ver facturas pendientes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="commercial-form-actions">
+              <button type="submit">Guardar cobro</button>
+              <div class="collection-balance-summary" aria-live="polite">
+                <span>Cobro recibido <strong id="collection-total">$ 0</strong></span>
+                <span>Retenciones <strong id="collection-retentions-total">$ 0</strong></span>
+                <span>Facturas seleccionadas <strong id="collection-invoices-total">$ 0</strong></span>
+                <span>Diferencia <strong id="collection-difference">$ 0</strong></span>
+              </div>
+              <p id="collections-status" class="form-status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+      <section class="view" id="view-received-check-entry">
+        <section class="panel commercial-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cobros con cheque pendientes</h2>
+              <span>Cobros con metodo cheque que todavia no tienen cheque recibido asociado.</span>
+            </div>
+            <span id="received-check-count">0 cobros</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha cobro</th>
+                  <th>Cliente</th>
+                  <th>Metodo</th>
+                  <th class="num">Monto</th>
+                  <th>Banco</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="received-check-pending-body">
+                <tr><td class="empty" colspan="6">No hay cobros con cheque pendientes.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form id="received-check-form" class="purchase-form received-check-detail-form">
+            <input id="received-check-collection-id" type="hidden">
+            <input id="received-check-client-id" type="hidden">
+            <div class="purchase-form-grid operational-entry-grid">
+              <div class="purchase-section-heading">Cheque seleccionado</div>
+              <label><span>Cobro</span><input id="received-check-collection-label" type="text" readonly></label>
+              <label><span>Cliente</span><input id="received-check-client-name" type="text" readonly></label>
+              <label><span>Monto</span><input id="received-check-amount" type="number" step="any" min="0" required></label>
+              <label><span>Nro de cheque *</span><input id="received-check-number" type="text" required></label>
+              <label><span>Fecha recibido *</span><input id="received-check-received-date" type="date" required></label>
+              <label><span>Fecha de uso *</span><input id="received-check-use-date" type="date" required></label>
+              <label>
+                <span>Banco</span>
+                <select id="received-check-bank">
+                  <option value="ICBC">ICBC</option>
+                  <option value="GAL">GAL</option>
+                  <option value="">Otro / sin banco</option>
+                </select>
+              </label>
+              <label><span>Estado</span><input id="received-check-state" type="text" value="Pendiente" readonly></label>
+            </div>
+            <div class="actions purchase-actions">
+              <button type="submit" id="received-check-submit">Guardar cheque recibido</button>
+              <p id="received-check-status" class="form-status" role="status"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-deposited-checks-entry">
+        <section class="panel bank-check-deposit-panel" id="bank-check-deposit-panel">
+          <div class="panel-header">
+            <div>
+              <h2 id="bank-check-deposit-title">Cheques pendientes de depositar</h2>
+              <span id="bank-check-deposit-status-view">Carga y analiza un extracto en Conciliacion bancaria para comparar el deposito.</span>
+            </div>
+            <div class="bank-check-deposit-controls">
+              <label class="bank-check-deposit-field">
+                <span>Fecha de deposito</span>
+                <input type="date" id="bank-check-deposit-date">
+              </label>
+              <label class="bank-check-deposit-field">
+                <span>Banco</span>
+                <select id="bank-check-deposit-bank">
+                  <option value="ICBC">ICBC</option>
+                  <option value="GAL">GAL</option>
+                </select>
+              </label>
+              <label class="bank-check-deposit-movement">
+                <span>Credito del extracto (opcional)</span>
+                <select id="bank-check-deposit-movement"></select>
+              </label>
+            </div>
+          </div>
+          <div class="bank-check-deposit-summary">
+            <div><span>Credito del banco</span><strong id="bank-check-deposit-credit">-</strong></div>
+            <div><span>Cheques seleccionados</span><strong id="bank-check-deposit-total">$ 0,00</strong></div>
+            <div><span>Diferencia</span><strong id="bank-check-deposit-difference">-</strong></div>
+          </div>
+          <div class="table-wrap">
+            <table class="bank-stage-table">
+            <thead><tr><th></th><th>Nro de cheque</th><th>Cliente</th><th>Fecha de uso</th><th class="num">Monto</th></tr></thead>
+              <tbody id="bank-check-deposit-body"></tbody>
+            </table>
+          </div>
+          <div class="bank-stage-actions"><button type="button" id="bank-check-deposit-confirm">Confirmar deposito</button></div>
         </section>
       </section>
 
@@ -343,6 +2044,100 @@
         <div class="imports-toolbar">
           <button type="button" id="refresh-imports">Refrescar imports</button>
         </div>
+
+        <section class="panel backend-sources-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Cargar fuentes backend</h2>
+              <span>Libros completos para la base central</span>
+            </div>
+            <div class="backend-source-actions">
+              <button type="button" id="save-backend-sources">Guardar URLs</button>
+              <button type="button" id="refresh-backend-cache">Refrescar backend</button>
+            </div>
+          </div>
+          <div class="backend-source-grid">
+            <div class="backend-source-row">
+              <strong>Informacion</strong>
+              <input type="url" data-backend-url="Informacion.xlsx" placeholder="Pegar URL de Google Sheets de Informacion">
+              <button type="button" data-refresh-backend-url="Informacion.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Informacion.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Inventario</strong>
+              <input type="url" data-backend-url="Inventario.xlsx" placeholder="Pegar URL de Google Sheets de Inventario">
+              <button type="button" data-refresh-backend-url="Inventario.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Inventario.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Ventas</strong>
+              <input type="url" data-backend-url="Ventas (1).xlsx" placeholder="Pegar URL de Google Sheets de Ventas">
+              <button type="button" data-refresh-backend-url="Ventas (1).xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Ventas (1).xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Pedidos</strong>
+              <input type="url" data-backend-url="Pedidos.xlsx" placeholder="Pegar URL de Google Sheets de Pedidos">
+              <button type="button" data-refresh-backend-url="Pedidos.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Pedidos.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Logistica</strong>
+              <input type="url" data-backend-url="Logistica.xlsx" placeholder="Pegar URL de Google Sheets de Logistica">
+              <button type="button" data-refresh-backend-url="Logistica.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Logistica.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Compras</strong>
+              <input type="url" data-backend-url="Compras.xlsx" placeholder="Pegar URL de Google Sheets de Compras">
+              <button type="button" data-refresh-backend-url="Compras.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Compras.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Recepciones</strong>
+              <input type="url" data-backend-url="Recepciones.xlsx" placeholder="Pegar URL de Google Sheets de Recepciones">
+              <button type="button" data-refresh-backend-url="Recepciones.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Recepciones.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Otros gastos</strong>
+              <input type="url" data-backend-url="OtrosGastos.xlsx" placeholder="Pegar URL de Google Sheets de OtrosGastos">
+              <button type="button" data-refresh-backend-url="OtrosGastos.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="OtrosGastos.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Egresos</strong>
+              <input type="url" data-backend-url="Egresos.xlsx" placeholder="Pegar URL de Google Sheets de Egresos">
+              <button type="button" data-refresh-backend-url="Egresos.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Egresos.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Sueldos</strong>
+              <input type="url" data-backend-url="Sueldos.xlsx" placeholder="Pegar URL de Google Sheets de Sueldos">
+              <button type="button" data-refresh-backend-url="Sueldos.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Sueldos.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Pagos</strong>
+              <input type="url" data-backend-url="Pagos.xlsx" placeholder="Pegar URL de Google Sheets de Pagos">
+              <button type="button" data-refresh-backend-url="Pagos.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Pagos.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Cobros</strong>
+              <input type="url" data-backend-url="Cobros.xlsx" placeholder="Pegar URL de Google Sheets de Cobros">
+              <button type="button" data-refresh-backend-url="Cobros.xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Cobros.xlsx">Editar URL</button>
+            </div>
+            <div class="backend-source-row">
+              <strong>Caja</strong>
+              <input type="url" data-backend-url="Caja (1).xlsx" placeholder="Pegar URL de Google Sheets de Caja">
+              <button type="button" data-refresh-backend-url="Caja (1).xlsx">Refrescar</button>
+              <button type="button" data-edit-backend-url="Caja (1).xlsx">Editar URL</button>
+            </div>
+          </div>
+          <div class="backend-source-status" id="backend-sources-status"></div>
+        </section>
 
         <section class="panel">
           <div class="panel-header">
@@ -373,6 +2168,76 @@
             </div>
           </div>
         </section>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar compras</h2>
+            <span>Pedidos a proveedores</span>
+          </div>
+          <div class="import-grid" data-kind="purchases">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de compras" data-url="purchases">
+              <button type="button" data-load-url="purchases">Cargar ahora</button>
+              <button type="button" data-edit-url="purchases">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar detalle de compras</h2>
+            <span>Insumos, cantidades y proveedores</span>
+          </div>
+          <div class="import-grid" data-kind="purchaseDetails">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de detalle_compras" data-url="purchaseDetails">
+              <button type="button" data-load-url="purchaseDetails">Cargar ahora</button>
+              <button type="button" data-edit-url="purchaseDetails">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar proveedores</h2>
+            <span>Tiempos estimados de entrega</span>
+          </div>
+          <div class="import-grid" data-kind="providers">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de proveedores" data-url="providers">
+              <button type="button" data-load-url="providers">Cargar ahora</button>
+              <button type="button" data-edit-url="providers">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar items</h2>
+            <span>Unidades de conteo y traduccion a receta</span>
+          </div>
+          <div class="import-grid" data-kind="itemInfo">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de items" data-url="itemInfo">
+              <button type="button" data-load-url="itemInfo">Cargar ahora</button>
+              <button type="button" data-edit-url="itemInfo">Editar URL</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Cargar insumos</h2>
+            <span>Unidades proveedor y cantidad receta</span>
+          </div>
+          <div class="import-grid" data-kind="supplyInfo">
+            <div class="url-box">
+              <input type="url" placeholder="Pegar URL publica CSV de insumos" data-url="supplyInfo">
+              <button type="button" data-load-url="supplyInfo">Cargar ahora</button>
+              <button type="button" data-edit-url="supplyInfo">Editar URL</button>
+            </div>
+          </div>
+        </div>
 
         <div class="panel">
           <div class="panel-header">
@@ -485,7 +2350,6 @@
             </div>
           </div>
         </div>
-
 
         <section class="panel">
           <div class="panel-header">
@@ -642,8 +2506,10 @@
             <table>
               <thead>
                 <tr>
+                  <th>ID</th>
                   <th>Fecha</th>
-                  <th class="num">Valor monetizado</th>
+                  <th>Turno</th>
+                  <th>Empleado</th>
                 </tr>
               </thead>
               <tbody id="inventory-body"></tbody>
@@ -659,10 +2525,13 @@
             <table>
               <thead>
                 <tr>
+                  <th>ID detalle</th>
+                  <th>ID inventario</th>
                   <th>Fecha</th>
-                  <th>Producto</th>
-                  <th class="num">Cantidad receta basica</th>
-                  <th class="num">Unidades individuales</th>
+                  <th>Turno</th>
+                  <th>ID item</th>
+                  <th>Item</th>
+                  <th class="num">Cantidad</th>
                 </tr>
               </thead>
               <tbody id="inventory-details-body"></tbody>
@@ -800,6 +2669,195 @@
         </section>
       </section>
 
+      <section class="view" id="view-data-map">
+        <section class="panel data-map-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Mapa de datos</h2>
+              <span id="data-map-summary">Comparacion entre el modelo esperado y las columnas importadas.</span>
+            </div>
+            <div class="data-map-toolbar">
+              <label>
+                Modulo
+                <select id="data-map-module">
+                  <option value="all">Todos</option>
+                </select>
+              </label>
+              <label class="data-map-check">
+                <input type="checkbox" id="data-map-only-issues">
+                Solo diferencias
+              </label>
+              <button type="button" id="refresh-data-map">Actualizar mapa</button>
+            </div>
+          </div>
+          <div id="data-map-body" class="data-map-body"></div>
+        </section>
+      </section>
+
+      <section class="view" id="view-creditor-entry">
+        <section class="panel creditor-entry-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Alta de acreedor</h2>
+              <span id="creditor-entry-description">Crea el acreedor, su registro de origen y la etiqueta con la que se utilizara.</span>
+            </div>
+          </div>
+          <form id="creditor-entry-form" class="creditor-entry-form" novalidate>
+            <div class="creditor-entry-grid">
+              <label>
+                Tipo de acreedor *
+                <select id="creditor-entry-type" required>
+                  <option value="proveedor">Proveedor</option>
+                  <option value="flete">Flete</option>
+                  <option value="empleado">Empleado</option>
+                  <option value="canal">Canal</option>
+                  <option value="otros acreedores">Otros acreedores</option>
+                </select>
+              </label>
+              <label>
+                Nombre *
+                <input id="creditor-entry-name" type="text" autocomplete="off" required placeholder="Nombre del acreedor">
+              </label>
+              <label>
+                CUIT / CUIL
+                <input id="creditor-entry-cuit" type="text" inputmode="numeric" autocomplete="off" placeholder="CUIT o CUIL">
+              </label>
+              <label>
+                CBU / Alias
+                <input id="creditor-entry-cbu-alias" type="text" autocomplete="off" placeholder="Dato bancario opcional">
+              </label>
+              <label>
+                Acuerdo de pago
+                <input id="creditor-entry-payment-terms" type="text" autocomplete="off" placeholder="Dias o condicion de pago">
+              </label>
+              <label>
+                Etiqueta *
+                <select id="creditor-entry-tag" required>
+                  <option value="">Elegir etiqueta</option>
+                </select>
+              </label>
+            </div>
+
+            <div id="creditor-entry-specific-fields" class="creditor-entry-specific-fields"></div>
+
+            <section id="creditor-entry-supplier-items" class="creditor-supplier-items" hidden>
+              <div class="creditor-supplier-items-header">
+                <div>
+                  <strong>Insumos que provee</strong>
+                  <span>Opcional: cargá los insumos y la presentación con la que los entrega.</span>
+                </div>
+                <button id="creditor-entry-add-supplier-item" class="secondary" type="button">Agregar insumo</button>
+              </div>
+              <div id="creditor-entry-supplier-items-rows" class="creditor-supplier-items-rows"></div>
+            </section>
+
+            <div class="creditor-entry-bank-detail">
+              <label>
+                Detalle bancario
+                <input id="creditor-entry-detail" type="text" autocomplete="off" placeholder="Detalle tal como aparece en el banco">
+              </label>
+              <label class="creditor-entry-checkbox">
+                <input id="creditor-entry-save-bank-detail" type="checkbox" checked>
+                Guardar este detalle para reconocer futuros movimientos
+              </label>
+            </div>
+
+            <div class="creditor-entry-footer">
+              <span id="creditor-entry-status" role="status"></span>
+              <button id="creditor-entry-submit" type="submit">Guardar acreedor</button>
+            </div>
+          </form>
+        </section>
+      </section>
+
+      <section class="view" id="view-data-editor">
+        <section class="panel data-editor-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Editor de datos</h2>
+              <span id="data-editor-status">Elegí una tabla para revisar o cargar datos.</span>
+            </div>
+            <div class="data-editor-actions">
+              <button type="button" class="secondary" id="data-editor-add-row">Agregar fila</button>
+              <button type="button" class="secondary danger" id="data-editor-delete-row">Eliminar fila</button>
+              <button type="button" id="data-editor-save">Guardar cambios</button>
+            </div>
+          </div>
+          <div class="data-editor-toolbar">
+            <label>
+              Tabla
+              <select id="data-editor-table"></select>
+            </label>
+            <label>
+              Desde fila
+              <input id="data-editor-row-start" type="number" min="1" value="1">
+            </label>
+            <label>
+              Hasta fila
+              <input id="data-editor-row-end" type="number" min="1" value="300">
+            </label>
+            <button type="button" class="secondary" id="data-editor-load">Cargar tabla</button>
+          </div>
+          <div id="data-editor-body" class="data-editor-body">
+            <div class="data-editor-empty">Todavía no hay tabla seleccionada.</div>
+          </div>
+          <div class="data-editor-toolbar data-editor-toolbar-secondary">
+            <label>
+              Tabla
+              <select id="data-editor-table-secondary"></select>
+            </label>
+            <label>
+              Desde fila
+              <input id="data-editor-row-start-secondary" type="number" min="1" value="1">
+            </label>
+            <label>
+              Hasta fila
+              <input id="data-editor-row-end-secondary" type="number" min="1" value="300">
+            </label>
+            <button type="button" class="secondary" id="data-editor-load-secondary">Cargar tabla</button>
+            <button type="button" class="secondary" id="data-editor-add-row-secondary">Agregar fila</button>
+            <button type="button" class="secondary danger" id="data-editor-delete-row-secondary">Eliminar fila</button>
+            <button type="button" id="data-editor-save-secondary">Guardar cambios</button>
+          </div>
+          <div id="data-editor-body-secondary" class="data-editor-body">
+            <div class="data-editor-empty">Todavía no hay tabla seleccionada.</div>
+          </div>
+        </section>
+      </section>
+
+      <section class="view" id="view-sql">
+        <section class="panel sql-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Consultas SQL</h2>
+              <span>Lectura directa sobre las tablas limpias del backend con motor SQLite.</span>
+            </div>
+            <button type="button" id="sql-run">Ejecutar consulta</button>
+          </div>
+          <div class="sql-workspace">
+            <aside class="sql-sidebar">
+              <div class="sql-sidebar-head">
+                <strong>Tablas disponibles</strong>
+                <span id="sql-table-count">-</span>
+              </div>
+              <div id="sql-table-list" class="sql-table-list"></div>
+            </aside>
+            <div class="sql-console">
+              <label for="sql-query">Codigo SQL</label>
+              <textarea id="sql-query" spellcheck="false">SELECT * FROM ventas LIMIT 20</textarea>
+              <div class="sql-help">
+                <button type="button" data-sql-example="SELECT * FROM ventas LIMIT 20">Ventas</button>
+                <button type="button" data-sql-example="SELECT COUNT(*) AS cantidad FROM egresos">Contar egresos</button>
+                <button type="button" data-sql-example="SELECT tipo_factura, SUM(total) AS total FROM ventas GROUP BY tipo_factura ORDER BY total DESC">Ventas por factura</button>
+                <button type="button" data-sql-example="SELECT v.id_venta, c.nombre_cliente, v.total FROM ventas v LEFT JOIN clientes c ON c.id_cliente = v.id_cliente ORDER BY v.total DESC LIMIT 20">Ventas + clientes</button>
+              </div>
+              <div id="sql-status" class="sql-status">Solo lectura: SELECT y WITH. Soporta JOIN, GROUP BY, HAVING, subconsultas y funciones de SQLite.</div>
+              <div id="sql-results" class="sql-results"></div>
+            </div>
+          </div>
+        </section>
+      </section>
+
       <!-- Configuración histórica de categorías; se conserva para futuras reglas editables. -->
       <section class="view" id="view-settings">
         <section class="panel">
@@ -867,6 +2925,7 @@
     </main>
   </div>
 
-  <script src="assets/js/app.js?v=20260703-003"></script>
+  <script src="assets/js/dom-utils.js?v=20260720-creditor-entry"></script>
+  <script src="assets/js/app.js?v=20260720-creditor-entry"></script>
 </body>
 </html>

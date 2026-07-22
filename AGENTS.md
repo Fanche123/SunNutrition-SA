@@ -1,255 +1,250 @@
-# AGENTS.md — Reglas permanentes del proyecto ERP
+# AGENTS.md — Proyecto ERP
 
-## Objetivo general
+## Objetivo
 
-Este proyecto debe mantenerse simple, liviano, rápido, ordenado y fácil de entender.  
-Cada cambio debe mejorar la aplicación sin acumular código innecesario.
+Mantener el ERP de SunNutrition simple, rápido, modular, seguro y fácil de entender.
 
----
+Prioridades:
 
-## 1. Limpieza obligatoria después de cada cambio
-
-Después de cada modificación, revisar y eliminar:
-
-- Código muerto.
-- Imports no utilizados.
-- Variables no utilizadas.
-- Funciones no utilizadas.
-- Componentes que ya no se usan.
-- Archivos reemplazados por versiones nuevas.
-- CSS huérfano o duplicado.
-- Dependencias innecesarias del `package.json`.
-- Comentarios viejos que ya no describen el comportamiento real.
-
-Nunca dejar código comentado “por si sirve después”.  
-Si no se usa, se elimina.
+1. Exactitud de los cálculos.
+2. Conservación de funcionalidades existentes.
+3. Cambios mínimos y localizados.
+4. Rendimiento.
+5. Claridad del código.
+6. Consistencia visual.
 
 ---
 
-## 2. No duplicar lógica
+## 1. Alcance de cada tarea
 
-Antes de crear una nueva función, componente o archivo, revisar si ya existe algo similar.
+Realizar únicamente el cambio solicitado.
 
-Si existe:
-- reutilizarlo,
-- extenderlo,
-- o refactorizarlo.
+Si el usuario indica archivos o un módulo:
 
-Evitar tener dos formas distintas de resolver el mismo problema.
+- inspeccionar primero esos archivos;
+- no recorrer todo el repositorio;
+- no modificar archivos fuera del alcance;
+- no hacer mejoras adicionales;
+- no refactorizar código no relacionado.
 
----
+Ampliar el alcance solo cuando una dependencia directa lo requiera.
 
-## 3. Documentación clara del código
-
-El código debe poder entenderse meses después.
-
-Agregar comentarios útiles en:
-
-- Archivos principales.
-- Funciones importantes.
-- Cálculos financieros.
-- Transformaciones de datos.
-- Lógica de filtros, agrupaciones y reportes.
-- Decisiones que no sean evidentes.
-
-Los comentarios deben explicar principalmente el “por qué”, no solo el “qué”.
-
-No comentar cosas obvias.
+Si es necesario modificar archivos adicionales, explicar brevemente por qué.
 
 ---
 
-## 4. Nombres descriptivos
+## 2. Cambios mínimos
 
-Usar nombres claros para:
+Preferir siempre el menor cambio que resuelva correctamente la tarea.
 
-- variables,
-- funciones,
-- componentes,
-- archivos,
-- clases CSS,
-- estructuras de datos.
+No realizar por iniciativa propia:
 
-Evitar nombres genéricos como:
+- refactorizaciones generales;
+- reorganizaciones de carpetas;
+- cambios de arquitectura;
+- cambios de nombres públicos;
+- migraciones de base de datos;
+- sustitución de librerías;
+- rediseños de otras pantallas.
 
-- `data`
-- `item`
-- `temp`
-- `x`
-- `result`
-
-Salvo que el contexto sea muy evidente.
+No instalar dependencias salvo que sea imprescindible y se haya solicitado o explicado.
 
 ---
 
-## 5. Mantener la app liviana
+## 3. Limpieza localizada
 
-Evitar cargar datos innecesarios en memoria.
+Después de un cambio, limpiar únicamente el código directamente afectado:
 
-No recalcular información si puede reutilizarse.
+- imports que quedaron sin uso;
+- variables o funciones reemplazadas por el cambio;
+- estilos que quedaron huérfanos dentro del componente modificado;
+- comentarios que dejaron de representar el comportamiento real.
 
-No renderizar tablas completas si no hace falta.
+No buscar código muerto en todo el repositorio después de cada tarea.
 
-Evitar funciones que recorran grandes listas muchas veces sin necesidad.
+No eliminar archivos, componentes o dependencias globales sin comprobar sus referencias.
 
-Si se trabaja con ventas, egresos o inventarios grandes, priorizar:
-
-- filtros eficientes,
-- cálculos centralizados,
-- reutilización de resultados,
-- separación entre datos crudos y datos procesados.
+La limpieza general del proyecto debe realizarse como una tarea separada.
 
 ---
 
-## 6. Separación de responsabilidades
+## 4. No duplicar lógica
 
-Mantener separado:
+Antes de crear una función, componente o estilo nuevo, buscar alternativas existentes dentro del módulo actual y en los componentes compartidos directamente relacionados.
 
-- carga de datos,
-- limpieza de datos,
-- cálculos,
-- presentación visual,
-- estilos,
+No realizar una búsqueda exhaustiva de todo el repositorio para cambios pequeños.
+
+Reutilizar código existente cuando sea claro y no aumente innecesariamente el acoplamiento.
+
+---
+
+## 5. Separación de responsabilidades
+
+Mantener separados:
+
+- acceso y carga de datos;
+- validación y limpieza;
+- cálculos;
+- presentación;
+- estilos;
 - configuración.
 
-No mezclar lógica financiera compleja directamente dentro del HTML o del render visual.
-
----
-
-## 7. Estructura modular
+No colocar lógica financiera compleja directamente dentro de componentes visuales.
 
 Cada archivo debe tener una responsabilidad clara.
 
-Si un archivo crece demasiado, dividirlo en partes más chicas.
-
-Evitar archivos gigantes que mezclen muchas funciones distintas.
+Dividir un archivo únicamente cuando su tamaño o mezcla de responsabilidades dificulte el cambio actual.
 
 ---
 
-## 8. Reglas para cálculos financieros
+## 6. Cálculos financieros
 
-Los cálculos del ERP deben ser claros y verificables.
+Los cálculos de ventas, egresos, IVA, retenciones, costos, inventarios y estado de resultados deben ser claros y verificables.
 
-Para estado de resultados, ventas, egresos, IVA, subtotales, retenciones, costos e inventarios:
+Reglas:
 
-- usar funciones específicas,
-- documentar la fórmula,
-- evitar cálculos duplicados,
-- centralizar criterios contables,
-- no cambiar fórmulas existentes sin avisar.
+- centralizar fórmulas;
+- evitar cálculos duplicados;
+- usar nombres descriptivos;
+- documentar criterios no evidentes;
+- no cambiar fórmulas existentes sin indicarlo;
+- no inventar criterios contables.
 
-Si hay duda sobre un criterio contable, consultarlo antes de implementarlo.
-
----
-
-## 9. No romper funcionalidades existentes
-
-Antes de modificar una parte del sistema, revisar qué depende de ella.
-
-No eliminar ni cambiar una función si puede afectar otra pantalla o cálculo.
-
-Si una modificación puede tener impacto en otras partes, explicarlo antes.
+Cuando falte un criterio necesario, marcarlo claramente antes de implementarlo.
 
 ---
 
-## 10. Estilo visual consistente
+## 7. Base de datos
 
-Mantener el mismo criterio visual en toda la app:
+No modificar esquemas, tablas, migraciones ni datos existentes salvo solicitud explícita.
 
-- títulos,
-- botones,
-- tablas,
-- colores,
-- espaciados,
-- tarjetas,
-- filtros,
+Para cambios en consultas:
+
+- conservar el resultado esperado;
+- usar joins y filtros claros;
+- evitar consultas innecesariamente costosas;
+- validar nombres reales de tablas y columnas;
+- no alterar otros módulos no relacionados.
+
+---
+
+## 8. Rendimiento de la aplicación
+
+Evitar dentro del código modificado:
+
+- cálculos repetidos innecesariamente;
+- consultas duplicadas;
+- renderizados evitables;
+- listeners duplicados;
+- timers sin limpiar;
+- carga completa de datos cuando puede utilizarse paginación o filtrado;
+- grandes objetos duplicados en memoria.
+
+No realizar una auditoría completa de rendimiento después de cada cambio.
+
+---
+
+## 9. Validaciones
+
+Validar según corresponda:
+
+- fechas;
+- montos;
+- categorías;
+- proveedores;
+- tipos de factura;
+- valores vacíos;
+- datos importados;
+- respuestas de servicios;
+- errores de base de datos.
+
+Mostrar mensajes comprensibles. Evitar errores silenciosos.
+
+---
+
+## 10. Comentarios y nombres
+
+Usar nombres descriptivos para funciones, variables, componentes y archivos.
+
+Los comentarios deben explicar decisiones, fórmulas o motivos no evidentes.
+
+No comentar código obvio.
+
+No renombrar elementos existentes fuera del alcance de la tarea.
+
+---
+
+## 11. Interfaz
+
+Mantener el sistema visual existente:
+
+- títulos;
+- botones;
+- tablas;
+- colores;
+- espaciados;
+- tarjetas;
+- filtros;
 - desplegables.
 
-No crear estilos nuevos si ya existe uno reutilizable.
+Reutilizar componentes y estilos existentes cuando estén directamente relacionados.
+
+En cambios exclusivamente visuales, no modificar lógica, servicios, base de datos ni comportamiento salvo solicitud explícita.
 
 ---
 
-## 11. Código simple antes que sofisticado
+## 12. Verificación proporcional
 
-Preferir soluciones simples y legibles.
+Aplicar la verificación mínima suficiente para cada tarea.
 
-No agregar librerías, frameworks o abstracciones complejas si se puede resolver con código claro.
+### Cambio visual pequeño
 
-Evitar sobreingeniería.
+- revisar sintaxis;
+- comprobar el componente modificado;
+- no ejecutar pruebas generales salvo necesidad.
 
----
+### Cambio de lógica localizado
 
-## 12. Control de errores
+- comprobar los casos afectados;
+- ejecutar pruebas relacionadas si existen;
+- revisar consumidores directos.
 
-Toda carga de datos debe manejar errores de forma clara.
+### Cambio de módulo
 
-Si falta un dato, una columna o un archivo, mostrar un mensaje entendible.
+- ejecutar pruebas o validaciones del módulo.
 
-Evitar errores silenciosos.
+### Cambio estructural, financiero o de base de datos
 
----
+- revisar dependencias;
+- ejecutar pruebas más amplias;
+- indicar posibles riesgos.
 
-## 13. Validaciones
-
-Validar especialmente:
-
-- fechas,
-- montos,
-- categorías,
-- proveedores,
-- tipos de factura,
-- valores vacíos,
-- datos importados desde Google Sheets o Excel.
-
-No asumir que los datos siempre vienen perfectos.
+No ejecutar automáticamente toda la suite, builds completos o auditorías generales para cambios pequeños.
 
 ---
 
-## 14. Performance
+## 13. Seguridad al eliminar
 
-Antes de finalizar cada tarea, revisar si el cambio puede volver lenta la app.
+No eliminar elementos dudosos.
 
-Evitar:
+Antes de eliminar un archivo, dependencia, función compartida o componente:
 
-- bucles innecesarios,
-- listeners duplicados,
-- timers sin limpiar,
-- renderizados repetidos,
-- cálculos pesados en cada interacción,
-- guardar grandes objetos duplicados en memoria.
+- comprobar referencias;
+- explicar por qué parece obsoleto;
+- indicar el posible riesgo.
 
----
-
-## 15. Explicación final de cada cambio
-
-Al terminar cada tarea, informar brevemente:
-
-- qué archivos se modificaron,
-- qué se agregó,
-- qué se eliminó,
-- qué lógica cambió,
-- si se limpió código muerto,
-- si queda algo pendiente o riesgoso.
+Para código local claramente reemplazado por el cambio actual, eliminarlo directamente.
 
 ---
 
-## 16. Regla de seguridad para eliminar
+## 14. Respuesta final
 
-Si algo parece no usarse pero hay duda, no eliminarlo directamente.
+Al terminar, informar brevemente:
 
-Primero marcarlo y explicar:
+- archivos modificados;
+- cambio realizado;
+- código local eliminado, si corresponde;
+- validaciones ejecutadas;
+- riesgos o pendientes reales.
 
-- qué parece obsoleto,
-- por qué podría eliminarse,
-- qué riesgo habría al borrarlo.
-
----
-
-## 17. Prioridad del proyecto
-
-La prioridad siempre es:
-
-1. Que los cálculos sean correctos.
-2. Que la app sea rápida.
-3. Que el código sea entendible.
-4. Que no haya código muerto.
-5. Que el diseño sea claro y consistente.
+No producir explicaciones extensas cuando la tarea sea pequeña.

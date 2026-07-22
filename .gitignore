@@ -134,3 +134,9 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# ERP runtime/cache artifacts
+tmp/
+outputs/
+**/__pycache__/
+*.pyc

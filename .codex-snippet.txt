@@ -1,0 +1,45 @@
+﻿function renderPaymentPlans() {
+  const summary = document.getElementById("payment-plans-summary");
+  const list = document.getElementById("payment-plans-list");
+  if (!summary || !list) return;
+
+  const createInstallments = (capitals, interests, startDate, lateInterest, paidCount) => capitals.map((capital, index) => {
+    const dueDate = new Date(`${startDate}T12:00:00`);
+    dueDate.setMonth(dueDate.getMonth() + index);
+    const secondDue = new Date(dueDate);
+    secondDue.setDate(secondDue.getDate() + 10);
+    const financialInterest = interests[index];
+    const firstAmount = capital + financialInterest;
+    return {
+      number: index + 1,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      secondDueDate: secondDue.toISOString().slice(0, 10),
+      capital,
+      financialInterest,
+      lateInterest,
+      firstAmount,
+      secondAmount: firstAmount + lateInterest,
+      paid: index < paidCount
+    };
+  });
+
+  const plans = [
+    {
+      name: "Plan ARCA 1",
+      description: "Plan con cuotas mensuales y segundo vencimiento.",
+      installments: createInstallments(
+        [737285.75, 757561.11, 778394.04, 799799.88, 821794.37, 844393.72, 867614.55, 891473.95, 915989.48, 941117.19],
+        [283695.60, 263420.24, 242587.31, 221181.47, 199186.98, 176587.63, 153366.80, 129507.40, 104991.87, 79802.16],
+        "2026-03-16", 9359, 4
+      )
+    },
+    {
+      name: "Plan ARCA 2",
+      description: "Plan con cuotas mensuales y segundo vencimiento.",
+      installments: createInstallments(
+        [275632.87, 283212.77, 291001.12, 299003.65, 307226.25, 315674.87, 324356.04, 333275.83, 342440.91, 351858.04],
+        [106059.05, 98479.15, 90690.80, 82688.27, 74465.67, 66016.95, 57335.88, 48416.09, 39251.01, 29833.88],
+        "2026-03-16", 3498.84, 4
+      )
+    },
+    {
