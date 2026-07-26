@@ -2,15 +2,21 @@
 
 ## Contrato del flujo nativo
 
-Para cada tarea nueva, el Coordinador crea `taskId`, título, `.coordination/tasks/<taskId>/task.md` y un agent thread `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. Una corrección reutiliza ese Jefe mientras esté disponible; otra tarea crea uno limpio.
+Para cada tarea nueva, el Coordinador crea `taskId`, título y prompt, resuelve el proyecto ERP mediante `list_projects`, ejecuta `create_thread` con destino `project` y entorno `local` o `worktree`, y llama obligatoriamente `set_thread_title` con el `threadId` devuelto antes de responder. El resultado es un hilo principal independiente y visible con nombre específico.
 
-El Jefe lee el contexto, determina ownership, crea exactamente un escritor principal y los auxiliares read-only necesarios, espera resultados, ejecuta o delega validaciones y guarda el informe completo en `result.md`. Impacto visual material exige vista real o aislada y capturas revisadas.
+El Coordinador no usa `spawn_agent` ni perfiles `jefe_tarea_*`, no espera el resultado y no realiza trabajo técnico. Responde inmediatamente con nombre, taskId, modo y estado `hilo iniciado`.
 
-El Coordinador no ejecuta trabajo técnico. Recibe como máximo 10–15 líneas y responde con `TAREA`, `RESULTADO`, `SUBAGENTES`, `REVISIÓN DEL USUARIO`, `ESTADO` e `Informe completo`.
+El hilo visible lee AGENTS y el manual del dominio, ejecuta la tarea completa, mantiene su contexto técnico y puede crear subagentes nativos. El resultado queda dentro de ese hilo; no vuelve al Coordinador.
 
-`status.json` registra estado y Jefe responsable; `user-observations.md` conserva correcciones posteriores. Si el Jefe anterior terminó, el nuevo lee esos archivos y no depende del historial técnico del Coordinador.
+Al finalizar su implementación y pruebas, el hilo crea exactamente un `validador_tarea` read-only y espera ese único veredicto. El prompt incluye taskId explícito, intención, objetivo, exclusiones, dominio, riesgo, impacto visual, archivos propios, diff relevante, pruebas, evidencias, riesgos, cambios preexistentes identificados y estado relevante del working tree. Un árbol sucio conocido no bloquea salvo superposición material.
 
-El Jefe aparece como agent thread en Subagents; sus hijos aparecen anidados o asociados según soporte del runtime. Escritura concurrente exige worktrees. Ningún agente hace commit o push automático.
+`approved` termina directamente. `fix_required` permite aplicar una sola ronda concreta, repetir pruebas afectadas y terminar sin segunda validación ni afirmar aprobación final. `blocked` detiene el hilo y consulta al usuario. Una corrección explícita posterior constituye otra iteración con un nuevo validador único.
+
+El Coordinador no crea, espera, lee ni procesa validadores.
+
+Las correcciones se escriben directamente en el hilo de tarea. Local se usa para runtime principal o localhost; Worktree para aislamiento o si otra tarea escritora está activa. Escritura concurrente exige worktrees. Ningún agente hace commit o push automático.
+
+`create_thread` recibe proyecto, entorno y prompt. Modelo y esfuerzo pueden fijarse si el usuario o la clasificación lo requieren; si se omiten, usa los valores configurados. El título se ajusta con `set_thread_title`. Los permisos no son un parámetro de esta primitiva y provienen del entorno efectivo.
 
 La coordinación v2 descrita debajo es exclusivamente recuperación y compatibilidad. El watcher no participa del flujo nativo y ambos circuitos nunca se ejecutan para la misma tarea.
 

@@ -8,7 +8,7 @@ Leé también `.agents/_base-development.md`. Para cada pedido inspeccioná solo
 
 ## Alcance funcional confirmado
 
-- Dashboard de cheques a cubrir, días de inventario faltantes, compras pendientes y pedidos pendientes.
+- Dashboard de cuotas próximas de planes de pago, cheques a cubrir, días de inventario faltantes, compras pendientes y pedidos pendientes.
 - Estado de Resultados mensual y comparación; ventas, costo de ventas, gastos, inventarios, producción, horas y métricas.
 - Cashflow proyectado desde caja, deudas/cobranzas y cheques; agrupación semanal, búsqueda y overrides de fecha de UI.
 - Clasificación/agregación de egresos y advertencias por categorías no reconocidas.
@@ -36,7 +36,7 @@ Reportes no posee tablas ni endpoints de escritura. Lee, agrupadas por flujo:
 
 - Estado de Resultados: `ventas`, `clientes`, `canales`, `pedidos`, `detalle_pedidos`, `productos`, `items`, `inventarios`, `detalle_inventarios`, `sueldos`; clasificación desde `etiquetas`, `acreedores_etiquetas`, `egresos`, `recepciones`, `compras`, `entregas`, `otros_gastos`, `comisiones`, empleados/proveedores/fletes/acreedores.
 - Cashflow: `caja`, `egresos`, `detalle_pagos`, `ventas`, `cobros`, `cobros_detalle`, `cheques_recibidos`, `cheques_entregados`, `clientes`, `acreedores` y fuentes para resolver contraparte.
-- Dashboard: además lee compras/detalle/recepciones/insumos/proveedores, pedidos/detalle/entregas/productos, inventarios, cheques y tablas de deuda.
+- Dashboard: además lee compras/detalle/recepciones/insumos/proveedores, pedidos/detalle/entregas/productos, inventarios, cheques, tablas de deuda y el contrato de solo lectura de Planes de pago.
 
 Campos críticos: fecha y subtotal de venta; IDs de pedido/producto/cliente; cantidad de cajas/individual; valor y detalle de inventario; categoría/vínculo/total del egreso; horas y bruto salarial; cancelaciones de cobros/pagos; cuenta/monto de caja; fecha de uso, monto y estado de cheques. Ver definición exacta en `backend/config/backend-columns.js`.
 
@@ -54,7 +54,8 @@ Endpoints confirmados:
 - Contrato HTTP: `core-handlers.service.js` y `router.js`; composición en `server.js`.
 - Estado de Resultados: `income-statement.service.js`; fechas/números/inventario auxiliar en `income-calculation.service.js`; categorías en `expense-classification.service.js`.
 - Cashflow: `cashflow.service.js`; saldos = total menos aplicaciones; solo cheques con estado normalizado `pendiente`; eventos menores o iguales a 10 se omiten.
-- Dashboard: `dashboard.js` y helpers de deuda de `payment-entry.js`.
+- Dashboard: `dashboard.js`, helpers de deuda de `payment-entry.js` y `GET /api/treasury/payment-plans[/:id]` para cuotas próximas con estado de pago derivado por Tesorería.
+- El widget de cheques recibidos sin cargar reutiliza `pendingReceivedCheckCollections` de Tesorería y cruza `cobros.id_cobro` con `cheques_recibidos.id_cobro`; presenta fecha, cliente resuelto solo por `id_cliente` y monto del cobro, y se oculta por completo con resultado cero o fuente fallida.
 - Si una cifra nace mal, ubicar primero al productor. Modificar Reportes solo si falla la agregación o presentación; coordinar con el dueño si cambia el significado del dato.
 
 ## Modos de trabajo

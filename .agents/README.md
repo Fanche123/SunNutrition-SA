@@ -24,7 +24,7 @@ Estos AGENTS guían chats que corrigen, amplían y validan el código del ERP. N
 
 Arquitectura no es el chat por defecto para funcionalidades. Elegir el dueño operativo y escalar solo si cambia un límite estable.
 
-Los pedidos nuevos se envían al chat Coordinador. Este crea un Jefe de tarea nativo nuevo; el Jefe elige y coordina especialistas. El usuario no crea chats especialistas ni copia prompts o reportes.
+Los pedidos nuevos se envían al Coordinador. Este crea mediante `create_thread` un hilo principal visible y autónomo del proyecto ERP. El usuario no pulsa New thread ni copia prompts.
 
 ## Jerarquía
 
@@ -46,13 +46,15 @@ Ante contradicción, cumplir la instrucción superior y contrastar documentació
 El flujo cotidiano es:
 
 1. describir el pedido en lenguaje natural al Coordinador;
-2. el Coordinador crea `taskId`, contexto runtime y un Jefe estándar o de alto riesgo;
-3. el Jefe crea un escritor principal y auxiliares read-only, coordina trabajo, pruebas y revisión;
-4. el Jefe guarda el informe completo y devuelve un resumen breve;
-5. el Coordinador presenta ese resumen sin trabajo técnico;
-6. una corrección continúa el mismo Jefe y una tarea distinta crea otro limpio.
+2. el Coordinador crea `taskId` y selecciona título, dominio, modelo, esfuerzo y Local o Worktree;
+3. usa `create_thread` asociado al proyecto ERP con el prompt completo;
+4. responde inmediatamente y queda libre;
+5. el hilo visible trabaja, crea subagentes si los necesita y conserva su resultado;
+6. las correcciones se escriben directamente en ese hilo.
 
-`jefe_tarea_estandar` usa Terra/medium y `jefe_tarea_alto_riesgo` Sol/high. `explorador_erp` y `revisor_erp` son auxiliares read-only. No hay dos escritores simultáneos sobre la misma carpeta; la escritura paralela requiere worktrees. Ningún agente hace commit o push sin pedido expreso.
+Coordinador no usa `spawn_agent` ni perfiles `jefe_tarea_*` en el flujo normal. Los hilos visibles pueden crear especialistas, `explorador_erp` y `revisor_erp`. No hay dos escritores simultáneos sobre la misma carpeta; la escritura paralela requiere worktrees. Ningún agente hace commit o push sin pedido expreso.
+
+Cada iteración termina con exactamente un `validador_tarea` read-only. `approved` cierra; `fix_required` permite una sola corrección y pruebas focalizadas sin revalidación; `blocked` consulta al usuario. Una corrección posterior solicitada por el usuario inicia una nueva iteración con un nuevo validador único.
 
 ## Coordinación anterior
 

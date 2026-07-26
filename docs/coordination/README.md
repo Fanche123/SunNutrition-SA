@@ -2,17 +2,23 @@
 
 ## Modo normal: subagentes nativos
 
-El usuario describe la tarea en el chat Coordinador. El Coordinador crea `taskId`, título, contexto runtime y un agent thread nuevo `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. El Jefe crea y coordina especialistas, ejecuta validaciones, revisa el resultado y devuelve al Coordinador un resumen de 10–15 líneas.
+El usuario describe una tarea nueva en el Coordinador. Este crea `taskId`, resuelve el proyecto ERP con `list_projects`, usa `create_thread` para abrir un hilo principal visible y llama siempre `set_thread_title` antes de responder. El hilo comienza independientemente y conserva todo el trabajo técnico y el resultado.
 
-El Coordinador no ejecuta comandos, no inspecciona el diff completo, no corre pruebas, no abre navegador y no modifica código. Un Jefe estándar usa Terra/medium; uno de alto riesgo usa Sol/high.
+El Coordinador responde inmediatamente y queda libre. No espera, no lee el informe, no ejecuta comandos, no inspecciona diff, no corre pruebas, no abre navegador y no modifica código.
 
-El Jefe aplica un escritor principal y auxiliares read-only. La escritura paralela requiere worktrees. Una corrección continúa el mismo Jefe; otra tarea crea uno limpio.
+El hilo visible puede crear especialistas funcionales, exploradores y revisores como subagentes. Local se usa para runtime principal o localhost; Worktree para aislamiento o tareas escritoras concurrentes. Nunca hay dos escritores sobre la misma carpeta principal.
 
-Cada tarea mantiene `.coordination/tasks/<taskId>/{task.md,status.json,result.md,user-observations.md}` como runtime ignorado. El informe técnico completo queda en `result.md`.
+Las correcciones del mismo objetivo se escriben directamente dentro del hilo visible. Coordinador sólo crea tareas nuevas. Los perfiles `jefe_tarea_*` pueden conservarse para otros consumidores, pero Coordinador no los usa.
 
-El Jefe aparece en Subagents. Sus especialistas aparecen anidados o asociados según el soporte del runtime y no necesariamente como hilos principales independientes.
+Antes de cerrar cada iteración, el hilo visible crea exactamente un `validador_tarea` read-only. Debe recibir pedido, alcance, dominio, riesgo, impacto visual, archivos, diff resumido, pruebas, evidencias y riesgos. Coordinador no participa.
 
-El watcher no necesita estar activo. El usuario no crea chats especialistas, no copia prompts o reportes y no usa `Revisar pendiente`.
+- `approved`: cierre directo con validación independiente aprobada.
+- `fix_required`: una única corrección, repetición de pruebas afectadas y cierre sin segundo validador.
+- `blocked`: pregunta o autorización al usuario, sin solución inventada.
+
+Una corrección posterior del usuario inicia una nueva iteración y habilita un nuevo validador único.
+
+El watcher no necesita estar activo. El usuario no pulsa New thread, no copia prompts o reportes y no usa `Revisar pendiente`.
 
 ## Modo de recuperación: coordinación v2
 

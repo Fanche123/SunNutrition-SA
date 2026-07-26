@@ -33,7 +33,7 @@ Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fu
 
 - Frontend propio: `bank-reconciliation-checks.js`, `bank-reconciliation-core.js`, `bank-reconciliation-drafts.js`, `bank-reconciliation-render.js`, `collections-retentions.js`, `issued-check-entry.js`, `issued-check-pending.js`, `received-check-entry.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js`, todos en `assets/js/modules/`.
 - Backend propio: `backend/bank-rules.js`; `backend/services/bank-matching.service.js`, `bank-parser.service.js`, `bank-persistence.service.js`, `bank-reconciliation.service.js`, `bank-reference.service.js`, `collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js`; `backend/utils/bank.js` y `backend/utils/received-check-endorsement.js`. Pruebas específicas: `tests/payment-plans.test.js` y `tests/received-check-endorsement-schema.test.js`; contratos: `docs/payment-plans.md` y `docs/received-check-endorsement.md`.
-- Consumidores/dependencias directas: `backend/services/cashflow.service.js`, `backend/services/expense-classification.service.js`; `assets/js/modules/reports-cashflow.js`, `sales-orders.js`, `operational-shared.js`.
+- Consumidores/dependencias directas: `backend/services/cashflow.service.js`, `backend/services/expense-classification.service.js`; `assets/js/modules/dashboard.js`, `reports-cashflow.js`, `sales-orders.js`, `operational-shared.js`.
 - Compartidos sensibles: `assets/js/core/api.js`, `assets/js/app.js`, `index.html`, `server.js`, `backend/routes/router.js`, `backend/services/backend-table.service.js`, `backend/services/creditor-entry.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`.
 
 ## Tablas y contratos confirmados
@@ -68,6 +68,8 @@ Endpoints confirmados en `backend/routes/router.js`:
 - La idempotencia durable usa metadatos internos `_operationId`/`_operationPayload` o `_bankOperationKey`/`_bankOperationPayload` en la fila financiera propietaria. No usa memoria ni `app-state`, no altera columnas registradas y su ciclo de vida es el de la propia operación: al eliminar legítimamente la fila propietaria también desaparece su marcador. No existe un registro separado de crecimiento ilimitado.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
 - Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
+- El Dashboard consume los endpoints de Planes de pago en modo de solo lectura y conserva como autoridad el estado `Pagada` derivado por este servicio.
+- `received-check-entry.js` centraliza en `pendingReceivedCheckCollections` la detección de cobros con método cheque sin `cheques_recibidos.id_cobro` asociado; la pantalla operativa y el dashboard consumen la misma regla, deduplicada por `cobros.id_cobro`.
 
 ### Incorporación 2026-07-24
 

@@ -44,20 +44,29 @@ Si una tarea crea un archivo permanente del sector, actualizar en la misma tarea
 
 ## Flujo nativo y derivación
 
-El flujo predeterminado usa una jerarquía nativa de dos niveles:
+El flujo predeterminado crea hilos principales visibles:
 
-1. el usuario describe el pedido al Coordinador;
-2. el Coordinador crea `taskId`, contexto runtime y un `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`;
-3. el Jefe determina ownership, consumidores, riesgo, impacto visual, archivos y pruebas;
-4. el Jefe crea y coordina exactamente un escritor principal y los auxiliares read-only necesarios;
-5. el Jefe desarrolla, prueba, revisa, corrige y escribe el informe técnico completo;
-6. el Coordinador recibe solamente un resumen de 10–15 líneas y lo presenta al usuario.
+1. el usuario describe una tarea nueva al Coordinador;
+2. el Coordinador crea `taskId`, elige título, dominio, modelo, esfuerzo y modo;
+3. resuelve el proyecto ERP y usa `create_thread` con entorno Local o Worktree;
+4. usa siempre `set_thread_title` con un nombre específico;
+5. inserta la consigna completa y deja el hilo trabajando independientemente;
+6. responde inmediatamente sin esperar el resultado;
+7. el usuario continúa correcciones y revisión dentro del hilo visible creado.
 
-El Coordinador no hace trabajo técnico. Toda inspección, comando, diff, prueba, navegador, captura, regresión y corrección pertenece al Jefe de tarea y sus especialistas.
+El Coordinador no usa `spawn_agent` ni Jefes anidados, no hace trabajo técnico y no recibe el informe. El nuevo hilo realiza toda inspección, cambio, prueba, navegador, captura y revisión, y puede crear sus propios especialistas como subagentes.
 
-No ejecutar dos escritores simultáneos sobre la misma carpeta. `explorador_erp` y `revisor_erp` son auxiliares de solo lectura. Dos tareas simultáneas con escritura requieren worktrees separados.
+Usar Local cuando se necesiten runtime principal, localhost o archivos locales. Usar Worktree para aislamiento o cuando otra tarea escritora ya esté activa. No ejecutar dos escritores simultáneos sobre la misma carpeta principal.
 
-El contexto vive en `.coordination/tasks/<taskId>/`: `task.md`, `status.json`, `result.md` y `user-observations.md`. Es runtime ignorado. Una corrección reutiliza el mismo Jefe; una tarea diferente crea otro limpio.
+## Validación independiente única
+
+Al finalizar cada pedido o corrección explícita, el hilo principal prepara una entrega preliminar y crea exactamente un `validador_tarea` read-only. Le entrega taskId explícito, intención, alcance, dominio, riesgo, impacto visual, archivos propios, resumen del diff relevante, pruebas, evidencias, riesgos, cambios preexistentes identificados y estado relevante del working tree.
+
+- `approved`: entregar `TRABAJO REALIZADO`, `VALIDACIONES`, `VALIDACIÓN INDEPENDIENTE` y `REVISIÓN DEL USUARIO`, indicando validador, aprobación y ausencia de correcciones posteriores.
+- `fix_required`: aplicar únicamente las correcciones concretas, repetir pruebas afectadas y terminar sin otro validador. Declarar: “Se aplicaron las correcciones solicitadas en la única revisión independiente. No se ejecutó una segunda revisión, conforme al flujo definido.”
+- `blocked`: detenerse y formular al usuario la decisión o autorización requerida; no convertir el bloqueo en una corrección técnica.
+
+No existe loop validador–corrección–validador. La regla se reinicia únicamente ante un nuevo pedido o una corrección explícita posterior del usuario dentro del mismo hilo. Coordinador nunca crea ni espera validadores.
 
 Clasificar el impacto visual como `none`, `minor` o `material`. Un impacto material requiere vista real o aislada, capturas y revisión de overflow, alineación, jerarquía y responsive.
 

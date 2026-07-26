@@ -122,11 +122,15 @@ Si Node no esta en `PATH`, usar el runtime provisto por el workspace. La verific
 
 ## Coordinación nativa y recuperación
 
-El flujo predeterminado usa una jerarquía nativa de dos niveles. El Coordinador crea `taskId`, contexto runtime y un agent thread `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. El Jefe determina ownership, crea especialistas, coordina implementación y validaciones y devuelve solo un resumen breve.
+El flujo predeterminado usa hilos principales visibles. El Coordinador resuelve el proyecto ERP con `list_projects`, llama `create_thread` con destino `project`, entorno `local` o `worktree` y la consigna completa, y aplica siempre `set_thread_title` al `threadId` devuelto. El hilo comienza de forma independiente y aparece con nombre específico en la barra lateral.
 
-El Coordinador no ejecuta comandos, diff, pruebas, navegador ni cambios. Hay un solo escritor principal por tarea; exploradores y revisor son read-only. Dos escritores concurrentes requieren worktrees separados.
+El Coordinador responde inmediatamente: no espera, no recibe informes, no ejecuta comandos, diff, pruebas, navegador ni cambios. El hilo nuevo asume la tarea completa y puede crear sus propios especialistas nativos.
 
-El contexto técnico vive en `.coordination/tasks/<taskId>/` con `task.md`, `status.json`, `result.md` y `user-observations.md`, ignorados por Git. Una corrección reutiliza el mismo Jefe disponible; una tarea diferente crea otro limpio.
+Local se usa cuando se necesita runtime principal, localhost o archivos locales. Worktree se usa para aislamiento o cuando otra tarea escritora está activa. `create_thread` no acepta permisos como parámetro; se aplican la configuración efectiva del entorno y las restricciones expresadas en el prompt.
+
+Las correcciones se escriben directamente en el hilo visible de tarea. `.coordination/tasks/<taskId>/` permanece como runtime opcional y no sustituye al hilo.
+
+Cada pedido o corrección explícita termina con exactamente un subagente `validador_tarea`, configurado con `gpt-5.6-sol`, esfuerzo high y sandbox read-only. El hilo transmite taskId, diff propio y cambios preexistentes delimitados; un árbol sucio conocido no bloquea salvo superposición material. `approved` cierra; `fix_required` permite una corrección y pruebas focalizadas sin segunda validación; `blocked` detiene y consulta al usuario. Coordinador no crea ni espera al validador.
 
 La infraestructura `.coordination/`, los comandos `coordination:*`, el watcher y el protocolo v2 se conservan sin migraciones ni limpieza como modo de recuperación. No forman parte del flujo nativo, el watcher no necesita estar activo y no se ejecutan ambos circuitos para una misma tarea.
 

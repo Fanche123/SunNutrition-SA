@@ -31,7 +31,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `backend/services/sales-*.service.js`, `backend/services/sales-*.service.test.js` | Ventas | Inventario, Reportes, Arquitectura | Alta integral de pedidos y pruebas aisladas de integridad; dominio | Alto | `ventas.md` |
 | `assets/js/modules/collections-retentions.js` | Tesorería | Ventas, Reportes | Cobros/retenciones; dominio | Alto | `tesoreria.md` + `ventas.md` |
 | `assets/js/modules/bank-reconciliation-*.js` | Tesorería | Compras, Ventas | Conciliación; dominio | Alto | `tesoreria.md` |
-| `assets/js/modules/*check*.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js` | Tesorería | Compras, Ventas, Reportes | Pagos, cheques, planes y aportes; dominio | Alto | `tesoreria.md` |
+| `assets/js/modules/*check*.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js` | Tesorería | Compras, Ventas, Reportes (`dashboard.js` consume Planes de pago en solo lectura) | Pagos, cheques, planes y aportes; dominio | Alto | `tesoreria.md` |
 | `assets/js/modules/salary-*.js` | RRHH | Compras, Reportes | Sueldos y egreso salarial; dominio | Alto | `rrhh.md` |
 | `assets/js/config/payroll-calendars.js` | RRHH | Arquitectura, Compras, Reportes | Calendarios laborales configurados por año; configuración de dominio compartida | Alto | `rrhh.md` + consumidores |
 | `assets/js/modules/dashboard.js`, `reports-*.js` | Reportes | Todos | Indicadores y presentación financiera; dominio | Alto | `reportes.md` |
@@ -90,7 +90,9 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.
 
-El Coordinador recibe los pedidos y crea un Jefe de tarea. El Jefe determina ownership, crea un escritor principal y coordina auxiliares read-only. Las correcciones continúan el mismo Jefe; las tareas diferentes usan uno nuevo. Los especialistas solo actualizan el contexto runtime de su tarea y no adquieren ownership de la coordinación v2.
+El Coordinador recibe tareas nuevas y crea hilos principales visibles del proyecto ERP mediante `create_thread`. No crea Jefes anidados ni recibe informes. Cada hilo determina ownership y coordina sus propios subagentes. Las correcciones se escriben directamente en el hilo de tarea.
+
+Cada hilo crea exactamente un `validador_tarea` read-only al final de cada iteración. Ese validador pertenece a Arquitectura como infraestructura de calidad y no adquiere ownership funcional ni modifica archivos.
 
 El Coordinador conserva la infraestructura anterior como recuperación v2 opcional. El watcher no participa del flujo normal y ningún consumidor puede activar el legado, modificar estado histórico o ejecutar ambos circuitos para la misma tarea salvo pedido explícito.
 

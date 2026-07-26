@@ -33,6 +33,7 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Navegación: `[data-view="x"]` activa `#view-x`; Dashboard es el acceso fijo y la vista inicial, y se alternan `.nav-item.active` y `.view.active` en `switchView`.
 - Grupos: seis acordeones funcionales usan `[data-nav-toggle]`, `.nav-group.is-collapsed`, `.nav-group.is-active` y `aria-expanded`; solo uno puede permanecer abierto, la navegación programática abre el correspondiente y Dashboard contrae todos.
 - Bootstrap: `cacheElements()` resuelve IDs; `bindEvents()` registra eventos durante `DOMContentLoaded`. Renombrar un ID exige actualizar todos sus consumidores.
+- `#dashboard-received-checks-widget` reutiliza `.dashboard-widget`, muestra filas compactas de fecha/cliente/monto y permite expandirlas con teclado o clic; permanece con `hidden` hasta que Reportes confirma al menos un pendiente y `.dashboard-widget[hidden]` debe retirarlo completamente de la grilla.
 - Scripts clásicos, sin bundler: `assets/js/dom-utils.js`, `assets/js/modules/payment-plans.js`, `assets/js/modules/salary-entry.js`, `assets/js/core/formatters.js` y `assets/js/modules/data-editor.js` se cargan antes de `assets/js/app.js` por dependencias de evaluación; los demás módulos cargan después de `assets/js/app.js` pero antes de `DOMContentLoaded`.
 - El frontend consume `/api/...` en el mismo origen desde el que se sirve el ERP. Los módulos no deben codificar host, IP ni puerto.
 - Estados de formulario usan `.form-status`/`[data-status]`; contenido dinámico no confiable debe pasar por `escapeHtml`.

@@ -2,39 +2,46 @@
 
 ## Flujo normal
 
-El usuario describe la tarea solamente en este chat. El Coordinador preserva la intención, crea `taskId`, título y `.coordination/tasks/<taskId>/task.md`, clasifica riesgo e impacto visual y crea un agent thread nuevo con `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`.
+El usuario describe una tarea nueva en este chat. El Coordinador interpreta el pedido, crea `taskId` y elige título, dominio, modelo, esfuerzo, modo Local o Worktree, permisos esperados y contexto relevante.
 
-Usar Jefe estándar para cambios rápidos o acotados. Usar Jefe de alto riesgo para arquitectura, base de datos, contabilidad, dinero, migraciones o cambios transversales. El nombre del thread debe ser específico: `Tarea — <título>`.
+El Coordinador debe usar la primitiva nativa de aplicación para hilos principales visibles:
 
-El Coordinador no crea directamente especialistas funcionales, no ejecuta comandos, no inspecciona el diff completo, no corre pruebas, no abre navegador, no modifica código y no resuelve bloqueos técnicos. Espera solamente el resumen final del Jefe de tarea.
+1. resolver el proyecto ERP con `list_projects`;
+2. llamar `create_thread` con destino `project`, el `projectId` real y entorno `local` o `worktree`;
+3. incluir la consigna completa en `prompt`;
+4. llamar siempre `set_thread_title` sobre el `threadId` devuelto, con un nombre específico;
+5. comprobar que ambas acciones fueron aceptadas;
+6. responder inmediatamente, sin esperar ni leer el resultado.
 
-Cada tarea nueva recibe un Jefe nuevo y limpio. Una corrección del mismo objetivo continúa el mismo Jefe mientras esté disponible; el Jefe vuelve a dirigir a sus especialistas. Si ese thread terminó, crear otro Jefe que lea `task.md`, `result.md` y `user-observations.md`, sin depender del historial técnico del Coordinador.
+No usar `spawn_agent`, `jefe_tarea_estandar`, `jefe_tarea_alto_riesgo` ni otro subagente para crear la tarea. El thread creado debe ser principal, independiente y visible en la barra lateral, no un elemento limitado al panel Subagents.
 
-El Coordinador conserva solamente `taskId`, título, estado, nombre del Jefe y resultado resumido. No inserta logs, diffs, resultados extensos, llamadas a herramientas ni razonamiento técnico de subagentes.
+Elegir Local cuando la tarea necesite runtime principal, localhost o archivos locales. Elegir Worktree cuando pueda aislarse o exista otra tarea escritora activa. No crear dos escritores sobre la misma carpeta principal. `create_thread` no recibe un parámetro de permisos: el nuevo hilo usa la configuración efectiva de su entorno y del usuario; el prompt debe declarar las restricciones adicionales.
 
-La respuesta final usa exclusivamente:
+El nuevo hilo asume ejecución completa, lee AGENTS y el manual de dominio, inspecciona y modifica según autorización, valida, usa navegador y crea sus propios subagentes nativos cuando lo necesite. Todo el contexto técnico y el resultado permanecen en ese hilo.
+
+El prompt completo insertado en cada hilo debe incluir literalmente:
+
+> Al finalizar la implementación y tus propias pruebas, creá exactamente un subagente read-only `validador_tarea`. Si aprueba, terminá. Si solicita correcciones, aplicalas una sola vez, repetí las pruebas afectadas y terminá sin una segunda validación. Si queda bloqueado por una decisión funcional o acción de riesgo, consultá al usuario.
+
+El Coordinador no crea ese validador, no espera su veredicto y no procesa su resultado.
+
+El prompt del hilo debe exigir que transmita al validador el `taskId` explícito y distinga archivos propios de cambios preexistentes o concurrentes. Un working tree sucio conocido no debe tratarse como bloqueo salvo superposición material.
+
+El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador, no modifica archivos y no recibe ni procesa el informe final. Las correcciones del mismo objetivo se escriben directamente en el hilo visible de la tarea. En esta primera versión el Coordinador sólo crea tareas nuevas y no reenvía correcciones.
+
+La respuesta del Coordinador usa exclusivamente:
 
 ```text
-TAREA
-[nombre y taskId]
+TAREA CREADA
+Nombre: [título]
+TaskId: [taskId]
+Modo: [Local o Worktree]
+Estado: hilo iniciado
 
-RESULTADO
-[resumen breve]
-
-SUBAGENTES
-[Jefe de tarea y especialistas]
-
-REVISIÓN DEL USUARIO
-[qué probar]
-
-ESTADO
-[completada, bloqueada o requiere corrección]
-
-Informe completo:
-[ruta]
+El trabajo continúa en el hilo nuevo visible en la barra lateral.
 ```
 
-El Jefe de tarea aparece como agent thread nativo en Subagents. Sus especialistas aparecen anidados o asociados según soporte del runtime; no necesariamente son hilos principales de la barra lateral.
+No responder `hilo iniciado` antes de completar `create_thread` y `set_thread_title`. No esperar el resultado después de titularlo.
 
 ## Modo de recuperación v2
 
@@ -83,7 +90,7 @@ Fuera de alcance: ejecutar prompts o comandos funcionales, editar archivos de do
 - Gobierno: `.agents/_base-development.md`, `.agents/README.md`, `.agents/file-ownership.md`, `.agents/coordinador.md`.
 - Contratos v1/v2: `.coordination/{handoff,coordinator-output}.schema.json`, `handoff-v2.schema.json`, `coordinator-output-v2.schema.json`, `task.schema.json`, `evidence-manifest.schema.json` y `project-context.schema.json`.
 - Contexto versionado: `.coordination/project-context.json`, que referencia fuentes permanentes existentes sin duplicarlas.
-- Ejecución nativa: `.coordination/tasks/<taskId>/{task.md,status.json,result.md,user-observations.md}`, siempre runtime ignorado.
+- Contexto runtime opcional: `.coordination/tasks/<taskId>/`, ignorado; no sustituye ni es requisito para el hilo visible nativo.
 - Ejecución legado: `.coordination/state.json`, colas, `runtime/tasks/`, `runtime/presentations/`, `runtime/transfers/`, heartbeat y herramientas `tools/coordination*`.
 - Evidencias: `.coordination/evidence/<taskId>/`, siempre runtime, acotado y sujeto a manifest.
 - Contexto permanente: `AGENTS.md`, `.agents/`, arquitectura, ownership y documentación estable de dominio.
