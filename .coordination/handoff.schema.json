@@ -1,0 +1,202 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/handoff.schema.json",
+  "title": "ERP specialist handoff",
+  "description": "Entrega estructurada de un chat especialista al coordinador por archivos. No admite secretos, datos personales ni contenido binario; esas restricciones también se aplican antes de validar el schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "taskId",
+    "parentTaskId",
+    "domain",
+    "sourceChat",
+    "createdAt",
+    "status",
+    "objective",
+    "summary",
+    "changes",
+    "filesCreated",
+    "filesModified",
+    "validationsExecuted",
+    "validationsPending",
+    "risks",
+    "decisionsRequired",
+    "dataModified",
+    "suggestedCommit",
+    "gitStatus",
+    "diffSummary"
+  ],
+  "properties": {
+    "version": {
+      "const": "1.0"
+    },
+    "taskId": {
+      "$ref": "#/$defs/taskId"
+    },
+    "parentTaskId": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/taskId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "domain": {
+      "$ref": "#/$defs/domain"
+    },
+    "sourceChat": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "blocked",
+        "failed"
+      ]
+    },
+    "objective": {
+      "$ref": "#/$defs/longText"
+    },
+    "summary": {
+      "$ref": "#/$defs/longText"
+    },
+    "changes": {
+      "$ref": "#/$defs/textList"
+    },
+    "filesCreated": {
+      "$ref": "#/$defs/pathList"
+    },
+    "filesModified": {
+      "$ref": "#/$defs/pathList"
+    },
+    "validationsExecuted": {
+      "$ref": "#/$defs/textList"
+    },
+    "validationsPending": {
+      "$ref": "#/$defs/textList"
+    },
+    "risks": {
+      "$ref": "#/$defs/textList"
+    },
+    "decisionsRequired": {
+      "$ref": "#/$defs/textList"
+    },
+    "dataModified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modified",
+        "description"
+      ],
+      "properties": {
+        "modified": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "suggestedCommit": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "gitStatus": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "diffSummary": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "arquitectura",
+        "inventario",
+        "compras",
+        "ventas",
+          "tesoreria",
+          "rrhh",
+          "reportes",
+          "contabilidad",
+          "administracion",
+        "ui-ux",
+        "base-de-datos",
+        "bugs",
+        "nuevas-funcionalidades",
+        "analista-funcional"
+      ]
+    },
+    "longText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 12000
+    },
+    "textList": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$))(?!.*(?:^|[/\\\\])(?:\\.env(?:\\.[^/\\\\]*)?|\\.git|node_modules|attachments?|cache|caches|tmp)(?:[/\\\\]|$))[^\\u0000-\\u001F]+$"
+    },
+    "pathList": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/repositoryPath"
+      }
+    }
+  }
+}

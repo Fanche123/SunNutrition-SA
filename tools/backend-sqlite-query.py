@@ -3,6 +3,7 @@ import math
 import re
 import sqlite3
 import sys
+import time
 
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -21,15 +22,27 @@ def main():
     sql = str(request.get("sql") or "").strip()
     cache_file = request.get("cacheFile")
     max_rows = int(request.get("maxRows") or 5000)
+    max_time_ms = int(request.get("maxTimeMs") or 4000)
+    max_progress_callbacks = int(request.get("maxProgressCallbacks") or 20000)
+    progress_operations = int(request.get("progressOperations") or 10000)
 
-    validate_readonly_sql(sql)
+    try:
+        validate_readonly_sql(sql)
+    except QueryError as error:
+        emit_error(error.code, str(error))
+        return 2
 
-    with open(cache_file, "r", encoding="utf-8-sig") as handle:
-        cache = json.load(handle)
+    try:
+        with open(cache_file, "r", encoding="utf-8-sig") as handle:
+            cache = json.load(handle)
+    except (OSError, ValueError):
+        emit_error("SQL_EXECUTION_ERROR", "No se pudo preparar la fuente de consulta.")
+        return 2
 
     connection = sqlite3.connect(":memory:")
     connection.row_factory = sqlite3.Row
-    connection.set_progress_handler(lambda: 0, 100_000)
+    budget = QueryBudget(max_time_ms, max_progress_callbacks)
+    connection.set_progress_handler(budget.progress, progress_operations)
     try:
         load_backend_cache(connection, cache)
         cursor = connection.execute(sql)
@@ -48,21 +61,60 @@ def main():
             "totalRows": len(rows),
             "limited": limited,
         }, ensure_ascii=False))
-    except sqlite3.Error as error:
-        raise SystemExit(str(error))
+    except sqlite3.Error:
+        if budget.exceeded == "time":
+            emit_error("SQL_TIMEOUT", "La consulta supero el tiempo maximo permitido.")
+        elif budget.exceeded == "callbacks":
+            emit_error("SQL_BUDGET_EXCEEDED", "La consulta supero el presupuesto de operaciones permitido.")
+        else:
+            emit_error("SQL_EXECUTION_ERROR", "No se pudo ejecutar la consulta SQL.")
+        return 2
     finally:
         connection.close()
+    return 0
 
 
 def validate_readonly_sql(sql):
     if not sql:
-        raise SystemExit("Escribi una consulta SQL.")
+        raise QueryError("SQL_INVALID", "Escribi una consulta SQL.")
     if not re.match(r"^(select|with)\s+", sql, re.IGNORECASE):
-        raise SystemExit("Solo se permiten consultas SELECT o WITH.")
+        raise QueryError("SQL_FORBIDDEN", "Solo se permiten consultas SELECT o WITH.")
     if WRITE_WORDS.search(sql):
-        raise SystemExit("La consola SQL es solo de lectura.")
+        raise QueryError("SQL_FORBIDDEN", "La consola SQL es solo de lectura.")
     if has_multiple_statements(sql):
-        raise SystemExit("Ejecuta una sola consulta por vez.")
+        raise QueryError("SQL_INVALID", "Ejecuta una sola consulta por vez.")
+
+
+class QueryError(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+class QueryBudget:
+    def __init__(self, max_time_ms, max_callbacks):
+        self.deadline = time.monotonic() + max(max_time_ms, 1) / 1000
+        self.max_callbacks = max(max_callbacks, 1)
+        self.callbacks = 0
+        self.exceeded = ""
+
+    def progress(self):
+        self.callbacks += 1
+        if time.monotonic() >= self.deadline:
+            self.exceeded = "time"
+            return 1
+        if self.callbacks >= self.max_callbacks:
+            self.exceeded = "callbacks"
+            return 1
+        return 0
+
+
+def emit_error(code, message):
+    print(json.dumps({
+        "ok": False,
+        "code": code,
+        "error": message,
+    }, ensure_ascii=False))
 
 
 def has_multiple_statements(sql):
@@ -183,4 +235,4 @@ def quote_identifier(value):
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

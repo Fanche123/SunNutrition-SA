@@ -1,0 +1,58 @@
+{
+  "version": "1.0",
+  "description": "Manifest versionable de las fuentes permanentes compartidas por el Chat Coordinador, los especialistas y el coordinador por API. Reutiliza documentación existente en lugar de duplicarla.",
+  "globalSources": [
+    {
+      "label": "AGENTS.md",
+      "path": "AGENTS.md",
+      "required": true,
+      "selection": "full"
+    },
+    {
+      "label": "BASE DE DESARROLLO",
+      "path": ".agents/_base-development.md",
+      "required": true,
+      "selection": "full"
+    },
+    {
+      "label": "AGENTE COORDINADOR",
+      "path": ".agents/coordinador.md",
+      "required": true,
+      "selection": "full"
+    },
+    {
+      "label": "OWNERSHIP",
+      "path": ".agents/file-ownership.md",
+      "required": true,
+      "selection": "full"
+    },
+    {
+      "label": "PROTOCOLO DE COORDINACIÓN",
+      "path": "docs/coordination/PROTOCOL.md",
+      "required": true,
+      "selection": "relevant-sections"
+    }
+  ],
+  "domainAgentFiles": {
+    "arquitectura": ".agents/arquitectura.md",
+    "inventario": ".agents/inventario.md",
+    "compras": ".agents/compras.md",
+    "ventas": ".agents/ventas.md",
+    "tesoreria": ".agents/tesoreria.md",
+    "rrhh": ".agents/rrhh.md",
+    "reportes": ".agents/reportes.md",
+    "contabilidad": ".agents/contabilidad.md",
+    "administracion": ".agents/administracion.md",
+    "ui-ux": ".agents/ui-ux.md",
+    "base-de-datos": ".agents/base-de-datos.md",
+    "bugs": ".agents/bugs.md",
+    "nuevas-funcionalidades": ".agents/nuevas-funcionalidades.md",
+    "analista-funcional": ".agents/analista-funcional.md"
+  },
+  "architectureSource": {
+    "label": "ARQUITECTURA RELEVANTE",
+    "path": "docs/architecture.md",
+    "required": true,
+    "selection": "relevant-sections"
+  }
+}

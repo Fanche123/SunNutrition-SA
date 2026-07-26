@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/handoff-v2.schema.json",
+  "title": "ERP specialist handoff v2",
+  "description": "Entrega versionada de un especialista dentro de una tarea persistente. taskId identifica el ciclo completo y submissionId identifica esta entrega.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "submissionId",
+    "taskId",
+    "revision",
+    "previousRevision",
+    "domain",
+    "sourceChat",
+    "createdAt",
+    "status",
+    "executionKind",
+    "approvedProposalHash",
+    "approvedPrompt",
+    "objective",
+    "summary",
+    "changes",
+    "filesCreated",
+    "filesModified",
+    "validationsExecuted",
+    "validationsPending",
+    "risks",
+    "decisionsRequired",
+    "visualImpact",
+    "evidenceManifest",
+    "dataModified",
+    "suggestedCommit",
+    "gitStatus",
+    "diffSummary"
+  ],
+  "properties": {
+    "version": {
+      "const": "2.0"
+    },
+    "submissionId": {
+      "$ref": "#/$defs/safeId"
+    },
+    "taskId": {
+      "$ref": "#/$defs/safeId"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "previousRevision": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9999
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "domain": {
+      "$ref": "#/$defs/domain"
+    },
+    "sourceChat": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "completed",
+        "partial",
+        "blocked",
+        "failed"
+      ]
+    },
+    "executionKind": {
+      "type": "string",
+      "enum": [
+        "initial",
+        "approved-proposal",
+        "transferred",
+        "user-observation",
+        "recovery"
+      ]
+    },
+    "approvedProposalHash": {
+      "$ref": "#/$defs/nullableHash"
+    },
+    "approvedPrompt": {
+      "$ref": "#/$defs/nullableLongText"
+    },
+    "objective": {
+      "$ref": "#/$defs/longText"
+    },
+    "summary": {
+      "$ref": "#/$defs/longText"
+    },
+    "changes": {
+      "$ref": "#/$defs/textList"
+    },
+    "filesCreated": {
+      "$ref": "#/$defs/pathList"
+    },
+    "filesModified": {
+      "$ref": "#/$defs/pathList"
+    },
+    "validationsExecuted": {
+      "$ref": "#/$defs/textList"
+    },
+    "validationsPending": {
+      "$ref": "#/$defs/textList"
+    },
+    "risks": {
+      "$ref": "#/$defs/textList"
+    },
+    "decisionsRequired": {
+      "$ref": "#/$defs/textList"
+    },
+    "visualImpact": {
+      "$ref": "#/$defs/visualImpact"
+    },
+    "evidenceManifest": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^\\.coordination/evidence/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,127}\\.json$"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "dataModified": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "modified",
+        "description"
+      ],
+      "properties": {
+        "modified": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000
+        }
+      }
+    },
+    "suggestedCommit": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "gitStatus": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500
+      }
+    },
+    "diffSummary": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "nullableHash": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hash"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "arquitectura",
+        "inventario",
+        "compras",
+        "ventas",
+        "tesoreria",
+        "rrhh",
+        "reportes",
+        "contabilidad",
+        "administracion",
+        "ui-ux",
+        "base-de-datos",
+        "bugs",
+        "nuevas-funcionalidades",
+        "analista-funcional"
+      ]
+    },
+    "visualImpact": {
+      "type": "string",
+      "enum": [
+        "none",
+        "minor",
+        "material"
+      ]
+    },
+    "longText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16000
+    },
+    "nullableLongText": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/longText"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "textList": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    },
+    "repositoryPath": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(?![A-Za-z]:)(?![/\\\\])(?!.*(?:^|[/\\\\])\\.\\.(?:[/\\\\]|$))(?!.*(?:^|[/\\\\])(?:\\.env(?:\\.[^/\\\\]*)?|\\.git|node_modules|attachments?|cache|caches|tmp)(?:[/\\\\]|$))[^\\u0000-\\u001F]+$"
+    },
+    "pathList": {
+      "type": "array",
+      "maxItems": 300,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/repositoryPath"
+      }
+    }
+  }
+}

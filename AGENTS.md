@@ -248,3 +248,13 @@ Al terminar, informar brevemente:
 - riesgos o pendientes reales.
 
 No producir explicaciones extensas cuando la tarea sea pequeña.
+
+---
+
+## 15. Flujo directo predeterminado
+
+Los pedidos nuevos se envían directamente al chat especialista correspondiente. Ese chat inspecciona el contexto relevante, implementa lo solicitado, valida proporcionalmente y entrega el resumen final sin crear `taskId`, handoffs, revisiones paralelas ni aprobaciones intermedias.
+
+Pedir confirmación adicional solo cuando exista una decisión contable, destructiva, de datos, contrato o seguridad realmente bloqueante. Si el cambio pertenece a otro dominio, indicar verbalmente el chat correcto sin crear transferencias ni estado intermedio.
+
+La infraestructura de coordinación anterior permanece disponible únicamente como legado manual opcional. No usarla salvo pedido explícito del usuario y no alterar sus tareas o estado existentes por defecto.

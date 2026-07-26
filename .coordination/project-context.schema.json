@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/project-context.schema.json",
+  "title": "ERP permanent coordination context manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "description",
+    "globalSources",
+    "domainAgentFiles",
+    "architectureSource"
+  ],
+  "properties": {
+    "version": {
+      "const": "1.0"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "globalSources": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "domainAgentFiles": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 500,
+        "pattern": "^\\.agents/[A-Za-z0-9._-]+\\.md$"
+      }
+    },
+    "architectureSource": {
+      "$ref": "#/$defs/source"
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "label",
+        "path",
+        "required",
+        "selection"
+      ],
+      "properties": {
+        "label": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "pattern": "^(?:AGENTS\\.md|\\.agents/[A-Za-z0-9._-]+\\.md|docs/architecture\\.md|docs/coordination/[A-Za-z0-9][A-Za-z0-9._-]*\\.md)$"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "selection": {
+          "type": "string",
+          "enum": [
+            "full",
+            "relevant-sections"
+          ]
+        }
+      }
+    }
+  }
+}

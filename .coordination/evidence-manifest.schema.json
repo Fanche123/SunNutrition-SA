@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/evidence-manifest.schema.json",
+  "title": "ERP coordination evidence manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "taskId",
+    "revision",
+    "createdAt",
+    "visualImpact",
+    "readOnlyCaptureConfirmed",
+    "possiblySensitive",
+    "authorizedForApi",
+    "sensitiveReason",
+    "images"
+  ],
+  "properties": {
+    "version": {
+      "const": "2.0"
+    },
+    "taskId": {
+      "$ref": "#/$defs/safeId"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "visualImpact": {
+      "$ref": "#/$defs/visualImpact"
+    },
+    "readOnlyCaptureConfirmed": {
+      "type": "boolean",
+      "enum": [
+        true
+      ]
+    },
+    "possiblySensitive": {
+      "type": "boolean"
+    },
+    "authorizedForApi": {
+      "type": "boolean"
+    },
+    "sensitiveReason": {
+      "$ref": "#/$defs/nullableShortText"
+    },
+    "images": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 10,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "filename",
+          "path",
+          "mimeType",
+          "sizeBytes",
+          "sha256",
+          "viewport",
+          "screen",
+          "state",
+          "capturedAt",
+          "visualImpact",
+          "readOnlyCaptureConfirmed",
+          "possiblySensitive",
+          "authorizedForApi",
+          "sensitiveReason"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:png|jpg|jpeg|webp)$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "pattern": "^\\.coordination/evidence/[A-Za-z0-9][A-Za-z0-9._-]{0,127}/[A-Za-z0-9][A-Za-z0-9._-]{0,179}\\.(?:png|jpg|jpeg|webp)$"
+          },
+          "mimeType": {
+            "type": "string",
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 52428800
+          },
+          "sha256": {
+            "$ref": "#/$defs/hash"
+          },
+          "viewport": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "width",
+              "height",
+              "deviceScaleFactor"
+            ],
+            "properties": {
+              "width": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20000
+              },
+              "height": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20000
+              },
+              "deviceScaleFactor": {
+                "type": "number",
+                "minimum": 0.1,
+                "maximum": 10
+              }
+            }
+          },
+          "screen": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "state": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "visualImpact": {
+            "$ref": "#/$defs/visualImpact"
+          },
+          "readOnlyCaptureConfirmed": {
+            "type": "boolean",
+            "enum": [
+              true
+            ]
+          },
+          "possiblySensitive": {
+            "type": "boolean"
+          },
+          "authorizedForApi": {
+            "type": "boolean"
+          },
+          "sensitiveReason": {
+            "$ref": "#/$defs/nullableShortText"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "visualImpact": {
+      "type": "string",
+      "enum": [
+        "none",
+        "minor",
+        "material"
+      ]
+    },
+    "nullableShortText": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,435 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/coordinator-output-v2.schema.json",
+  "title": "ERP coordinator output v2",
+  "description": "Revisión funcional y técnica versionada. Nunca constituye aprobación ni ejecución.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "taskId",
+    "revision",
+    "domain",
+    "targetDomain",
+    "verdict",
+    "summary",
+    "findings",
+    "risks",
+    "blockingQuestions",
+    "visualReview",
+    "nextPrompt",
+    "recommendedChanges",
+    "userReviewInstructions",
+    "closeReason",
+    "evidenceRequired",
+    "proposalHash",
+    "sourceHash",
+    "approvalRequired",
+    "commitMessage"
+  ],
+  "properties": {
+    "version": {
+      "const": "2.0"
+    },
+    "taskId": {
+      "$ref": "#/$defs/safeId"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 10000
+    },
+    "domain": {
+      "$ref": "#/$defs/domain"
+    },
+    "targetDomain": {
+      "$ref": "#/$defs/domain"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "continue",
+        "fix_required",
+        "close",
+        "rejected",
+        "blocked"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "findings": {
+      "$ref": "#/$defs/textList"
+    },
+    "risks": {
+      "$ref": "#/$defs/textList"
+    },
+    "blockingQuestions": {
+      "$ref": "#/$defs/textList"
+    },
+    "visualReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "performed",
+        "images",
+        "categoryAudit",
+        "crossImageFindings",
+        "confidence"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "not_provided",
+            "reviewed",
+            "sensitive_blocked"
+          ]
+        },
+        "performed": {
+          "type": "boolean"
+        },
+        "images": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "filename",
+              "observations"
+            ],
+            "properties": {
+              "filename": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 180,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*\\.(?:png|jpg|jpeg|webp)$"
+              },
+              "observations": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "#/$defs/observableText"
+                }
+              }
+            }
+          }
+        },
+        "categoryAudit": {
+          "type": "array",
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/visualAuditPresent"
+              },
+              {
+                "$ref": "#/$defs/visualAuditAbsent"
+              },
+              {
+                "$ref": "#/$defs/visualAuditUncertain"
+              }
+            ]
+          }
+        },
+        "crossImageFindings": {
+          "$ref": "#/$defs/textList"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "nextPrompt": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "recommendedChanges": {
+      "type": "array",
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "category",
+          "instruction",
+          "target",
+          "expectedResult"
+        ],
+        "properties": {
+          "category": {
+            "$ref": "#/$defs/visualCategory"
+          },
+          "instruction": {
+            "$ref": "#/$defs/actionText"
+          },
+          "target": {
+            "type": "string",
+            "minLength": 2,
+            "maxLength": 500,
+            "pattern": "\\S"
+          },
+          "expectedResult": {
+            "$ref": "#/$defs/actionText"
+          }
+        }
+      }
+    },
+    "userReviewInstructions": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "closeReason": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "evidenceRequired": {
+      "type": "boolean"
+    },
+    "proposalHash": {
+      "$ref": "#/$defs/hash"
+    },
+    "sourceHash": {
+      "$ref": "#/$defs/hash"
+    },
+    "approvalRequired": {
+      "type": "boolean",
+      "enum": [
+        true
+      ]
+    },
+    "commitMessage": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "arquitectura",
+        "inventario",
+        "compras",
+        "ventas",
+        "tesoreria",
+        "rrhh",
+        "reportes",
+        "contabilidad",
+        "administracion",
+        "ui-ux",
+        "base-de-datos",
+        "bugs",
+        "nuevas-funcionalidades",
+        "analista-funcional"
+      ]
+    },
+    "visualCategory": {
+      "type": "string",
+      "enum": [
+        "excessive_whitespace",
+        "weak_hierarchy",
+        "low_contrast",
+        "misalignment",
+        "high_density",
+        "overflow_or_clipping",
+        "inconsistent_actions",
+        "readability",
+        "responsive_layout",
+        "accessibility_visual",
+        "other"
+      ]
+    },
+    "auditableVisualCategory": {
+      "type": "string",
+      "enum": [
+        "excessive_whitespace",
+        "weak_hierarchy",
+        "low_contrast",
+        "misalignment",
+        "high_density",
+        "overflow_or_clipping",
+        "inconsistent_actions",
+        "readability",
+        "responsive_layout",
+        "accessibility_visual"
+      ]
+    },
+    "visualAuditPresent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "status",
+        "description",
+        "evidence",
+        "severity"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/auditableVisualCategory"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "present"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/observableText"
+        },
+        "evidence": {
+          "$ref": "#/$defs/observableText"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        }
+      }
+    },
+    "visualAuditAbsent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "status",
+        "description",
+        "evidence",
+        "severity"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/auditableVisualCategory"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "absent"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/observableText"
+        },
+        "evidence": {
+          "type": "null"
+        },
+        "severity": {
+          "type": "null"
+        }
+      }
+    },
+    "visualAuditUncertain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "category",
+        "status",
+        "description",
+        "evidence",
+        "severity"
+      ],
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/auditableVisualCategory"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "uncertain"
+          ]
+        },
+        "description": {
+          "$ref": "#/$defs/observableText"
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 8,
+          "maxLength": 2000,
+          "pattern": "\\S"
+        },
+        "severity": {
+          "type": "null"
+        }
+      }
+    },
+    "observableText": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 2000,
+      "pattern": "\\S"
+    },
+    "actionText": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 4000,
+      "pattern": "\\S"
+    },
+    "textList": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    }
+  }
+}

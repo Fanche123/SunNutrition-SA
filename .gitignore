@@ -140,3 +140,15 @@ tmp/
 outputs/
 **/__pycache__/
 *.pyc
+
+# Coordination runtime (contracts/config/docs remain versioned)
+.coordination/inbox/
+.coordination/processing/
+.coordination/pending/
+.coordination/approved/
+.coordination/rejected/
+.coordination/completed/
+.coordination/failed/
+.coordination/evidence/
+.coordination/runtime/
+.coordination/state.json

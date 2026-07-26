@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://sunnutrition.local/schemas/coordination/coordinator-output.schema.json",
+  "title": "ERP coordinator output",
+  "description": "Resultado estructurado de la revisión automática. Nunca constituye aprobación ni autoriza ejecución.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taskId",
+    "targetDomain",
+    "verdict",
+    "summaryForUser",
+    "promptForSpecialist",
+    "commitMessage",
+    "approvalRequired",
+    "risks",
+    "blockingQuestions",
+    "sourceHash"
+  ],
+  "properties": {
+    "taskId": {
+      "$ref": "#/$defs/taskId"
+    },
+    "targetDomain": {
+      "$ref": "#/$defs/domain"
+    },
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "close",
+        "continue",
+        "fix_required",
+        "blocked",
+        "needs_functional_decision",
+        "needs_database_review",
+        "needs_architecture_review"
+      ]
+    },
+    "summaryForUser": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8000
+    },
+    "promptForSpecialist": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16000
+    },
+    "commitMessage": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "approvalRequired": {
+      "type": "boolean",
+      "enum": [
+        true
+      ],
+      "description": "La revisión automática jamás autoriza la ejecución."
+    },
+    "risks": {
+      "$ref": "#/$defs/textList"
+    },
+    "blockingQuestions": {
+      "$ref": "#/$defs/textList"
+    },
+    "sourceHash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "$defs": {
+    "taskId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "arquitectura",
+        "inventario",
+        "compras",
+        "ventas",
+          "tesoreria",
+          "rrhh",
+          "reportes",
+          "contabilidad",
+          "administracion",
+        "ui-ux",
+        "base-de-datos",
+        "bugs",
+        "nuevas-funcionalidades",
+        "analista-funcional"
+      ]
+    },
+    "textList": {
+      "type": "array",
+      "maxItems": 100,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 2000
+      }
+    }
+  }
+}

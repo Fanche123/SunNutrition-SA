@@ -1,0 +1,42 @@
+{
+  "watcher": {
+    "debounceMs": 350,
+    "scanIntervalMs": 10000,
+    "stableFileMs": 500,
+    "lockStaleMs": 300000,
+    "stateLockWaitMs": 5000
+  },
+  "limits": {
+    "maxHandoffBytes": 262144,
+    "maxContextFileBytes": 65536,
+    "maxDiffBytes": 49152,
+    "maxTotalContextBytes": 327680,
+    "maxResponseBytes": 262144
+  },
+  "retry": {
+    "retries": 3,
+    "initialBackoffMs": 750,
+    "maxBackoffMs": 12000
+  },
+  "api": {
+    "maxOutputTokens": 4000,
+    "apiTimeoutMs": 90000
+  },
+  "await": {
+    "awaitTimeoutMs": 600000,
+    "awaitPollMs": 750
+  },
+  "heartbeat": {
+    "heartbeatIntervalMs": 5000,
+    "heartbeatStaleMs": 30000
+  },
+  "evidence": {
+    "maxEvidenceImages": 6,
+    "maxEvidenceImageBytes": 5242880,
+    "maxEvidenceTotalBytes": 15728640,
+    "evidenceImageDetail": "high"
+  },
+  "notification": {
+    "enabled": false
+  }
+}
