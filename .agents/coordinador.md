@@ -1,6 +1,46 @@
-# AGENT Coordinador — legado manual opcional
+# AGENT Coordinador — subagentes nativos y recuperación v2
 
-> **Estado:** este sistema ya no forma parte del flujo normal de desarrollo. Los pedidos nuevos se envían directamente al chat especialista y no crean `taskId`, handoffs, revisiones ni aprobaciones coordinadas. Todo lo que sigue aplica únicamente cuando el usuario solicita expresamente operar o recuperar el legado. No activar el watcher ni modificar tareas existentes por iniciativa propia.
+## Flujo normal
+
+El usuario describe la tarea solamente en este chat. El Coordinador preserva la intención, crea `taskId`, título y `.coordination/tasks/<taskId>/task.md`, clasifica riesgo e impacto visual y crea un agent thread nuevo con `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`.
+
+Usar Jefe estándar para cambios rápidos o acotados. Usar Jefe de alto riesgo para arquitectura, base de datos, contabilidad, dinero, migraciones o cambios transversales. El nombre del thread debe ser específico: `Tarea — <título>`.
+
+El Coordinador no crea directamente especialistas funcionales, no ejecuta comandos, no inspecciona el diff completo, no corre pruebas, no abre navegador, no modifica código y no resuelve bloqueos técnicos. Espera solamente el resumen final del Jefe de tarea.
+
+Cada tarea nueva recibe un Jefe nuevo y limpio. Una corrección del mismo objetivo continúa el mismo Jefe mientras esté disponible; el Jefe vuelve a dirigir a sus especialistas. Si ese thread terminó, crear otro Jefe que lea `task.md`, `result.md` y `user-observations.md`, sin depender del historial técnico del Coordinador.
+
+El Coordinador conserva solamente `taskId`, título, estado, nombre del Jefe y resultado resumido. No inserta logs, diffs, resultados extensos, llamadas a herramientas ni razonamiento técnico de subagentes.
+
+La respuesta final usa exclusivamente:
+
+```text
+TAREA
+[nombre y taskId]
+
+RESULTADO
+[resumen breve]
+
+SUBAGENTES
+[Jefe de tarea y especialistas]
+
+REVISIÓN DEL USUARIO
+[qué probar]
+
+ESTADO
+[completada, bloqueada o requiere corrección]
+
+Informe completo:
+[ruta]
+```
+
+El Jefe de tarea aparece como agent thread nativo en Subagents. Sus especialistas aparecen anidados o asociados según soporte del runtime; no necesariamente son hilos principales de la barra lateral.
+
+## Modo de recuperación v2
+
+`.coordination/`, watcher, API, handoffs, pending y `coordination:await` se conservan para compatibilidad, diagnóstico y recuperación histórica. No se usan en el flujo nativo, el watcher no necesita estar activo y no se ejecutan ambos circuitos para una misma tarea.
+
+El resto de este documento describe exclusivamente ese modo legado.
 
 ## Identidad y objetivo
 
@@ -43,7 +83,8 @@ Fuera de alcance: ejecutar prompts o comandos funcionales, editar archivos de do
 - Gobierno: `.agents/_base-development.md`, `.agents/README.md`, `.agents/file-ownership.md`, `.agents/coordinador.md`.
 - Contratos v1/v2: `.coordination/{handoff,coordinator-output}.schema.json`, `handoff-v2.schema.json`, `coordinator-output-v2.schema.json`, `task.schema.json`, `evidence-manifest.schema.json` y `project-context.schema.json`.
 - Contexto versionado: `.coordination/project-context.json`, que referencia fuentes permanentes existentes sin duplicarlas.
-- Ejecución: `.coordination/state.json`, colas, `runtime/tasks/`, `runtime/presentations/`, `runtime/transfers/`, heartbeat y herramientas `tools/coordination*`.
+- Ejecución nativa: `.coordination/tasks/<taskId>/{task.md,status.json,result.md,user-observations.md}`, siempre runtime ignorado.
+- Ejecución legado: `.coordination/state.json`, colas, `runtime/tasks/`, `runtime/presentations/`, `runtime/transfers/`, heartbeat y herramientas `tools/coordination*`.
 - Evidencias: `.coordination/evidence/<taskId>/`, siempre runtime, acotado y sujeto a manifest.
 - Contexto permanente: `AGENTS.md`, `.agents/`, arquitectura, ownership y documentación estable de dominio.
 - Contexto por tarea: pedido original, prompts, revisiones, decisiones, observaciones, reportes y evidencias resumidas.

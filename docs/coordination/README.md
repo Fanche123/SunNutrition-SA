@@ -1,6 +1,24 @@
-# Coordinación semiautomática v2 — legado manual opcional
+# Coordinación del ERP — subagentes nativos y recuperación v2
 
-> **ESTADO: LEGADO MANUAL OPCIONAL.** Este sistema no forma parte del flujo normal actual. Un pedido natural nuevo se atiende directamente en el chat actual: no crea `taskId` ni requiere watcher, `enqueue`, `coordination:await`, `present`, `Aprobar`, `begin` o evidencia coordinada.
+## Modo normal: subagentes nativos
+
+El usuario describe la tarea en el chat Coordinador. El Coordinador crea `taskId`, título, contexto runtime y un agent thread nuevo `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. El Jefe crea y coordina especialistas, ejecuta validaciones, revisa el resultado y devuelve al Coordinador un resumen de 10–15 líneas.
+
+El Coordinador no ejecuta comandos, no inspecciona el diff completo, no corre pruebas, no abre navegador y no modifica código. Un Jefe estándar usa Terra/medium; uno de alto riesgo usa Sol/high.
+
+El Jefe aplica un escritor principal y auxiliares read-only. La escritura paralela requiere worktrees. Una corrección continúa el mismo Jefe; otra tarea crea uno limpio.
+
+Cada tarea mantiene `.coordination/tasks/<taskId>/{task.md,status.json,result.md,user-observations.md}` como runtime ignorado. El informe técnico completo queda en `result.md`.
+
+El Jefe aparece en Subagents. Sus especialistas aparecen anidados o asociados según el soporte del runtime y no necesariamente como hilos principales independientes.
+
+El watcher no necesita estar activo. El usuario no crea chats especialistas, no copia prompts o reportes y no usa `Revisar pendiente`.
+
+## Modo de recuperación: coordinación v2
+
+Todo lo documentado a continuación se conserva para compatibilidad, diagnóstico y recuperación histórica. No ejecutar el modo nativo y v2 simultáneamente para una misma tarea.
+
+> **ESTADO: RECUPERACIÓN V2 MANUAL OPCIONAL.** Este sistema no forma parte del flujo nativo. Un pedido nuevo usa `taskId` y subagente nativo, pero no requiere watcher, `enqueue`, `coordination:await`, `present`, `Aprobar`, `begin` ni evidencia v2.
 >
 > Estas herramientas solo se usan por pedido explícito del usuario, recuperación histórica o diagnóstico. Nunca se inician ni se invocan automáticamente. Las tareas existentes permanecen sin migración ni alteración.
 

@@ -20,11 +20,11 @@ Estos AGENTS guían chats que corrigen, amplían y validan el código del ERP. N
 | `bugs.md` | Diagnóstico y corrección mínima; deriva al dueño real |
 | `nuevas-funcionalidades.md` | Diseño/implementación acotada y coordinación entre dueños |
 | `analista-funcional.md` | Procesos, reglas y criterios de aceptación; no código por defecto |
-| `coordinador.md` | Infraestructura histórica de coordinación; usar solo como legado manual opcional |
+| `coordinador.md` | Flujo normal con subagentes nativos y recuperación v2 opcional |
 
 Arquitectura no es el chat por defecto para funcionalidades. Elegir el dueño operativo y escalar solo si cambia un límite estable.
 
-Los pedidos nuevos se envían directamente al chat especialista correspondiente. Ese chat conserva la intención del usuario, inspecciona solo el contexto relevante, implementa dentro de su ownership, valida proporcionalmente y entrega el resultado sin una revisión paralela obligatoria.
+Los pedidos nuevos se envían al chat Coordinador. Este crea un Jefe de tarea nativo nuevo; el Jefe elige y coordina especialistas. El usuario no crea chats especialistas ni copia prompts o reportes.
 
 ## Jerarquía
 
@@ -41,20 +41,22 @@ Ante contradicción, cumplir la instrucción superior y contrastar documentació
 
 > Leé `.agents/_base-development.md` y `.agents/<dominio>.md`. Usalos como guía permanente de desarrollo. Para esta tarea revisá solo los archivos necesarios y sus dependencias directas. No hagas un relevamiento general salvo que el pedido lo requiera.
 
-## Trabajo directo
+## Flujo nativo
 
 El flujo cotidiano es:
 
-1. elegir el chat por ownership;
-2. describir el pedido en lenguaje natural;
-3. permitir que el especialista implemente o analice lo autorizado;
-4. revisar su validación y resumen final.
+1. describir el pedido en lenguaje natural al Coordinador;
+2. el Coordinador crea `taskId`, contexto runtime y un Jefe estándar o de alto riesgo;
+3. el Jefe crea un escritor principal y auxiliares read-only, coordina trabajo, pruebas y revisión;
+4. el Jefe guarda el informe completo y devuelve un resumen breve;
+5. el Coordinador presenta ese resumen sin trabajo técnico;
+6. una corrección continúa el mismo Jefe y una tarea distinta crea otro limpio.
 
-No se crean `taskId`, handoffs, revisiones de IA, esperas ni aprobaciones intermedias por defecto. Si falta una decisión contable, destructiva, de datos, contrato o seguridad realmente bloqueante, el especialista la consulta antes de avanzar. Si cambia el ownership, indica verbalmente qué chat debe continuar.
+`jefe_tarea_estandar` usa Terra/medium y `jefe_tarea_alto_riesgo` Sol/high. `explorador_erp` y `revisor_erp` son auxiliares read-only. No hay dos escritores simultáneos sobre la misma carpeta; la escritura paralela requiere worktrees. Ningún agente hace commit o push sin pedido expreso.
 
 ## Coordinación anterior
 
-El watcher, los comandos, los contratos y `docs/coordination/` se conservan como legado manual opcional para recuperación histórica o diagnóstico. No forman parte del flujo normal y solo deben activarse por pedido explícito del usuario. Las tareas y evidencias existentes no se migran, aprueban, ejecutan ni alteran automáticamente.
+El watcher, los comandos, los contratos y `docs/coordination/` se conservan como recuperación v2 manual. No forman parte del flujo nativo, el watcher no necesita estar activo y ambos circuitos no se usan a la vez para una misma tarea. Las tareas y evidencias existentes no se alteran automáticamente.
 
 ## Derivación y mantenimiento
 

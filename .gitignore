@@ -151,4 +151,5 @@ outputs/
 .coordination/failed/
 .coordination/evidence/
 .coordination/runtime/
+.coordination/tasks/
 .coordination/state.json

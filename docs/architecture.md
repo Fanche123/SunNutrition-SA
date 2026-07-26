@@ -120,13 +120,17 @@ Si Node no esta en `PATH`, usar el runtime provisto por el workspace. La verific
 - consulta SQL de solo lectura;
 - carga de `index.html` y de los scripts extraidos.
 
-## Coordinación heredada opcional
+## Coordinación nativa y recuperación
 
-El flujo predeterminado del proyecto es directo: el usuario trabaja con el especialista del dominio, el especialista inspecciona el alcance necesario, implementa o analiza lo solicitado, valida proporcionalmente y entrega el resultado. Las tareas nuevas no requieren `taskId`, handoffs, watcher, espera, presentación, `Aprobar`, `approve` ni `begin`.
+El flujo predeterminado usa una jerarquía nativa de dos niveles. El Coordinador crea `taskId`, contexto runtime y un agent thread `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. El Jefe determina ownership, crea especialistas, coordina implementación y validaciones y devuelve solo un resumen breve.
 
-La infraestructura ubicada en `.coordination/`, los comandos `coordination:*`, el watcher y el manual del Coordinador se conservan sin migraciones ni limpieza de estado como herramientas heredadas. Solo deben utilizarse cuando el usuario solicite expresamente recuperar, inspeccionar o diagnosticar una tarea histórica del protocolo. No forman parte del arranque normal ni pueden ejecutar cambios por sí solos.
+El Coordinador no ejecuta comandos, diff, pruebas, navegador ni cambios. Hay un solo escritor principal por tarea; exploradores y revisor son read-only. Dos escritores concurrentes requieren worktrees separados.
 
-Las tareas y revisiones existentes mantienen su historial. No se deben editar manualmente colas, estados, locks, manifests ni entregas para adaptar ese historial al flujo directo.
+El contexto técnico vive en `.coordination/tasks/<taskId>/` con `task.md`, `status.json`, `result.md` y `user-observations.md`, ignorados por Git. Una corrección reutiliza el mismo Jefe disponible; una tarea diferente crea otro limpio.
+
+La infraestructura `.coordination/`, los comandos `coordination:*`, el watcher y el protocolo v2 se conservan sin migraciones ni limpieza como modo de recuperación. No forman parte del flujo nativo, el watcher no necesita estar activo y no se ejecutan ambos circuitos para una misma tarea.
+
+Las tareas y revisiones existentes mantienen su historial. No se deben editar manualmente colas, estados, locks, manifests ni entregas para adaptar ese historial al flujo nativo.
 
 ### Registro histórico del protocolo v2
 

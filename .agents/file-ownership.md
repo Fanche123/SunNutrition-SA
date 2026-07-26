@@ -6,6 +6,8 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 |---|---|---|---|---|---|
 | `server.js`, `package.json` | Arquitectura | Todos | Composición/arranque; infraestructura | Alto | `arquitectura.md` |
 | `.gitattributes`, `.gitignore`, `.env.example` | Arquitectura | Todos | Configuración versionada; infraestructura | Medio | `arquitectura.md` |
+| `.codex/config.toml`, `.codex/agents/*.toml` | Arquitectura | Coordinador, todos los dominios | Configuración de subagentes nativos, modelos, concurrencia y permisos heredados | Alto | `arquitectura.md` + `coordinador.md` |
+| `.coordination/tasks/<taskId>/**` | Coordinador | Jefe de tarea, especialistas | Contexto e informe runtime del flujo nativo; ignorado por Git | Alto | `coordinador.md` + `arquitectura.md` |
 | `.coordination/README.md`, `.coordination/*.schema.json`, `.coordination/config*.json`, `.coordination/project-context.json` | Coordinador | Arquitectura | Contratos y configuración preservados del sistema de coordinación legado manual; infraestructura opcional | Alto | `coordinador.md` + `arquitectura.md` |
 | `.coordination/{inbox,processing,pending,approved,rejected,completed,failed,runtime,evidence}/**`, `.coordination/state.json` | Coordinador | Recuperación histórica explícita | Estado, colas y evidencia del legado; runtime no versionado que no se altera por defecto | Alto | `coordinador.md` |
 | `tools/coordination*.js`, `tools/coordination/**/*.js`, `tests/coordination*.test.js` | Coordinador | Arquitectura | Watcher, acciones, recuperación y pruebas del legado manual opcional | Alto | `coordinador.md` + `arquitectura.md` |
@@ -76,7 +78,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `.agents/bugs.md` | Bugs | Arquitectura | Guía de correcciones; documentación | Medio | `bugs.md` |
 | `.agents/nuevas-funcionalidades.md` | Nuevas funcionalidades | Arquitectura | Guía de coordinación; documentación | Medio | `nuevas-funcionalidades.md` |
 | `.agents/analista-funcional.md` | Analista funcional | Arquitectura | Guía de análisis; documentación | Medio | `analista-funcional.md` |
-| `.agents/coordinador.md` | Coordinador | Arquitectura, todos los especialistas | Manual histórico del sistema de coordinación legado; uso opcional y explícito | Alto | `coordinador.md` + `arquitectura.md` |
+| `.agents/coordinador.md` | Coordinador | Arquitectura, todos los especialistas | Flujo normal con subagentes nativos y recuperación v2 | Alto | `coordinador.md` + `arquitectura.md` |
 | `docs/architecture.md`, `refactor-architecture-plan.md`, `agent-manuals-plan.md` | Arquitectura | Todos | Arquitectura/planes; documentación | Medio | `arquitectura.md` |
 | `docs/administration-security.md` | Arquitectura | Administración, Base de datos | Seguridad local y requisitos previos a LAN | Medio | `arquitectura.md` + `administracion.md` |
 | `backend/README.md` | Arquitectura | Base de datos, Administración | Entrada documental backend | Bajo | `arquitectura.md` |
@@ -88,9 +90,9 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.
 
-Los especialistas reciben pedidos directamente y, si cambia el ownership, indican verbalmente el chat correcto. No escriben handoffs, presentaciones, aprobaciones o transferencias por defecto ni adquieren ownership de `.coordination/`.
+El Coordinador recibe los pedidos y crea un Jefe de tarea. El Jefe determina ownership, crea un escritor principal y coordina auxiliares read-only. Las correcciones continúan el mismo Jefe; las tareas diferentes usan uno nuevo. Los especialistas solo actualizan el contexto runtime de su tarea y no adquieren ownership de la coordinación v2.
 
-El Coordinador conserva la infraestructura y documentación anterior como legado manual opcional; Arquitectura conserva sus puntos de integración en `package.json` y `.gitignore`. Ningún consumidor puede activar el watcher, modificar estado histórico o convertir espera/tooling en ejecutores salvo pedido explícito del usuario.
+El Coordinador conserva la infraestructura anterior como recuperación v2 opcional. El watcher no participa del flujo normal y ningún consumidor puede activar el legado, modificar estado histórico o ejecutar ambos circuitos para la misma tarea salvo pedido explícito.
 
 ## Mantenimiento obligatorio
 

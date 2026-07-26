@@ -1,6 +1,20 @@
-# Protocolo de coordinación v2 — legado manual opcional
+# Protocolo de coordinación — nativo y recuperación v2
 
-> **ESTADO: LEGADO MANUAL OPCIONAL.** Este protocolo no forma parte del flujo normal actual. Un pedido natural nuevo se atiende directamente en el chat actual: no crea `taskId` ni requiere watcher, `enqueue`, `coordination:await`, `present`, `Aprobar`, `begin` o evidencia coordinada.
+## Contrato del flujo nativo
+
+Para cada tarea nueva, el Coordinador crea `taskId`, título, `.coordination/tasks/<taskId>/task.md` y un agent thread `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`. Una corrección reutiliza ese Jefe mientras esté disponible; otra tarea crea uno limpio.
+
+El Jefe lee el contexto, determina ownership, crea exactamente un escritor principal y los auxiliares read-only necesarios, espera resultados, ejecuta o delega validaciones y guarda el informe completo en `result.md`. Impacto visual material exige vista real o aislada y capturas revisadas.
+
+El Coordinador no ejecuta trabajo técnico. Recibe como máximo 10–15 líneas y responde con `TAREA`, `RESULTADO`, `SUBAGENTES`, `REVISIÓN DEL USUARIO`, `ESTADO` e `Informe completo`.
+
+`status.json` registra estado y Jefe responsable; `user-observations.md` conserva correcciones posteriores. Si el Jefe anterior terminó, el nuevo lee esos archivos y no depende del historial técnico del Coordinador.
+
+El Jefe aparece como agent thread en Subagents; sus hijos aparecen anidados o asociados según soporte del runtime. Escritura concurrente exige worktrees. Ningún agente hace commit o push automático.
+
+La coordinación v2 descrita debajo es exclusivamente recuperación y compatibilidad. El watcher no participa del flujo nativo y ambos circuitos nunca se ejecutan para la misma tarea.
+
+> **ESTADO: RECUPERACIÓN V2 MANUAL OPCIONAL.** Este protocolo no forma parte del flujo nativo. Un pedido nuevo usa `taskId` y subagente nativo, pero no requiere watcher, `enqueue`, `coordination:await`, `present`, `Aprobar`, `begin` ni evidencia v2.
 >
 > Las herramientas se usan únicamente por pedido explícito del usuario, recuperación histórica o diagnóstico; nunca se activan automáticamente. Las tareas existentes no se migran ni se alteran por este cambio.
 

@@ -42,23 +42,28 @@ Pedir confirmación humana adicional únicamente cuando falte una decisión cont
 
 Si una tarea crea un archivo permanente del sector, actualizar en la misma tarea el AGENT propietario, `.agents/file-ownership.md` y la arquitectura/dependencias afectadas. Al mover, renombrar o eliminar, actualizar todas sus referencias. Una integración nueva exige actualizar AGENT propietario, AGENT consumidor y ownership. No aplica a logs, temporales, outputs, backups, generados, adjuntos o caches. Esto forma parte de la definición de terminado.
 
-## Trabajo directo y derivación
+## Flujo nativo y derivación
 
-El flujo predeterminado no usa coordinación paralela:
+El flujo predeterminado usa una jerarquía nativa de dos niveles:
 
-1. el usuario envía el pedido natural al chat especialista;
-2. el especialista inspecciona únicamente el contexto relevante;
-3. implementa o analiza lo autorizado dentro de su ownership;
-4. valida proporcionalmente;
-5. entrega **Cambios**, **Archivos**, **Validación** y **Riesgos o pendientes**.
+1. el usuario describe el pedido al Coordinador;
+2. el Coordinador crea `taskId`, contexto runtime y un `jefe_tarea_estandar` o `jefe_tarea_alto_riesgo`;
+3. el Jefe determina ownership, consumidores, riesgo, impacto visual, archivos y pruebas;
+4. el Jefe crea y coordina exactamente un escritor principal y los auxiliares read-only necesarios;
+5. el Jefe desarrolla, prueba, revisa, corrige y escribe el informe técnico completo;
+6. el Coordinador recibe solamente un resumen de 10–15 líneas y lo presenta al usuario.
 
-No crear `taskId`, handoffs, evidencias de coordinación, revisiones paralelas, esperas ni pasos de `Aprobar`/`begin` para pedidos nuevos. Una observación natural del usuario se incorpora directamente al trabajo en curso, salvo que cambie materialmente el alcance o introduzca una decisión bloqueante.
+El Coordinador no hace trabajo técnico. Toda inspección, comando, diff, prueba, navegador, captura, regresión y corrección pertenece al Jefe de tarea y sus especialistas.
 
-Si una tarea pertenece a otro dominio, detener únicamente esa parte e indicar verbalmente el chat especialista correcto. No crear una transferencia ni estado intermedio.
+No ejecutar dos escritores simultáneos sobre la misma carpeta. `explorador_erp` y `revisor_erp` son auxiliares de solo lectura. Dos tareas simultáneas con escritura requieren worktrees separados.
 
-La infraestructura bajo `.coordination/`, su watcher, comandos y documentación se conserva como legado manual opcional. Usarla solo cuando el usuario lo solicite expresamente para una tarea histórica, recuperación o diagnóstico. No migrar, aprobar, ejecutar ni alterar tareas existentes por defecto.
+El contexto vive en `.coordination/tasks/<taskId>/`: `task.md`, `status.json`, `result.md` y `user-observations.md`. Es runtime ignorado. Una corrección reutiliza el mismo Jefe; una tarea diferente crea otro limpio.
 
-La evidencia visual del desarrollo directo no requiere manifest ni API coordinadora. Cuando un cambio visible lo amerite, comprobar la interfaz con capturas o inspección local sanitizada y proporcional, sin incluir datos sensibles.
+Clasificar el impacto visual como `none`, `minor` o `material`. Un impacto material requiere vista real o aislada, capturas y revisión de overflow, alineación, jerarquía y responsive.
+
+La infraestructura bajo `.coordination/`, su watcher, comandos y documentación se conserva como **modo de recuperación v2**. No se usa en el flujo nativo, no requiere watcher activo y nunca se ejecutan ambos circuitos para la misma tarea.
+
+Los subagentes no ejecutan migraciones o backfills reales, eliminaciones, operaciones financieras ni acciones destructivas sin autorización. Ningún agente hace commit o push automáticamente.
 
 ## Entrega breve
 
