@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>SunNutrition</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=20260724-commissions-png">
+  <link rel="stylesheet" href="assets/css/styles.css?v=20260726-dashboard-widgets">
 </head>
 <body>
   <div class="app-shell">
@@ -587,6 +587,30 @@
 
       <section class="view active" id="view-dashboard">
         <section class="dashboard-widget-grid">
+          <article class="dashboard-widget dashboard-payment-plans-widget" id="dashboard-payment-plans-widget">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Tesoreria</span>
+                <h2>Cuotas proximas</h2>
+              </div>
+              <strong id="dashboard-payment-plans-count">0</strong>
+            </div>
+            <p id="dashboard-payment-plans-summary">Cargando cuotas proximas...</p>
+            <div class="dashboard-widget-list" id="dashboard-payment-plans-list"></div>
+          </article>
+
+          <article class="dashboard-widget" id="dashboard-received-checks-widget" role="button" tabindex="0" hidden>
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Tesoreria</span>
+                <h2>Cheques sin cargar</h2>
+              </div>
+              <strong id="dashboard-received-checks-count">0</strong>
+            </div>
+            <p id="dashboard-received-checks-summary"></p>
+            <div class="dashboard-widget-list dashboard-received-checks-list" id="dashboard-received-checks-list"></div>
+          </article>
+
           <article class="dashboard-widget" id="dashboard-checks-widget" role="button" tabindex="0">
             <div class="dashboard-widget-header">
               <div>
@@ -2520,7 +2544,7 @@
   <script src="assets/js/modules/operational-data-coordinator.js?v=20260722-architecture-final"></script>
   <script src="assets/js/modules/sales-orders.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/collections-retentions.js?v=20260722-architecture-stage4"></script>
-  <script src="assets/js/modules/received-check-entry.js?v=20260722-architecture-stage4"></script>
+  <script src="assets/js/modules/received-check-entry.js?v=20260726-pending-received-checks"></script>
   <script src="assets/js/modules/issued-check-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/purchase-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/reception-entry.js?v=20260722-architecture-stage4"></script>
@@ -2531,6 +2555,6 @@
   <script src="assets/js/modules/data-map.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/sql-console.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/reports-cashflow.js?v=20260722-architecture-stage3"></script>
-  <script src="assets/js/modules/dashboard.js?v=20260722-architecture-stage3"></script>
+  <script src="assets/js/modules/dashboard.js?v=20260726-dashboard-widgets"></script>
 </body>
 </html>

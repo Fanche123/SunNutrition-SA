@@ -210,3 +210,243 @@ test("Dashboard usa el calendario anual y aísla un fallo de calendario", () => 
   assert.equal(purchases.value.length, 1);
   assert.equal(orders.value.length, 1);
 });
+
+test("Dashboard cuenta cobros con cheque sin registro recibido por id_cobro", () => {
+  const widget = { hidden: false, classList: { toggle() {} } };
+  const context = {
+    backendId: id,
+    normalizeCategory: normalize,
+    normalizeMoney: money.normalize,
+    parseDate: (value) => value || null,
+    formatDate: (value) => value ? value.split("-").reverse().join("/") : "",
+    formatMoney: money.format,
+    formatNumber: String,
+    escapeHtml: String,
+    displayNameLabel: (value) => String(value || "").replace(/_/g, " "),
+    comparableLookupId: id,
+    rowsByKey: (rows, key) => new Map((rows || []).filter((row) => id(row[key])).map((row) => [id(row[key]), row])),
+    dashboardExpandedWidget: "",
+    els: {
+      "dashboard-received-checks-widget": widget,
+      "dashboard-received-checks-count": { textContent: "" },
+      "dashboard-received-checks-summary": { textContent: "" },
+      "dashboard-received-checks-list": { innerHTML: "" }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/received-check-entry.js"), "utf8"), context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/dashboard.js"), "utf8"), context);
+
+  const collections = [
+    { id_cobro: 1, fecha_cobro: "2026-07-03", metodo: "Cheque", id_cliente: 10, monto: 125.5 },
+    { id_cobro: "1", fecha_cobro: "2026-07-04", metodo: "E-Cheq" },
+    { id_cobro: 2, fecha_cobro: "", metodo: "e cheque", id_cliente: 999, monto: 0 },
+    { id_cobro: 3, fecha_cobro: "2026-07-01", metodo: "Transferencia" },
+    { id_cobro: "", fecha_cobro: "2026-07-01", metodo: "Cheque" }
+  ];
+
+  assert.deepEqual(
+    Array.from(context.pendingReceivedCheckCollections(collections, []), (row) => id(row.id_cobro)),
+    ["2", "1"]
+  );
+  assert.deepEqual(
+    Array.from(
+      context.pendingReceivedCheckCollections(collections, [
+        { id_cheque_recibido: 10, id_cobro: 1 },
+        { id_cheque_recibido: 11, id_cobro: 1 },
+        { id_cheque_recibido: 12, id_cobro: "" }
+      ]),
+      (row) => id(row.id_cobro)
+    ),
+    ["2"]
+  );
+  assert.equal(
+    context.pendingReceivedCheckCollections(collections, [
+      { id_cheque_recibido: 10, id_cobro: 1 },
+      { id_cheque_recibido: 11, id_cobro: 2 }
+    ]).length,
+    0
+  );
+
+  context.dashboardWidgetData = { pendingReceivedChecks: [], errors: {} };
+  context.renderDashboardReceivedChecksWidget();
+  assert.equal(widget.hidden, true);
+
+  context.dashboardWidgetData = {
+    pendingReceivedChecks: context.buildDashboardPendingReceivedChecks(
+      collections,
+      [{ id_cheque_recibido: 99, id_cobro: 999 }],
+      [{ id_cliente: 10, nombre_cliente: "Cliente_Uno" }]
+    ),
+    errors: {}
+  };
+  context.renderDashboardReceivedChecksWidget();
+  assert.equal(widget.hidden, false);
+  assert.equal(context.els["dashboard-received-checks-count"].textContent, "2");
+  assert.match(context.els["dashboard-received-checks-list"].innerHTML, /03\/07\/2026 · Cliente Uno/);
+  assert.match(context.els["dashboard-received-checks-list"].innerHTML, /125,50/);
+  assert.match(context.els["dashboard-received-checks-list"].innerHTML, /Sin fecha · Cliente no disponible/);
+  assert.match(context.els["dashboard-received-checks-list"].innerHTML, /0,00/);
+});
+
+function upcomingPaymentPlanDashboardContext(overrides = {}) {
+  const context = {
+    normalizeCategory: normalize,
+    parseDate: (value) => {
+      const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (!match) return null;
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const date = new Date(year, month - 1, day);
+      return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+        ? `${match[1]}-${match[2]}-${match[3]}`
+        : null;
+    },
+    toIsoDate: (date) => [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0")
+    ].join("-"),
+    moneyToCents: money.toCents,
+    centsToMoney: money.fromCents,
+    ...overrides
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/dashboard.js"), "utf8"), context);
+  return context;
+}
+
+test("Dashboard selecciona, deduplica y agrupa cuotas impagas dentro de cinco días hábiles", () => {
+  const context = upcomingPaymentPlanDashboardContext();
+  const quota = (idValue, firstDate, firstAmount, overrides = {}) => ({
+    id_cuota_plan_pago: idValue,
+    nro_cuota: idValue,
+    estado: "Pendiente",
+    fecha_primer_vencimiento: firstDate,
+    fecha_segundo_vencimiento: "2026-08-15",
+    total_primer_vencimiento: firstAmount,
+    total_segundo_vencimiento: firstAmount,
+    plan_nombre: "Plan ARCA",
+    ...overrides
+  });
+  const result = context.buildDashboardUpcomingPaymentPlanQuotas([
+    quota("1", "2026-07-24", 100.01),
+    quota("2", "2026-07-31", 200.02),
+    quota("3", "2026-08-03", 300.03),
+    quota("4", "2026-07-24", 400.04, { estado: "Pagada" }),
+    quota("5", "2026-07-20", 120, {
+      estado: "Segundo vencimiento",
+      fecha_segundo_vencimiento: "2026-07-27",
+      total_segundo_vencimiento: 125.03
+    }),
+    quota("6", "2026-07-20", 60, {
+      estado: "Vencida",
+      fecha_segundo_vencimiento: "2026-07-23"
+    }),
+    quota("7", "2026-07-25", 75.04),
+    quota("8", "2026-07-27", "monto-invalido"),
+    quota("9", "2026-99-99", 90),
+    quota("11", "2026-07-28", ""),
+    quota("12", "2026-07-29", 10000000000000),
+    quota("2", "2026-07-24", 999.99),
+    quota("10", "2026-07-27", 24.96)
+  ], { todayIso: "2026-07-24", businessDays: 5 });
+
+  assert.equal(result.windowEnd, "2026-07-31");
+  assert.equal(result.count, 5);
+  assert.equal(result.totalCents, 52506);
+  assert.equal(result.totalAmount, 525.06);
+  assert.equal(result.invalidCount, 4);
+  assert.equal(result.quotas.filter((item) => item.id === "2").length, 1);
+  assert.equal(result.quotas.find((item) => item.id === "5").dueDate, "2026-07-27");
+  assert.equal(result.quotas.find((item) => item.id === "5").amountCents, 12503);
+  assert.equal(result.groups.find((group) => group.date === "2026-07-27").count, 2);
+  assert.equal(result.groups.find((group) => group.date === "2026-07-27").amountCents, 14999);
+  assert.equal(result.groups.some((group) => group.date === "2026-08-03"), false);
+});
+
+test("Dashboard calcula fronteras hábiles 0, 5 y 6 sin consumir el fin de semana", () => {
+  const context = upcomingPaymentPlanDashboardContext();
+  assert.equal(context.dashboardAddBusinessDaysIso("2026-07-24", 0), "2026-07-24");
+  assert.equal(context.dashboardAddBusinessDaysIso("2026-07-24", 5), "2026-07-31");
+  assert.equal(context.dashboardAddBusinessDaysIso("2026-07-24", 6), "2026-08-03");
+});
+
+test("Dashboard controla desbordes en acumulados por fecha y total", () => {
+  const context = upcomingPaymentPlanDashboardContext();
+  const maximumSafeQuota = (idValue, firstDate) => ({
+    id_cuota_plan_pago: idValue,
+    nro_cuota: idValue,
+    estado: "Pendiente",
+    fecha_primer_vencimiento: firstDate,
+    fecha_segundo_vencimiento: "2026-08-15",
+    total_primer_vencimiento: "9999999999999.99",
+    total_segundo_vencimiento: "9999999999999.99",
+    plan_nombre: "Plan límite"
+  });
+
+  const sameDate = context.buildDashboardUpcomingPaymentPlanQuotas([
+    maximumSafeQuota("safe-group-1", "2026-07-27"),
+    maximumSafeQuota("safe-group-2", "2026-07-27")
+  ], { todayIso: "2026-07-24", businessDays: 5 });
+  assert.equal(sameDate.count, 1);
+  assert.equal(sameDate.invalidCount, 1);
+  assert.equal(sameDate.groups.length, 1);
+  assert.equal(sameDate.groups[0].count, 1);
+  assert.equal(sameDate.totalAmount, 9999999999999.99);
+
+  const differentDates = context.buildDashboardUpcomingPaymentPlanQuotas([
+    maximumSafeQuota("safe-total-1", "2026-07-27"),
+    maximumSafeQuota("safe-total-2", "2026-07-28")
+  ], { todayIso: "2026-07-24", businessDays: 5 });
+  assert.equal(differentDates.count, 1);
+  assert.equal(differentDates.invalidCount, 1);
+  assert.equal(differentDates.groups.length, 1);
+  assert.equal(differentDates.totalAmount, 9999999999999.99);
+});
+
+test("Dashboard consume el estado derivado y las cuotas completas del contrato de Planes de pago", async () => {
+  const requests = [];
+  const context = upcomingPaymentPlanDashboardContext({
+    requestBackendApi: async (requestPath) => {
+      requests.push(requestPath);
+      if (requestPath === "/api/treasury/payment-plans") {
+        return { plans: [{ id_plan_pago: "1" }, { id_plan_pago: "2" }] };
+      }
+      const planId = requestPath.split("/").pop();
+      return {
+        plan: {
+          nombre: `Plan ${planId}`,
+          organismo: "ARCA",
+          cuotas: [{ id_cuota_plan_pago: planId, estado: planId === "1" ? "Pagada" : "Segundo vencimiento" }]
+        }
+      };
+    }
+  });
+
+  const quotas = await context.loadDashboardPaymentPlanQuotas();
+  assert.deepEqual(requests, [
+    "/api/treasury/payment-plans",
+    "/api/treasury/payment-plans/1",
+    "/api/treasury/payment-plans/2"
+  ]);
+  assert.equal(quotas.length, 2);
+  assert.equal(quotas[0].estado, "Pagada");
+  assert.equal(quotas[1].estado, "Segundo vencimiento");
+  assert.equal(quotas[1].plan_nombre, "Plan 2");
+});
+
+test("Dashboard registra en cacheElements todos los nodos del widget de cuotas próximas", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  [
+    "dashboard-payment-plans-widget",
+    "dashboard-payment-plans-count",
+    "dashboard-payment-plans-summary",
+    "dashboard-payment-plans-list"
+  ].forEach((idValue) => {
+    assert.match(htmlSource, new RegExp(`id="${idValue}"`));
+    assert.match(appSource, new RegExp(`"${idValue}"`));
+  });
+});

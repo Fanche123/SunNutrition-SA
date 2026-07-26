@@ -2,10 +2,10 @@ function renderReceivedCheckEntry() {
   const body = els["received-check-pending-body"];
   if (!body) return;
 
-  const existingCheckCollectionIds = new Set(commercialEntryData.cheques_recibidos.map((check) => backendId(check.id_cobro)).filter(Boolean));
-  const pendingChecks = commercialEntryData.cobros
-    .filter((collection) => isCheckCollectionMethod(collection.metodo) && !existingCheckCollectionIds.has(backendId(collection.id_cobro)))
-    .sort((a, b) => String(a.fecha_cobro || "").localeCompare(String(b.fecha_cobro || "")));
+  const pendingChecks = pendingReceivedCheckCollections(
+    commercialEntryData.cobros,
+    commercialEntryData.cheques_recibidos
+  );
 
   if (els["received-check-count"]) els["received-check-count"].textContent = `${pendingChecks.length} cobro${pendingChecks.length === 1 ? "" : "s"}`;
   body.innerHTML = pendingChecks.length ? pendingChecks.map((collection) => `
@@ -24,6 +24,27 @@ function renderReceivedCheckEntry() {
 function isCheckCollectionMethod(value) {
   const method = normalizeCategory(value);
   return method.includes("cheque") || method.includes("echeq") || method.includes("e cheque");
+}
+
+function pendingReceivedCheckCollections(collections, receivedChecks) {
+  const loadedCollectionIds = new Set(
+    (receivedChecks || []).map((check) => backendId(check.id_cobro)).filter(Boolean)
+  );
+  const pendingByCollectionId = new Map();
+
+  (collections || []).forEach((collection) => {
+    const collectionId = backendId(collection.id_cobro);
+    if (
+      !collectionId
+      || !isCheckCollectionMethod(collection.metodo)
+      || loadedCollectionIds.has(collectionId)
+      || pendingByCollectionId.has(collectionId)
+    ) return;
+    pendingByCollectionId.set(collectionId, collection);
+  });
+
+  return [...pendingByCollectionId.values()]
+    .sort((a, b) => String(a.fecha_cobro || "").localeCompare(String(b.fecha_cobro || "")));
 }
 
 function openReceivedCheckDraft(collectionId) {

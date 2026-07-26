@@ -25,7 +25,10 @@ async function loadDashboardWidgets() {
       source("productos", backendTableRowsForEntry("productos")),
       source("entregas", backendTableRowsForEntry("entregas")),
       source("detalle de entregas", backendTableRowsForEntry("entregas_detalle")),
-      source("deudas", loadExpenseDebtTables())
+      source("deudas", loadExpenseDebtTables()),
+      source("cobros", backendTableRowsForEntry("cobros")),
+      source("cheques recibidos", backendTableRowsForEntry("cheques_recibidos")),
+      source("cuotas de planes de pago", loadDashboardPaymentPlanQuotas())
     ]);
     const [
       issuedChecks,
@@ -45,7 +48,10 @@ async function loadDashboardWidgets() {
       products,
       deliveries,
       deliveryDetails,
-      expenseDebtTables
+      expenseDebtTables,
+      collections,
+      receivedChecks,
+      paymentPlanQuotas
     ] = results.map((result) => result.rows);
     const errorFor = (indexes) => indexes
       .map((index) => results[index])
@@ -72,6 +78,14 @@ async function loadDashboardWidgets() {
       deliveries,
       deliveryDetails
     }));
+    const pendingReceivedChecksCalculation = calculateDashboardWidget(
+      "cheques recibidos pendientes de cargar",
+      () => buildDashboardPendingReceivedChecks(collections, receivedChecks, clients)
+    );
+    const paymentPlansCalculation = calculateDashboardWidget(
+      "cuotas proximas de planes de pago",
+      () => buildDashboardUpcomingPaymentPlanQuotas(paymentPlanQuotas)
+    );
     const combinedError = (...messages) => messages.filter(Boolean).join("; ");
 
     dashboardWidgetData = {
@@ -79,11 +93,15 @@ async function loadDashboardWidgets() {
       missingInventoryDays: inventoryCalculation.value,
       pendingPurchases: purchasesCalculation.value,
       pendingOrders: ordersCalculation.value,
+      pendingReceivedChecks: pendingReceivedChecksCalculation.value,
+      upcomingPaymentPlanQuotas: paymentPlansCalculation.value,
       errors: {
         checks: combinedError(errorFor([0, 1, 17]), checksCalculation.error),
         inventory: combinedError(errorFor([2]), inventoryCalculation.error),
         purchases: combinedError(errorFor([3, 4, 5, 6, 7, 8, 9, 10]), purchasesCalculation.error),
-        orders: combinedError(errorFor([11, 12, 13, 14, 15, 16]), ordersCalculation.error)
+        orders: combinedError(errorFor([11, 12, 13, 14, 15, 16]), ordersCalculation.error),
+        pendingReceivedChecks: combinedError(errorFor([18, 19]), pendingReceivedChecksCalculation.error),
+        paymentPlans: combinedError(errorFor([20]), paymentPlansCalculation.error)
       }
     };
     renderDashboardWidgets();
@@ -100,7 +118,161 @@ function calculateDashboardWidget(label, callback) {
   }
 }
 
+async function loadDashboardPaymentPlanQuotas() {
+  const listPayload = await requestBackendApi("/api/treasury/payment-plans");
+  const plans = Array.isArray(listPayload?.plans) ? listPayload.plans : [];
+  const planIds = plans.map((plan) => String(plan?.id_plan_pago ?? "").trim());
+  if (planIds.some((planId) => !planId)) {
+    throw new Error("El listado de planes contiene un identificador invalido.");
+  }
+  const detailPayloads = await Promise.all(planIds.map((planId) => (
+    requestBackendApi(`/api/treasury/payment-plans/${encodeURIComponent(planId)}`)
+  )));
+  return detailPayloads.flatMap((payload) => {
+    const plan = payload?.plan || {};
+    const quotas = Array.isArray(plan.cuotas) ? plan.cuotas : [];
+    return quotas.map((quota) => ({
+      ...quota,
+      plan_nombre: String(plan.nombre || ""),
+      plan_organismo: String(plan.organismo || "")
+    }));
+  });
+}
+
+function buildDashboardUpcomingPaymentPlanQuotas(
+  quotas,
+  { todayIso = toIsoDate(new Date()), businessDays = 5 } = {}
+) {
+  const today = parseDate(todayIso);
+  if (!today) throw new Error("La fecha actual del Dashboard es invalida.");
+  const windowEnd = dashboardAddBusinessDaysIso(today, businessDays);
+  const selected = [];
+  const seenQuotaIds = new Set();
+  let invalidCount = 0;
+
+  (quotas || []).forEach((quota, index) => {
+    const quotaId = String(quota?.id_cuota_plan_pago ?? "").trim();
+    const deduplicationKey = quotaId ? `id:${quotaId}` : `row:${index}`;
+    if (seenQuotaIds.has(deduplicationKey)) return;
+    seenQuotaIds.add(deduplicationKey);
+    if (normalizeCategory(quota?.estado) === "pagada") return;
+
+    const applicable = dashboardApplicablePaymentPlanDue(quota, today);
+    if (applicable?.invalid) {
+      invalidCount += 1;
+      return;
+    }
+    if (!applicable || applicable.date > windowEnd) return;
+
+    const rawAmount = quota?.[applicable.amountField];
+    const amountText = String(rawAmount ?? "").trim();
+    const numericAmount = typeof rawAmount === "number"
+      ? rawAmount
+      : amountText
+      ? Number(amountText)
+      : Number.NaN;
+    if (!Number.isFinite(numericAmount) || numericAmount < 0) {
+      invalidCount += 1;
+      return;
+    }
+    let amountCents;
+    try {
+      amountCents = moneyToCents(numericAmount);
+    } catch (_error) {
+      invalidCount += 1;
+      return;
+    }
+    if (!Number.isSafeInteger(amountCents)) {
+      invalidCount += 1;
+      return;
+    }
+    selected.push({
+      id: quotaId,
+      planName: String(quota?.plan_nombre || ""),
+      planAgency: String(quota?.plan_organismo || ""),
+      quotaNumber: String(quota?.nro_cuota ?? "").trim(),
+      dueDate: applicable.date,
+      amountCents
+    });
+  });
+
+  selected.sort((left, right) => (
+    left.dueDate.localeCompare(right.dueDate)
+    || left.planName.localeCompare(right.planName)
+    || left.quotaNumber.localeCompare(right.quotaNumber, undefined, { numeric: true })
+  ));
+  const grouped = new Map();
+  const safelyGroupedQuotas = [];
+  let totalCents = 0;
+  selected.forEach((quota) => {
+    const current = grouped.get(quota.dueDate) || { date: quota.dueDate, count: 0, amountCents: 0 };
+    const nextGroupCents = current.amountCents + quota.amountCents;
+    const nextTotalCents = totalCents + quota.amountCents;
+    try {
+      centsToMoney(nextGroupCents);
+      centsToMoney(nextTotalCents);
+    } catch (_error) {
+      invalidCount += 1;
+      return;
+    }
+    current.count += 1;
+    current.amountCents = nextGroupCents;
+    grouped.set(quota.dueDate, current);
+    totalCents = nextTotalCents;
+    safelyGroupedQuotas.push(quota);
+  });
+  const groups = Array.from(grouped.values()).map((group) => ({
+    date: group.date,
+    count: group.count,
+    amount: centsToMoney(group.amountCents),
+    amountCents: group.amountCents
+  }));
+
+  return {
+    count: safelyGroupedQuotas.length,
+    totalAmount: centsToMoney(totalCents),
+    totalCents,
+    groups,
+    quotas: safelyGroupedQuotas,
+    invalidCount,
+    windowEnd
+  };
+}
+
+function dashboardApplicablePaymentPlanDue(quota, todayIso) {
+  const firstDate = parseDate(quota?.fecha_primer_vencimiento);
+  if (!firstDate) return { invalid: true };
+  if (firstDate >= todayIso) {
+    return { date: firstDate, amountField: "total_primer_vencimiento" };
+  }
+  const secondDate = parseDate(quota?.fecha_segundo_vencimiento);
+  if (!secondDate) return { invalid: true };
+  if (secondDate >= todayIso) {
+    return { date: secondDate, amountField: "total_segundo_vencimiento" };
+  }
+  return null;
+}
+
+function dashboardAddBusinessDaysIso(startIso, businessDays) {
+  const normalizedStart = parseDate(startIso);
+  if (!normalizedStart || !Number.isInteger(businessDays) || businessDays < 0) {
+    throw new Error("La ventana de dias habiles del Dashboard es invalida.");
+  }
+  const [year, month, day] = normalizedStart.split("-").map(Number);
+  const cursor = new Date(year, month - 1, day);
+  let remaining = businessDays;
+  while (remaining > 0) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) remaining -= 1;
+  }
+  return toIsoDate(cursor);
+}
+
 function renderDashboardLoading() {
+  els["dashboard-received-checks-widget"].hidden = true;
+  els["dashboard-payment-plans-count"].textContent = "-";
+  els["dashboard-payment-plans-summary"].textContent = "Cargando cuotas proximas...";
+  els["dashboard-payment-plans-list"].innerHTML = "";
   els["dashboard-checks-count"].textContent = "-";
   els["dashboard-next-check"].textContent = "Cargando cheques pendientes...";
   els["dashboard-week-checks"].innerHTML = "";
@@ -116,9 +288,11 @@ function renderDashboardLoading() {
 }
 
 function renderDashboardError(message) {
-  ["dashboard-checks-widget", "dashboard-inventory-widget", "dashboard-purchases-widget", "dashboard-orders-widget"].forEach((id) => {
+  els["dashboard-received-checks-widget"].hidden = true;
+  ["dashboard-payment-plans-widget", "dashboard-checks-widget", "dashboard-inventory-widget", "dashboard-purchases-widget", "dashboard-orders-widget"].forEach((id) => {
     els[id]?.classList.remove("is-warning", "is-danger");
   });
+  els["dashboard-payment-plans-summary"].textContent = message;
   els["dashboard-next-check"].textContent = message;
   els["dashboard-inventory-summary"].textContent = message;
   els["dashboard-purchases-summary"].textContent = message;
@@ -290,10 +464,91 @@ function dashboardOrderUrgency(order) {
 }
 
 function renderDashboardWidgets() {
+  renderDashboardPaymentPlansWidget();
+  renderDashboardReceivedChecksWidget();
   renderDashboardChecksWidget();
   renderDashboardInventoryWidget();
   renderDashboardPurchasesWidget();
   renderDashboardOrdersWidget();
+}
+
+function renderDashboardPaymentPlansWidget() {
+  const rawSummary = dashboardWidgetData.upcomingPaymentPlanQuotas;
+  const summary = rawSummary && !Array.isArray(rawSummary) ? rawSummary : {
+    count: 0,
+    totalAmount: 0,
+    groups: [],
+    invalidCount: 0
+  };
+  const groups = Array.isArray(summary.groups) ? summary.groups : [];
+  const loadError = dashboardWidgetData.errors?.paymentPlans;
+  const hasDueToday = groups.some((group) => group.date === toIsoDate(new Date()));
+
+  els["dashboard-payment-plans-count"].textContent = loadError ? "!" : formatNumber(summary.count);
+  els["dashboard-payment-plans-summary"].textContent = loadError
+    ? `No se pudo cargar: ${loadError}.`
+    : summary.count
+    ? `Total a cubrir: ${formatMoney(summary.totalAmount)}`
+    : "No hay cuotas a cubrir en los proximos 5 dias habiles.";
+  els["dashboard-payment-plans-list"].innerHTML = loadError
+    ? dashboardLoadError(loadError)
+    : groups.length
+    ? groups.map((group) => `
+        <div class="dashboard-mini-row">
+          <span>${formatDate(group.date)} · ${formatNumber(group.count)} ${group.count === 1 ? "cuota" : "cuotas"}</span>
+          <strong>${formatMoney(group.amount)}</strong>
+        </div>
+      `).join("")
+    : `<div class="dashboard-empty">Sin cuotas proximas.</div>`;
+  if (!loadError && summary.invalidCount) {
+    els["dashboard-payment-plans-list"].insertAdjacentHTML(
+      "beforeend",
+      `<div class="dashboard-data-warning">${formatNumber(summary.invalidCount)} cuota(s) omitida(s) por fecha, monto o suma fuera de rango.</div>`
+    );
+  }
+  els["dashboard-payment-plans-widget"].classList.toggle("is-danger", !loadError && hasDueToday);
+  els["dashboard-payment-plans-widget"].classList.toggle("is-warning", !loadError && summary.count > 0 && !hasDueToday);
+}
+
+function renderDashboardReceivedChecksWidget() {
+  const pendingChecks = dashboardWidgetData.pendingReceivedChecks || [];
+  const loadError = dashboardWidgetData.errors?.pendingReceivedChecks;
+  const widget = els["dashboard-received-checks-widget"];
+  widget.hidden = Boolean(loadError) || pendingChecks.length === 0;
+  if (widget.hidden) return;
+  const isExpanded = dashboardExpandedWidget === "receivedChecks";
+  const visibleChecks = isExpanded ? pendingChecks : pendingChecks.slice(0, 2);
+  els["dashboard-received-checks-count"].textContent = formatNumber(pendingChecks.length);
+  els["dashboard-received-checks-summary"].textContent = pendingChecks.length === 1
+    ? "Hay un cobro con cheque pendiente de cargar."
+    : `Hay ${pendingChecks.length} cobros con cheque pendientes de cargar.`;
+  els["dashboard-received-checks-list"].innerHTML = visibleChecks.map(dashboardReceivedCheckMiniRow).join("")
+    + (!isExpanded && pendingChecks.length > visibleChecks.length
+      ? `<div class="dashboard-more">+${formatNumber(pendingChecks.length - visibleChecks.length)} cobro(s) más</div>`
+      : "");
+  widget.classList.toggle("is-expanded", isExpanded);
+}
+
+function buildDashboardPendingReceivedChecks(collections, receivedChecks, clients) {
+  const clientsById = rowsByKey(clients, "id_cliente");
+  return pendingReceivedCheckCollections(collections, receivedChecks).map((collection) => {
+    const client = clientsById.get(comparableLookupId(collection.id_cliente));
+    return {
+      id: backendId(collection.id_cobro),
+      date: parseDate(collection.fecha_cobro),
+      client: displayNameLabel(client?.nombre_cliente || client?.nombre || "") || "Cliente no disponible",
+      amount: normalizeMoney(collection.monto)
+    };
+  });
+}
+
+function dashboardReceivedCheckMiniRow(check) {
+  return `
+    <div class="dashboard-mini-row">
+      <span>${escapeHtml(check.date ? formatDate(check.date) : "Sin fecha")} · ${escapeHtml(check.client)}</span>
+      <strong>${formatMoney(check.amount)}</strong>
+    </div>
+  `;
 }
 
 function renderDashboardChecksWidget() {

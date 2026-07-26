@@ -377,7 +377,8 @@
       const isSelected = state.mode !== "create"
         && String(state.selected?.id_plan_pago) === String(plan.id_plan_pago);
       const paid = Number(plan.totales?.pagadas) || 0;
-      const pending = Math.max(0, (Number(plan.cantidad_cuotas) || 0) - paid);
+      const pending = Number(plan.totales?.pendientes) || 0;
+      const secondDue = Number(plan.totales?.segundos_vencimientos) || 0;
       return `
         <button class="payment-plan-list-item ${isSelected ? "is-active" : ""}"
           type="button"
@@ -395,6 +396,7 @@
             <span>Pendientes <strong>${pending}</strong></span>
             <span>Vencidas <strong>${plan.totales.vencidas}</strong></span>
             <span>Próximas <strong>${plan.totales.proximas}</strong></span>
+            <span>Segundo vencimiento <strong>${secondDue}</strong></span>
           </span>
         </button>
       `;
@@ -649,9 +651,11 @@
     const paid = quotas.filter((quota) => quota.estado === "Pagada").length;
     const overdue = quotas.filter((quota) => quota.estado === "Vencida").length;
     const upcoming = quotas.filter((quota) => quota.estado === "Próxima").length;
+    const secondDue = quotas.filter((quota) => quota.estado === "Segundo vencimiento").length;
     let status = "En curso";
     if (quotas.length && paid === quotas.length) status = "Cancelado";
     else if (overdue) status = "Con cuotas vencidas";
+    else if (secondDue) status = "En segundo vencimiento";
     else if (upcoming) status = "Próximos vencimientos";
     if (mode === "create") status = "Nuevo";
     return `
@@ -761,6 +765,7 @@
     if (status === "Pagada") return "is-paid";
     if (status === "Vencida") return "is-overdue";
     if (status === "Próxima") return "is-upcoming";
+    if (status === "Segundo vencimiento") return "is-second-due";
     return "is-pending";
   }
 
@@ -782,6 +787,8 @@
       total_general: 0,
       vencidas: 0,
       proximas: 0,
+      segundos_vencimientos: 0,
+      pendientes: 0,
       vinculadas: 0
     };
   }

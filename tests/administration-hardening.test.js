@@ -654,10 +654,15 @@ async function testOperationalEndpointCompatibility() {
   const stylesSource = fs.readFileSync(path.resolve(__dirname, "..", "assets/css/styles.css"), "utf8");
 
   assert.match(editorSource, /\/api\/admin\/tables/);
+  assert.doesNotMatch(editorSource, /\/api\/backend\/tables/);
+  assert.doesNotMatch(editorSource, /endpointScope/);
   assert.match(editorSource, /method:\s*"PATCH"/);
   assert.match(editorSource, /\/cell/);
   assert.match(editorSource, /all:\s*true/);
   assert.match(editorSource, /ErpMoneyColumns\?\.isMoneyColumn/);
+  assert.match(editorSource, /parseMoneyInput\(rawValue, \{ allowEmpty: true \}\)/);
+  assert.match(editorSource, /parsed\.ok && !parsed\.empty/);
+  assert.match(editorSource, /: String\(rawValue \?\? ""\)/);
   assert.match(editorSource, /setupDataEditorGrid/);
   assert.match(editorSource, /data-editor-cell/);
   assert.match(editorSource, /meta\.type === "boolean"/);

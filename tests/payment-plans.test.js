@@ -60,7 +60,7 @@ function createHarness(initial = fixture(), options = {}) {
   let saves = 0;
   const service = createPaymentPlansService({
     backendId: (value) => String(value ?? "").trim(),
-    backendIsoDate: (value) => isIsoDate(String(value || "")) ? String(value) : "",
+    backendIsoDate: options.backendIsoDate || ((value) => isIsoDate(String(value || "")) ? String(value) : ""),
     backendNextNumericId,
     backendNumber: (value) => Number(value) || 0,
     ensureBackendTable,
@@ -78,6 +78,8 @@ function createHarness(initial = fixture(), options = {}) {
       response.payload = payload;
       return response;
     },
+    currentDateIso: options.useTimeZoneHelper ? undefined : () => options.currentDateIso || "2026-07-01",
+    currentInstant: options.currentInstant ? () => new Date(options.currentInstant) : undefined,
     failureInjector: options.failureInjector
   });
   return { service, getCache: () => cache, getSaves: () => saves };
@@ -150,6 +152,70 @@ async function testPendingBalanceFromAppliedPayments() {
   assert.strictEqual(response.payload.plan.totales.saldo_pendiente, 194.75);
   assert.strictEqual(response.payload.plan.cuotas[2].monto_pagado, 45.25);
   assert.notStrictEqual(response.payload.plan.cuotas[2].estado, "Pagada");
+}
+
+async function testQuotaStateDateBoundaries() {
+  const cases = [
+    ["2026-07-01", "Pendiente", { pendientes: 1, proximas: 0, segundos_vencimientos: 0, vencidas: 0 }],
+    ["2026-08-10", "Próxima", { pendientes: 0, proximas: 1, segundos_vencimientos: 0, vencidas: 0 }],
+    ["2026-08-11", "Segundo vencimiento", { pendientes: 0, proximas: 0, segundos_vencimientos: 1, vencidas: 0 }],
+    ["2026-08-20", "Segundo vencimiento", { pendientes: 0, proximas: 0, segundos_vencimientos: 1, vencidas: 0 }],
+    ["2026-08-21", "Vencida", { pendientes: 0, proximas: 0, segundos_vencimientos: 0, vencidas: 1 }]
+  ];
+
+  for (const [currentDateIso, expectedState, expectedCounts] of cases) {
+    const harness = createHarness(fixture(), { currentDateIso });
+    const response = await invoke(harness.service.handlePaymentPlanGet, "/api/treasury/payment-plans/1");
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(response.payload.plan.cuotas[1].estado, expectedState);
+    assert.deepStrictEqual({
+      pendientes: response.payload.plan.totales.pendientes,
+      proximas: response.payload.plan.totales.proximas,
+      segundos_vencimientos: response.payload.plan.totales.segundos_vencimientos,
+      vencidas: response.payload.plan.totales.vencidas
+    }, expectedCounts);
+  }
+
+  const paidHarness = createHarness(fixture(), { currentDateIso: "2026-08-21" });
+  let response = await invoke(paidHarness.service.handlePaymentPlanGet, "/api/treasury/payment-plans/1");
+  assert.strictEqual(response.payload.plan.cuotas[0].estado, "Pagada");
+
+  const beforeBuenosAiresMidnight = createHarness(fixture(), {
+    useTimeZoneHelper: true,
+    currentInstant: "2026-08-21T02:30:00.000Z"
+  });
+  response = await invoke(beforeBuenosAiresMidnight.service.handlePaymentPlanGet, "/api/treasury/payment-plans/1");
+  assert.strictEqual(response.payload.plan.cuotas[1].estado, "Segundo vencimiento");
+
+  const afterBuenosAiresMidnight = createHarness(fixture(), {
+    useTimeZoneHelper: true,
+    currentInstant: "2026-08-21T03:30:00.000Z"
+  });
+  response = await invoke(afterBuenosAiresMidnight.service.handlePaymentPlanGet, "/api/treasury/payment-plans/1");
+  assert.strictEqual(response.payload.plan.cuotas[1].estado, "Vencida");
+
+  const permissiveBackendIsoDate = (value) => String(value || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})/)?.[0] || "";
+  const unsafeDateOverrides = [
+    { fecha_primer_vencimiento: "" },
+    { fecha_segundo_vencimiento: "" },
+    { fecha_segundo_vencimiento: "fecha-inválida" },
+    { fecha_segundo_vencimiento: "2026-02-30" },
+    { fecha_segundo_vencimiento: "2026-13-01" },
+    { fecha_segundo_vencimiento: "2026-08-99" },
+    { fecha_segundo_vencimiento: "2026-08-09" }
+  ];
+  for (const overrides of unsafeDateOverrides) {
+    const unsafeDates = fixture();
+    Object.assign(unsafeDates.tables.cuotas_planes_pagos.rows[1], overrides);
+    const unsafeHarness = createHarness(unsafeDates, {
+      currentDateIso: "2026-08-21",
+      backendIsoDate: permissiveBackendIsoDate
+    });
+    response = await invoke(unsafeHarness.service.handlePaymentPlanGet, "/api/treasury/payment-plans/1");
+    assert.strictEqual(response.payload.plan.cuotas[1].estado, "Pendiente");
+    assert.strictEqual(response.payload.plan.totales.vencidas, 0);
+    assert.strictEqual(response.payload.plan.totales.segundos_vencimientos, 0);
+  }
 }
 
 async function testCanonicalCentValidation() {
@@ -462,7 +528,14 @@ function testExpenseLinkEditorContract() {
   assert.match(source, /global\.addEventListener\("beforeunload"/);
   assert.match(source, /const firstTotalCents = capitalCents \+ financialInterestCents/);
   assert.match(source, /total_primer_vencimiento: centsToMoney\(moneyToCents\(quota\.total_primer_vencimiento\)\)/);
+  assert.match(source, /plan\.totales\?\.pendientes/);
+  assert.match(source, /plan\.totales\?\.segundos_vencimientos/);
+  assert.match(source, /if \(status === "Segundo vencimiento"\) return "is-second-due"/);
   assert.doesNotMatch(source, /function round\(value\)/);
+  const serviceSource = fs.readFileSync(path.join(__dirname, "..", "backend", "services", "payment-plans.service.js"), "utf8");
+  assert.match(serviceSource, /timeZone: "America\/Argentina\/Buenos_Aires"/);
+  const styles = fs.readFileSync(path.join(__dirname, "..", "assets", "css", "styles.css"), "utf8");
+  assert.match(styles, /\.payment-plan-status\.is-second-due/);
   const appSource = fs.readFileSync(path.join(__dirname, "..", "assets", "js", "app.js"), "utf8");
   assert.match(appSource, /Hay cambios sin guardar en Planes de pago/);
 }
@@ -470,6 +543,7 @@ function testExpenseLinkEditorContract() {
 async function main() {
   await testReadAndCreate();
   await testPendingBalanceFromAppliedPayments();
+  await testQuotaStateDateBoundaries();
   await testCanonicalCentValidation();
   await testAtomicFullEdit();
   await testValidationAndDelete();

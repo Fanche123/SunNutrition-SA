@@ -68,7 +68,8 @@ let dashboardWidgetData = {
   checks: [],
   missingInventoryDays: [],
   pendingPurchases: [],
-  pendingOrders: []
+  pendingOrders: [],
+  pendingReceivedChecks: []
 };
 let dashboardExpandedWidget = "";
 let receptionInvoiceReadRequestId = 0;
@@ -302,6 +303,14 @@ function cacheElements() {
     "metric-margin-unit",
     "metric-net-unit",
     "metric-net-produced-unit",
+    "dashboard-payment-plans-widget",
+    "dashboard-payment-plans-count",
+    "dashboard-payment-plans-summary",
+    "dashboard-payment-plans-list",
+    "dashboard-received-checks-widget",
+    "dashboard-received-checks-count",
+    "dashboard-received-checks-summary",
+    "dashboard-received-checks-list",
     "dashboard-checks-widget",
     "dashboard-checks-count",
     "dashboard-next-check",
@@ -1059,6 +1068,8 @@ function bindEvents() {
     render();
   });
 
+  els["dashboard-received-checks-widget"]?.addEventListener("click", () => toggleDashboardWidget("receivedChecks"));
+  els["dashboard-received-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "receivedChecks"));
   els["dashboard-checks-widget"]?.addEventListener("click", () => toggleDashboardWidget("checks"));
   els["dashboard-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "checks"));
   els["dashboard-inventory-widget"]?.addEventListener("click", () => toggleDashboardWidget("inventory"));

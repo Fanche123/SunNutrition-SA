@@ -25,8 +25,7 @@ function createDataEditorViewState() {
     virtualFrame: 0,
     searchTimer: 0,
     filterTimer: 0,
-    saveQueue: Promise.resolve(),
-    endpointScope: "admin"
+    saveQueue: Promise.resolve()
   };
 }
 
@@ -146,11 +145,8 @@ async function loadDataEditorTable(_viewId = "primary", options = {}) {
     const filters = dataEditorActiveFilters();
     if (Object.keys(filters).length) params.set("filters", JSON.stringify(filters));
 
-    const endpointBase = view.endpointScope === "operational"
-      ? "/api/backend/tables"
-      : "/api/admin/tables";
     const response = await fetch(
-      `${API_BASE_URL}${endpointBase}/${encodeURIComponent(tableName)}?${params}`,
+      `${API_BASE_URL}/api/admin/tables/${encodeURIComponent(tableName)}?${params}`,
       { cache: "no-store" }
     );
     const payload = await response.json().catch(() => ({}));
@@ -802,7 +798,10 @@ function createDataEditorCellControl(meta, relation, rawValue, column) {
   }
   if (meta.type === "money") {
     input.inputMode = "decimal";
-    input.value = String(rawValue).trim() ? formatMoneyInput(normalizeMoney(rawValue)) : "";
+    const parsed = parseMoneyInput(rawValue, { allowEmpty: true });
+    input.value = parsed.ok && !parsed.empty
+      ? formatMoneyInput(parsed.amount)
+      : String(rawValue ?? "");
   } else {
     input.value = rawValue === null || rawValue === undefined ? "" : String(rawValue);
   }

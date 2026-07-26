@@ -1014,10 +1014,25 @@ textarea {
   transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, min-height 0.18s ease;
 }
 
+.dashboard-widget[hidden] {
+  display: none;
+}
+
 .dashboard-widget.is-expanded {
   grid-column: 1 / -1;
   min-height: 0;
   cursor: default;
+}
+
+.dashboard-payment-plans-widget {
+  grid-column: 1 / -1;
+  min-height: 0;
+  cursor: default;
+}
+
+.dashboard-payment-plans-widget .dashboard-widget-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
 .dashboard-widget:hover,
@@ -1082,6 +1097,17 @@ textarea {
   align-content: start;
 }
 
+.dashboard-received-checks-list {
+  display: grid;
+}
+
+.dashboard-more {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+}
+
 .dashboard-widget.is-expanded .dashboard-widget-list {
   display: grid;
   margin-top: 8px;
@@ -1143,6 +1169,13 @@ textarea {
 
 .dashboard-expanded-empty {
   margin: 16px;
+}
+
+.dashboard-data-warning {
+  grid-column: 1 / -1;
+  color: #9a3412;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .cashflow-week-summary td {
@@ -6256,6 +6289,11 @@ button.danger {
 .payment-plan-status.is-upcoming {
   background: #e4f0ff;
   color: #245d9b;
+}
+
+.payment-plan-status.is-second-due {
+  background: #efe7ff;
+  color: #6236a3;
 }
 
 @media (max-width: 980px) {

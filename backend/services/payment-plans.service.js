@@ -25,6 +25,17 @@ const EDITABLE_QUOTA_COLUMNS = QUOTA_COLUMNS.filter((column) => ![
   "id_plan_pago"
 ].includes(column));
 
+function currentBuenosAiresDateIso(instant = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Argentina/Buenos_Aires",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(instant);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function createPaymentPlansService({
   backendId,
   backendIsoDate,
@@ -37,8 +48,12 @@ function createPaymentPlansService({
   readJsonBody,
   saveBackendCache,
   sendJson,
+  currentDateIso,
+  currentInstant = () => new Date(),
   failureInjector = () => {}
 }) {
+  const resolveCurrentDateIso = currentDateIso || (() => currentBuenosAiresDateIso(currentInstant()));
+
   function buildPlanPaymentInstallments({ startYear, startMonth, capitals, financial, firstTotal, secondTotal, resarcitorio }) {
     return capitals.map((capital, index) => {
       const monthOffset = startMonth - 1 + index;
@@ -348,6 +363,8 @@ function createPaymentPlansService({
       result.total_general += toCents(quota.total_segundo_vencimiento);
       result.vencidas += quota.estado === "Vencida" ? 1 : 0;
       result.proximas += quota.estado === "Próxima" ? 1 : 0;
+      result.segundos_vencimientos += quota.estado === "Segundo vencimiento" ? 1 : 0;
+      result.pendientes += quota.estado === "Pendiente" ? 1 : 0;
       result.vinculadas += quota.id_egreso ? 1 : 0;
       result.pagadas += quota.estado === "Pagada" ? 1 : 0;
       result.saldo_pendiente += Math.max(
@@ -362,13 +379,17 @@ function createPaymentPlansService({
       total_general: 0,
       vencidas: 0,
       proximas: 0,
+      segundos_vencimientos: 0,
+      pendientes: 0,
       vinculadas: 0,
       pagadas: 0,
       saldo_pendiente: 0
     });
     const totals = Object.fromEntries(Object.entries(totalsInCents).map(([key, value]) => [
       key,
-      ["vencidas", "proximas", "vinculadas", "pagadas"].includes(key) ? value : fromCents(value)
+      ["vencidas", "proximas", "segundos_vencimientos", "pendientes", "vinculadas", "pagadas"].includes(key)
+        ? value
+        : fromCents(value)
     ]));
     return {
       id_plan_pago: backendId(plan.id_plan_pago),
@@ -398,14 +419,22 @@ function createPaymentPlansService({
       && totalCents !== 0
       && Math.abs(toCents(paid)) >= Math.abs(totalCents)
     ) return "Pagada";
-    const dueDate = backendIsoDate(quota.fecha_primer_vencimiento);
-    const today = new Date().toISOString().slice(0, 10);
-    if (dueDate && dueDate < today) return "Vencida";
-    if (dueDate) {
-      const days = Math.ceil((new Date(`${dueDate}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
+    const firstDueDate = strictQuotaIsoDate(quota.fecha_primer_vencimiento);
+    const secondDueDate = strictQuotaIsoDate(quota.fecha_segundo_vencimiento);
+    const today = strictQuotaIsoDate(resolveCurrentDateIso());
+    const hasValidDueWindow = firstDueDate && secondDueDate && secondDueDate >= firstDueDate;
+    if (hasValidDueWindow && today > secondDueDate) return "Vencida";
+    if (hasValidDueWindow && today > firstDueDate) return "Segundo vencimiento";
+    if (firstDueDate && today) {
+      const days = Math.ceil((new Date(`${firstDueDate}T00:00:00Z`) - new Date(`${today}T00:00:00Z`)) / 86400000);
       if (days >= 0 && days <= 30) return "Próxima";
     }
     return "Pendiente";
+  }
+
+  function strictQuotaIsoDate(value) {
+    const normalized = backendIsoDate(value);
+    return normalized && isIsoDate(normalized) ? normalized : "";
   }
 
   function paidAmount(cache, expenseId) {
