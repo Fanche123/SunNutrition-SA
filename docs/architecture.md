@@ -13,6 +13,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - El alta canónica de pedidos usa `POST /api/sales/orders/full-entry`: valida referencias y contenido, genera IDs en backend y persiste encabezado y detalles con un único `saveBackendCache()`.
 - No existen endpoints de fuentes, refresh ni imports externos.
 - Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
+- La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva; Dashboard y Compras lo leen por `GET /api/inventory/purchase-snapshot`.
 - El OCR de adjuntos o fotos solo interpreta el archivo entregado por el usuario; no constituye una fuente de tablas.
 
 - `server.js`: composicion del servidor y dominios backend operativos aun no extraidos.
@@ -26,6 +27,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `backend/table-registry.json`: registro publico de tablas y fuentes.
 - `shared/money.js`: contrato monetario único para frontend, backend y pruebas; se carga antes de los scripts de dominio y también se importa mediante CommonJS.
 - `shared/money-columns.js`: clasificación única de columnas monetarias usada por editor, SQL y escritura operativa genérica.
+- `shared/inventory-purchase-evaluation.js`: regla única de Inventario para consumo diario, umbral de compra y días disponibles, compatible con navegador y CommonJS.
 - `backend/utils/money-input.js`: validación estricta de payloads monetarios antes de persistir, incluida la prohibición de subcentavos.
 - `assets/js/app.js`: punto de entrada del frontend y modulos historicos aun acoplados al estado global.
 - `assets/js/modules/`: dominios frontend extraidos que se exponen como namespaces de `window` para conservar el sistema de scripts clasicos.
@@ -55,6 +57,7 @@ Antes del despacho, `access-control.service.js` valida el origen y concentra el 
 - `bank-parser.service.js`: lectura de CSV y clasificacion de cada movimiento.
 - `bank-matching.service.js`: candidatos, identidades y seleccion de coincidencias bancarias.
 - `inventory-entry.service.js`: endpoints de carga, fecha mas reciente y plantilla de inventario.
+- `inventory-purchase-snapshot.service.js`: construccion, validacion y lectura estable de la evaluación asociada al último inventario integral.
 - `inventory-photo.service.js`: lectura OCR, revision y preparacion de rangos de inventario.
 - `inventory-photo-mapping.service.js`: normalizacion y mapeo puro de transcripciones.
 - `inventory-valuation.service.js`: valuacion de inventarios y mapa de costos por item.

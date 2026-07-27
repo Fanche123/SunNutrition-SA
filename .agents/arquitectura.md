@@ -34,7 +34,7 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Coordinación heredada opcional: `.agents/coordinador.md`, `.coordination/`, `tools/coordination*`, `docs/coordination/`, `Iniciar_Coordinador.bat` y `Ver_Estado_Coordinacion.bat` se conservan como tooling manual legado; su propietario operativo sigue siendo Coordinador.
 - Composición/configuración: `server.js`, `package.json`, `AGENTS.md`, `.gitattributes`, `.gitignore`, `.env.example`, `backend/routes/router.js` e `Iniciar_ERP_y_Coordinador.bat`, cuyo nombre histórico se conserva aunque ahora inicia únicamente el ERP.
 - Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; `.codex/agents/*.toml` incluye especialistas y `validador_tarea`, read-only y obligatorio una vez por iteración.
-- Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
+- Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`; `shared/inventory-purchase-evaluation.js` centraliza la regla operativa de alerta para frontend y backend bajo ownership de Inventario. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
 - Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js`.
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
 - Referencias/validación: `docs/architecture.md`, `docs/refactor-architecture-plan.md`, `backend/README.md`, `tools/check-js.ps1`. `.codex-snippet.txt` es un snippet no cargado por runtime y queda bajo revisión arquitectónica, no como fuente funcional.
@@ -55,6 +55,7 @@ Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnósti
 - API/router: `server.js`, `backend/routes/router.js`, `backend/utils/http.js`.
 - API frontend: `assets/js/core/api.js` centraliza requests JSON. Las rutas `/api/...` son same-origin; ningún módulo debe fijar host, IP o puerto del backend.
 - Dinero: `shared/money.js` se carga antes de cualquier consumidor, opera con centavos enteros y es la única fuente de parsing/formato. `formatters.js` solo expone adaptadores históricos. Porcentajes, cantidades, horas e IDs no usan este contrato.
+- Alertas de compra: `inventory-purchase-snapshot.service.js` importa la regla compartida de Inventario; Inventario, Dashboard y la lista superior de Compras consumen únicamente la fotografía persistida por el servicio.
 - Persistencia: `data-store.js`, repositorios, config y AGENT Base de datos.
 - Dominio: buscar el módulo/servicio dueño antes de tocar compartidos.
 - Documentación: `docs/architecture.md` y ownership.

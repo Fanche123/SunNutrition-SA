@@ -212,7 +212,14 @@ test("Dashboard usa el calendario anual y aísla un fallo de calendario", () => 
 });
 
 test("Dashboard cuenta cobros con cheque sin registro recibido por id_cobro", () => {
-  const widget = { hidden: false, classList: { toggle() {} } };
+  const widget = {
+    hidden: false,
+    attributes: {},
+    classList: { toggle() {} },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
   const context = {
     backendId: id,
     normalizeCategory: normalize,
@@ -287,6 +294,8 @@ test("Dashboard cuenta cobros con cheque sin registro recibido por id_cobro", ()
   assert.match(context.els["dashboard-received-checks-list"].innerHTML, /125,50/);
   assert.match(context.els["dashboard-received-checks-list"].innerHTML, /Sin fecha · Cliente no disponible/);
   assert.match(context.els["dashboard-received-checks-list"].innerHTML, /0,00/);
+  assert.doesNotMatch(context.els["dashboard-received-checks-list"].innerHTML, /dashboard-mini-row/);
+  assert.match(context.els["dashboard-received-checks-list"].innerHTML, /dashboard-plain-row/);
 });
 
 function upcomingPaymentPlanDashboardContext(overrides = {}) {
@@ -437,7 +446,119 @@ test("Dashboard consume el estado derivado y las cuotas completas del contrato d
   assert.equal(quotas[1].plan_nombre, "Plan 2");
 });
 
-test("Dashboard registra en cacheElements todos los nodos del widget de cuotas próximas", () => {
+test("Dashboard expande cuotas próximas con detalle individual y colapsa sin contenido residual", () => {
+  const classes = new Set();
+  const widget = {
+    attributes: {},
+    classList: {
+      toggle(name, force) {
+        if (force) classes.add(name);
+        else classes.delete(name);
+      }
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
+  const list = {
+    innerHTML: "",
+    insertAdjacentHTML(_position, html) {
+      this.innerHTML += html;
+    }
+  };
+  const context = upcomingPaymentPlanDashboardContext({
+    dashboardExpandedWidget: "",
+    dashboardWidgetData: {
+      upcomingPaymentPlanQuotas: {
+        count: 3,
+        totalAmount: 1234568040.1,
+        invalidCount: 0,
+        groups: [
+          { date: "2026-07-27", count: 2, amount: 149.99 },
+          { date: "2026-07-28", count: 1, amount: 1234567890.11 }
+        ],
+        quotas: [
+          {
+            id: "1",
+            planName: "Plan ARCA",
+            planAgency: "ARCA",
+            quotaNumber: "1",
+            status: "Pendiente",
+            dueDate: "2026-07-27",
+            amountCents: 10000
+          },
+          {
+            id: "2",
+            planName: "Plan ARCA",
+            planAgency: "ARCA",
+            quotaNumber: "2",
+            status: "Segundo vencimiento",
+            dueDate: "2026-07-27",
+            amountCents: 4999
+          },
+          {
+            id: "3",
+            planName: "Plan AFIP",
+            planAgency: "ARCA",
+            quotaNumber: "12",
+            status: "Pendiente",
+            dueDate: "2026-07-28",
+            amountCents: 123456789011
+          }
+        ]
+      },
+      errors: {}
+    },
+    formatDate: (value) => value.split("-").reverse().join("/"),
+    formatMoney: money.format,
+    formatNumber: String,
+    escapeHtml: String,
+    displayNameLabel: String,
+    els: {
+      "dashboard-payment-plans-widget": widget,
+      "dashboard-payment-plans-count": { textContent: "" },
+      "dashboard-payment-plans-summary": { textContent: "" },
+      "dashboard-payment-plans-list": list
+    }
+  });
+
+  context.renderDashboardPaymentPlansWidget();
+  assert.equal(classes.has("is-expanded"), false);
+  assert.equal(widget.attributes["aria-expanded"], "false");
+  assert.match(list.innerHTML, /dashboard-plain-row/);
+  assert.match(list.innerHTML, /27\/07\/2026 · 2 cuotas/);
+  assert.doesNotMatch(list.innerHTML, /dashboard-payment-plan-quota/);
+  assert.doesNotMatch(list.innerHTML, /dashboard-mini-row/);
+
+  context.dashboardExpandedWidget = "paymentPlans";
+  context.renderDashboardPaymentPlansWidget();
+  assert.equal(classes.has("is-expanded"), true);
+  assert.equal(widget.attributes["aria-expanded"], "true");
+  assert.equal((list.innerHTML.match(/dashboard-payment-plan-quota/g) || []).length, 3);
+  assert.match(list.innerHTML, /Plan ARCA · Cuota 1/);
+  assert.match(list.innerHTML, /27\/07\/2026 · Segundo vencimiento/);
+  assert.match(list.innerHTML, /Plan AFIP · ARCA · Cuota 12/);
+  assert.match(list.innerHTML, /1\.234\.567\.890,11/);
+  assert.doesNotMatch(list.innerHTML, /dashboard-mini-row/);
+
+  context.dashboardExpandedWidget = "";
+  context.renderDashboardPaymentPlansWidget();
+  assert.equal(classes.has("is-expanded"), false);
+  assert.doesNotMatch(list.innerHTML, /dashboard-payment-plan-quota/);
+
+  context.dashboardWidgetData.upcomingPaymentPlanQuotas = {
+    count: 0,
+    totalAmount: 0,
+    invalidCount: 0,
+    groups: [],
+    quotas: []
+  };
+  context.renderDashboardPaymentPlansWidget();
+  assert.match(list.innerHTML, /dashboard-plain-empty/);
+  assert.doesNotMatch(list.innerHTML, /dashboard-mini-row/);
+});
+
+test("Dashboard registra nodos, accesibilidad y eventos del widget de cuotas próximas", () => {
   const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
   const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
   [
@@ -449,4 +570,264 @@ test("Dashboard registra en cacheElements todos los nodos del widget de cuotas p
     assert.match(htmlSource, new RegExp(`id="${idValue}"`));
     assert.match(appSource, new RegExp(`"${idValue}"`));
   });
+  assert.match(
+    htmlSource,
+    /id="dashboard-payment-plans-widget" role="button" tabindex="0" aria-expanded="false"/
+  );
+  assert.match(
+    appSource,
+    /dashboard-payment-plans-widget"\]\?\.addEventListener\("click", \(\) => toggleDashboardWidget\("paymentPlans"\)\)/
+  );
+  assert.match(
+    appSource,
+    /dashboard-payment-plans-widget"\]\?\.addEventListener\("keydown", \(event\) => activateDashboardWidgetFromKeyboard\(event, "paymentPlans"\)\)/
+  );
+});
+
+test("Dashboard muestra la fotografia fija de insumos a comprar y oculta el estado vacio", () => {
+  const classes = new Set();
+  const widget = {
+    hidden: true,
+    attributes: {},
+    classList: {
+      add: (...names) => names.forEach((name) => classes.add(name)),
+      remove: (...names) => names.forEach((name) => classes.delete(name)),
+      toggle: (name, force) => force ? classes.add(name) : classes.delete(name)
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
+  const context = {
+    dashboardExpandedWidget: "",
+    dashboardWidgetData: {
+      inventoryPurchaseSnapshot: {
+        inventoryDate: "2026-07-20",
+        items: [{
+          itemName: "Azucar premium con nombre muy largo <script>",
+          stock: 2.5,
+          unit: "Kg",
+          daysRemaining: 0.0352
+        }]
+      },
+      errors: {}
+    },
+    displayNameLabel: (value) => String(value || "").replace(/_/g, " "),
+    displayUnitLabel: (value) => String(value || "").replace(/_/g, " "),
+    escapeHtml: (value) => String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;"),
+    formatDate: (value) => value.split("-").reverse().join("/"),
+    formatNumber: (value) => new Intl.NumberFormat("es-AR", { maximumFractionDigits: 4 }).format(value),
+    els: {
+      "dashboard-inventory-purchases-widget": widget,
+      "dashboard-inventory-purchases-count": { textContent: "" },
+      "dashboard-inventory-purchases-summary": { textContent: "" },
+      "dashboard-inventory-purchases-list": { innerHTML: "" }
+    }
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/dashboard.js"), "utf8"), context);
+  assert.equal(context.dashboardInventoryMeasurementLabel(0.0352), "0,0352");
+  assert.equal(context.dashboardInventoryMeasurementLabel(0.0000000012345), "0,0000000012345");
+  assert.equal(context.dashboardInventoryMeasurementLabel(12345.6789), "12.345,6789");
+
+  context.renderDashboardInventoryPurchasesWidget();
+  assert.equal(widget.hidden, false);
+  assert.equal(widget.attributes["aria-expanded"], "false");
+  assert.equal(context.els["dashboard-inventory-purchases-count"].textContent, "1");
+  assert.match(context.els["dashboard-inventory-purchases-summary"].textContent, /20\/07\/2026/);
+  assert.equal(context.els["dashboard-inventory-purchases-list"].innerHTML, "");
+  assert.equal(classes.has("is-warning"), true);
+
+  context.dashboardWidgetData.inventoryPurchaseSnapshot.items.push(
+    {
+      itemName: "Aceite",
+      stock: 0,
+      unit: "Lt",
+      daysRemaining: 0
+    },
+    {
+      itemName: "Caja 140",
+      stock: 1234.75,
+      unit: "Pack_25_Ud",
+      daysRemaining: 12345.6789
+    }
+  );
+  context.dashboardExpandedWidget = "inventoryPurchases";
+  context.renderDashboardInventoryPurchasesWidget();
+  assert.equal(classes.has("is-expanded"), true);
+  assert.equal(widget.attributes["aria-expanded"], "true");
+  assert.equal(context.els["dashboard-inventory-purchases-count"].textContent, "3");
+  assert.match(context.els["dashboard-inventory-purchases-summary"].textContent, /3 insumos a comprar/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /2,5 Kg/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0,0352 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 Lt/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /1\.234,75 Pack 25 Ud/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /12\.345,6789 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /&lt;script&gt;/);
+
+  context.dashboardWidgetData = {
+    inventoryPurchaseSnapshot: { inventoryDate: "2026-07-21", items: [] },
+    errors: {}
+  };
+  context.renderDashboardInventoryPurchasesWidget();
+  assert.equal(widget.hidden, true);
+  assert.equal(widget.attributes["aria-expanded"], "false");
+});
+
+test("Dashboard registra el widget de insumos y consume solo el contrato de fotografia", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const dashboardSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/dashboard.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  [
+    "dashboard-inventory-purchases-widget",
+    "dashboard-inventory-purchases-count",
+    "dashboard-inventory-purchases-summary",
+    "dashboard-inventory-purchases-list"
+  ].forEach((idValue) => {
+    assert.match(htmlSource, new RegExp(`id="${idValue}"`));
+    assert.match(appSource, new RegExp(`"${idValue}"`));
+  });
+  assert.match(
+    htmlSource,
+    /id="dashboard-inventory-purchases-widget" role="button" tabindex="0" aria-expanded="false"/
+  );
+  assert.match(dashboardSource, /\/api\/inventory\/purchase-snapshot/);
+  assert.doesNotMatch(dashboardSource, /dailyConsumptionForItem|DAILY_CONSUMPTION_BY_ITEM/);
+});
+
+test("Compras muestra la misma fotografia sin limitar el selector libre", () => {
+  const selector = { value: "Aceite" };
+  const context = {
+    els: {
+      "purchase-inventory-suggestions-count": { textContent: "" },
+      "purchase-inventory-suggestions-status": { textContent: "" },
+      "purchase-inventory-suggestions-list": { innerHTML: "" },
+      "purchase-item-name": selector
+    },
+    displayNameLabel: (value) => String(value || "").replace(/_/g, " "),
+    displayUnitLabel: (value) => String(value || "").replace(/_/g, " "),
+    escapeHtml: (value) => String(value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;"),
+    formatDate: (value) => value.split("-").reverse().join("/"),
+    formatNumber: String,
+    Intl
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8"), context);
+
+  const snapshot = {
+    inventoryDate: "2026-07-20",
+    items: [
+      { itemName: "Azucar <script>", stock: 2.5, unit: "Kg", daysRemaining: 0.0352 },
+      { itemName: "Aceite", stock: 0, unit: "Lt", daysRemaining: 0 }
+    ]
+  };
+  context.renderPurchaseInventorySuggestions(snapshot);
+
+  assert.equal(selector.value, "Aceite");
+  assert.equal(context.els["purchase-inventory-suggestions-count"].textContent, "2");
+  assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /20\/07\/2026/);
+  assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /selector de insumos permanece libre/i);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /2,5 Kg/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0,0352 dias de produccion/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0 Lt/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /&lt;script&gt;/);
+
+  context.renderPurchaseInventorySuggestions({ inventoryDate: "2026-07-21", items: [] });
+  assert.equal(selector.value, "Aceite");
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /No hay insumos a comprar/);
+});
+
+test("Compras registra la lista superior y lee la fotografia canonica", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  [
+    "purchase-inventory-suggestions-count",
+    "purchase-inventory-suggestions-status",
+    "purchase-inventory-suggestions-list"
+  ].forEach((idValue) => {
+    assert.match(htmlSource, new RegExp(`id="${idValue}"`));
+    assert.match(appSource, new RegExp(`"${idValue}"`));
+  });
+  assert.match(purchaseSource, /requestBackendApi\("\/api\/inventory\/purchase-snapshot"\)/);
+  assert.doesNotMatch(purchaseSource, /InventoryPurchaseEvaluation|DAILY_CONSUMPTION_BY_ITEM/);
+  assert.match(purchaseSource, /inventoryPurchaseSnapshotItem/);
+});
+
+test("Inventario usa los mismos items de la fotografia sin recalcular umbrales", () => {
+  const classes = new Set();
+  const button = { dataset: {} };
+  const alert = {
+    hidden: true,
+    title: "",
+    classList: {
+      toggle(name, force) {
+        if (force) classes.add(name);
+        else classes.delete(name);
+      }
+    },
+    querySelector(selector) {
+      return selector === "button" ? button : null;
+    }
+  };
+  const row = {
+    dataset: { itemId: "101", itemName: "Azucar" },
+    querySelector(selector) {
+      return selector === "[data-purchase-alert]" ? alert : null;
+    }
+  };
+  const context = {
+    inventoryPurchaseSnapshot: {
+      inventoryDate: "2026-07-20",
+      items: [{
+        itemId: "101",
+        itemName: "Azucar",
+        stock: 2.5,
+        unit: "Kg",
+        daysRemaining: 0.0352,
+        required: 284.0838,
+        dailyConsumption: 71.02095,
+        provider: "Proveedor Uno",
+        leadDays: 5,
+        businessDays: 4
+      }]
+    },
+    els: {
+      "inventory-detail-body": { querySelectorAll: () => [row] },
+      "purchase-threshold-body": { innerHTML: "" },
+      "purchase-threshold-snapshot-date": { textContent: "" }
+    },
+    normalizeCategory: (value) => String(value || "").toLowerCase(),
+    displayNameLabel: String,
+    displayUnitLabel: String,
+    escapeHtml: String,
+    formatDate: (value) => value.split("-").reverse().join("/"),
+    formatNumber: (value) => String(value),
+    formatNullableNumber: (value) => String(value),
+    emptyRow: (_columns, message) => message,
+    Intl
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8"), context);
+  context.updateInventoryPurchaseAlerts();
+
+  assert.equal(alert.hidden, false);
+  assert.equal(classes.has("is-visible"), true);
+  assert.equal(button.dataset.purchaseItem, "Azucar");
+  assert.equal(button.dataset.purchaseItemId, "101");
+  assert.match(alert.title, /Stock: 2.5/);
+  assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /20\/07\/2026/);
+  assert.match(context.els["purchase-threshold-body"].innerHTML, /2,5 Kg/);
+  assert.match(context.els["purchase-threshold-body"].innerHTML, /Comprar/);
+
+  const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
+  assert.doesNotMatch(purchaseSource, /inventoryPurchaseAlert|inventoryPurchaseMetrics|DAILY_CONSUMPTION_BY_ITEM/);
+  assert.match(purchaseSource, /renderPurchaseThresholdTable\(snapshotItems\)/);
 });

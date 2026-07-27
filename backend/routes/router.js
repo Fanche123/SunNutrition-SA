@@ -32,6 +32,7 @@ function createRequestHandler(dependencies) {
     ["POST", "/api/inventory/append", handlers.handleInventoryAppend],
     ["GET", "/api/inventory/latest-date", handlers.handleInventoryLatestDate],
     ["POST", "/api/inventory/full-entry", handlers.handleInventoryFullEntry],
+    ["GET", "/api/inventory/purchase-snapshot", handlers.handleInventoryPurchaseSnapshot],
     ["GET", "/api/inventory-detail/template", handlers.handleInventoryDetailTemplate],
     ["POST", "/api/inventory-detail/append", handlers.handleInventoryDetailAppend],
     ["POST", "/api/inventory-detail/photo", handlers.handleInventoryDetailPhoto],
@@ -147,6 +148,7 @@ function createRequestHandler(dependencies) {
         const handler = route[2];
         if (request.method === "GET" && [
           "/api/inventory/latest-date",
+          "/api/inventory/purchase-snapshot",
           "/api/inventory-detail/template"
         ].includes(request.url)) return await handler(response);
         return await handler(request, response);

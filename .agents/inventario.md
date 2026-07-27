@@ -56,10 +56,12 @@ Propios de frontend:
 Propios de backend:
 
 - `backend/services/inventory-entry.service.js`
+- `backend/services/inventory-purchase-snapshot.service.js`
 - `backend/services/inventory-photo.service.js`
 - `backend/services/inventory-photo-mapping.service.js`
 - `backend/services/inventory-valuation.service.js`
 - `backend/utils/inventory-numbers.js`
+- `backend/services/inventory-entry.service.test.js`
 
 Compartidos o consumidores relevantes; no son de propiedad exclusiva:
 
@@ -86,17 +88,21 @@ Endpoints específicos registrados en `backend/routes/router.js`:
 - `POST /api/inventory/append` — encabezado simple; `{ date, employee, employeeId?, shift?|turno? }`.
 - `GET /api/inventory/latest-date` — `{ lastDate, nextDate }`.
 - `POST /api/inventory/full-entry` — `{ date, employee, employeeId?, selectedShifts, rows }`; cada fila usa `itemId`, `dawn`, `morning`, `afternoon`.
+- `GET /api/inventory/purchase-snapshot` — `{ ok, snapshot }`; expone en solo lectura la evaluación fija del último inventario integral, con `inventoryDate`, `inventoryIds` e `items`.
 - `GET /api/inventory-detail/template` — último detalle por turno y próximo ID orientativo.
 - `POST /api/inventory-detail/append` — `{ inventoryId, rows }`; agrega cantidades de tarde a un encabezado existente.
 - `POST /api/inventory-detail/photo` — `{ date, imageDataUrl, selectedShifts, rows }`; devuelve `{ rows, notes, transcription }` y no persiste.
 
 La lectura/edición genérica usa `GET|POST /api/backend/tables/:tabla`; no reemplazar el flujo integral por el editor genérico sin una decisión explícita.
 
+La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida.
+
 ## Dependencias
 
 - **Compras:** costos históricos desde compras/recepciones y navegación desde alertas.
 - **Ventas:** pedidos/detalles/productos para unidades del modelo teórico.
-- **Reportes:** Estado de Resultados y Dashboard consumen inventario valorizado.
+- **Reportes:** Estado de Resultados consume inventario valorizado y Dashboard lee la fotografía fija de insumos a comprar sin recalcularla.
+- **Compras:** la lista superior lee la misma fotografía y conserva libre el selector operativo de insumos.
 - **Base de datos:** `data-store.js`, registry y proyecciones son fuente técnica de persistencia.
 - **UI/Arquitectura:** `app.js`, `index.html`, router y orden de scripts son compartidos sensibles.
 - **OpenAI Vision:** solo interpreta la imagen actual; la transcripción es borrador y nunca fuente maestra.
@@ -110,7 +116,7 @@ La lectura/edición genérica usa `GET|POST /api/backend/tables/:tabla`; no reem
 - Teórico, recetas y diferencias: `inventory-theoretical-model.js` y helpers directos de revisión.
 - Submit/payload: `inventory-detail-submit.js` y `inventory-entry.service.js`; el backend genera los IDs y coordina `valueBackendInventories` antes de persistir la carga integral.
 - Fecha/defaults/drop zone: `inventory-entry-coordinator.js`.
-- Persistencia/rutas: `inventory-entry.service.js`, `router.js`, `data-store.js`.
+- Persistencia/rutas: `inventory-entry.service.js`, `inventory-purchase-snapshot.service.js`, `router.js`, `data-store.js`.
 - Costos/valuación: `inventory-valuation.service.js`, `inventory-numbers.js`, `income-calculation.service.js`.
 - Reportes: localizar primero el consumidor en Dashboard/Estado de Resultados; no mover allí reglas operativas.
 

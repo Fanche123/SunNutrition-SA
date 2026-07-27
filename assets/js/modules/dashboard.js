@@ -28,7 +28,8 @@ async function loadDashboardWidgets() {
       source("deudas", loadExpenseDebtTables()),
       source("cobros", backendTableRowsForEntry("cobros")),
       source("cheques recibidos", backendTableRowsForEntry("cheques_recibidos")),
-      source("cuotas de planes de pago", loadDashboardPaymentPlanQuotas())
+      source("cuotas de planes de pago", loadDashboardPaymentPlanQuotas()),
+      source("evaluacion de insumos a comprar", loadDashboardInventoryPurchaseSnapshot())
     ]);
     const [
       issuedChecks,
@@ -51,7 +52,8 @@ async function loadDashboardWidgets() {
       expenseDebtTables,
       collections,
       receivedChecks,
-      paymentPlanQuotas
+      paymentPlanQuotas,
+      inventoryPurchaseSnapshot
     ] = results.map((result) => result.rows);
     const errorFor = (indexes) => indexes
       .map((index) => results[index])
@@ -95,19 +97,29 @@ async function loadDashboardWidgets() {
       pendingOrders: ordersCalculation.value,
       pendingReceivedChecks: pendingReceivedChecksCalculation.value,
       upcomingPaymentPlanQuotas: paymentPlansCalculation.value,
+      inventoryPurchaseSnapshot,
       errors: {
         checks: combinedError(errorFor([0, 1, 17]), checksCalculation.error),
         inventory: combinedError(errorFor([2]), inventoryCalculation.error),
         purchases: combinedError(errorFor([3, 4, 5, 6, 7, 8, 9, 10]), purchasesCalculation.error),
         orders: combinedError(errorFor([11, 12, 13, 14, 15, 16]), ordersCalculation.error),
         pendingReceivedChecks: combinedError(errorFor([18, 19]), pendingReceivedChecksCalculation.error),
-        paymentPlans: combinedError(errorFor([20]), paymentPlansCalculation.error)
+        paymentPlans: combinedError(errorFor([20]), paymentPlansCalculation.error),
+        inventoryPurchases: errorFor([21])
       }
     };
     renderDashboardWidgets();
   } catch (error) {
     renderDashboardError(error.message || "No se pudo leer el dashboard.");
   }
+}
+
+async function loadDashboardInventoryPurchaseSnapshot() {
+  const payload = await requestBackendApi("/api/inventory/purchase-snapshot");
+  const snapshot = payload?.snapshot;
+  return snapshot && !Array.isArray(snapshot)
+    ? snapshot
+    : { inventoryDate: "", inventoryIds: [], items: [] };
 }
 
 function calculateDashboardWidget(label, callback) {
@@ -191,6 +203,7 @@ function buildDashboardUpcomingPaymentPlanQuotas(
       planName: String(quota?.plan_nombre || ""),
       planAgency: String(quota?.plan_organismo || ""),
       quotaNumber: String(quota?.nro_cuota ?? "").trim(),
+      status: String(quota?.estado || ""),
       dueDate: applicable.date,
       amountCents
     });
@@ -270,6 +283,7 @@ function dashboardAddBusinessDaysIso(startIso, businessDays) {
 
 function renderDashboardLoading() {
   els["dashboard-received-checks-widget"].hidden = true;
+  els["dashboard-inventory-purchases-widget"].hidden = true;
   els["dashboard-payment-plans-count"].textContent = "-";
   els["dashboard-payment-plans-summary"].textContent = "Cargando cuotas proximas...";
   els["dashboard-payment-plans-list"].innerHTML = "";
@@ -289,6 +303,7 @@ function renderDashboardLoading() {
 
 function renderDashboardError(message) {
   els["dashboard-received-checks-widget"].hidden = true;
+  els["dashboard-inventory-purchases-widget"].hidden = true;
   ["dashboard-payment-plans-widget", "dashboard-checks-widget", "dashboard-inventory-widget", "dashboard-purchases-widget", "dashboard-orders-widget"].forEach((id) => {
     els[id]?.classList.remove("is-warning", "is-danger");
   });
@@ -466,10 +481,80 @@ function dashboardOrderUrgency(order) {
 function renderDashboardWidgets() {
   renderDashboardPaymentPlansWidget();
   renderDashboardReceivedChecksWidget();
+  renderDashboardInventoryPurchasesWidget();
   renderDashboardChecksWidget();
   renderDashboardInventoryWidget();
   renderDashboardPurchasesWidget();
   renderDashboardOrdersWidget();
+}
+
+function renderDashboardInventoryPurchasesWidget() {
+  const snapshot = dashboardWidgetData.inventoryPurchaseSnapshot || {};
+  const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const loadError = dashboardWidgetData.errors?.inventoryPurchases;
+  const widget = els["dashboard-inventory-purchases-widget"];
+  widget.hidden = Boolean(loadError) || items.length === 0;
+  if (widget.hidden) {
+    widget.classList.remove("is-expanded", "is-warning");
+    widget.setAttribute("aria-expanded", "false");
+    if (dashboardExpandedWidget === "inventoryPurchases") dashboardExpandedWidget = "";
+    return;
+  }
+
+  const isExpanded = dashboardExpandedWidget === "inventoryPurchases";
+  els["dashboard-inventory-purchases-count"].textContent = formatNumber(items.length);
+  els["dashboard-inventory-purchases-summary"].textContent = items.length === 1
+    ? `1 insumo a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`
+    : `${formatNumber(items.length)} insumos a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`;
+  els["dashboard-inventory-purchases-list"].innerHTML = isExpanded
+    ? dashboardInventoryPurchasesTable(items)
+    : "";
+  widget.classList.toggle("is-expanded", isExpanded);
+  widget.classList.add("is-warning");
+  widget.setAttribute("aria-expanded", String(isExpanded));
+}
+
+function dashboardInventoryPurchasesTable(items) {
+  return `
+    <div class="table-wrap dashboard-expanded-table dashboard-inventory-purchases-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Insumo</th>
+            <th class="num">Cantidad restante</th>
+            <th class="num">Dias de produccion</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map((item) => `
+            <tr>
+              <td>${escapeHtml(displayNameLabel(item.itemName || "Insumo sin nombre"))}</td>
+              <td class="num">${escapeHtml(dashboardInventoryQuantityLabel(item.stock, item.unit))}</td>
+              <td class="num">${escapeHtml(dashboardProductionDaysLabel(item.daysRemaining))}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function dashboardInventoryQuantityLabel(stock, unit) {
+  const quantity = Number(stock);
+  const label = dashboardInventoryMeasurementLabel(quantity);
+  return [label, displayUnitLabel(unit)].filter(Boolean).join(" ");
+}
+
+function dashboardProductionDaysLabel(daysRemaining) {
+  const days = Number(daysRemaining);
+  const label = dashboardInventoryMeasurementLabel(days);
+  return label === "-" ? label : `${label} dias`;
+}
+
+function dashboardInventoryMeasurementLabel(value) {
+  return Number.isFinite(value)
+    ? new Intl.NumberFormat("es-AR", { maximumSignificantDigits: 10 }).format(value)
+    : "-";
 }
 
 function renderDashboardPaymentPlansWidget() {
@@ -481,33 +566,82 @@ function renderDashboardPaymentPlansWidget() {
     invalidCount: 0
   };
   const groups = Array.isArray(summary.groups) ? summary.groups : [];
+  const quotas = Array.isArray(summary.quotas) ? summary.quotas : [];
   const loadError = dashboardWidgetData.errors?.paymentPlans;
   const hasDueToday = groups.some((group) => group.date === toIsoDate(new Date()));
+  const isExpanded = dashboardExpandedWidget === "paymentPlans";
+  const firstGroup = groups[0];
 
   els["dashboard-payment-plans-count"].textContent = loadError ? "!" : formatNumber(summary.count);
   els["dashboard-payment-plans-summary"].textContent = loadError
     ? `No se pudo cargar: ${loadError}.`
     : summary.count
-    ? `Total a cubrir: ${formatMoney(summary.totalAmount)}`
+    ? `Proxima: ${formatDate(firstGroup.date)} · ${formatNumber(summary.count)} ${summary.count === 1 ? "cuota" : "cuotas"} · Total ${formatMoney(summary.totalAmount)}`
     : "No hay cuotas a cubrir en los proximos 5 dias habiles.";
   els["dashboard-payment-plans-list"].innerHTML = loadError
     ? dashboardLoadError(loadError)
-    : groups.length
-    ? groups.map((group) => `
-        <div class="dashboard-mini-row">
-          <span>${formatDate(group.date)} · ${formatNumber(group.count)} ${group.count === 1 ? "cuota" : "cuotas"}</span>
-          <strong>${formatMoney(group.amount)}</strong>
+    : isExpanded
+    ? dashboardPaymentPlanDetails(groups, quotas)
+    : firstGroup
+    ? `
+        <div class="dashboard-plain-row">
+          <span>${formatDate(firstGroup.date)} · ${formatNumber(firstGroup.count)} ${firstGroup.count === 1 ? "cuota" : "cuotas"}</span>
+          <strong>${formatMoney(firstGroup.amount)}</strong>
         </div>
-      `).join("")
-    : `<div class="dashboard-empty">Sin cuotas proximas.</div>`;
+        ${groups.length > 1 ? `<div class="dashboard-more">+${formatNumber(groups.length - 1)} fecha(s) mas</div>` : ""}
+      `
+    : `<div class="dashboard-plain-empty">Sin cuotas proximas.</div>`;
   if (!loadError && summary.invalidCount) {
     els["dashboard-payment-plans-list"].insertAdjacentHTML(
       "beforeend",
       `<div class="dashboard-data-warning">${formatNumber(summary.invalidCount)} cuota(s) omitida(s) por fecha, monto o suma fuera de rango.</div>`
     );
   }
-  els["dashboard-payment-plans-widget"].classList.toggle("is-danger", !loadError && hasDueToday);
-  els["dashboard-payment-plans-widget"].classList.toggle("is-warning", !loadError && summary.count > 0 && !hasDueToday);
+  const widget = els["dashboard-payment-plans-widget"];
+  widget.classList.toggle("is-danger", !loadError && hasDueToday);
+  widget.classList.toggle("is-warning", !loadError && summary.count > 0 && !hasDueToday);
+  widget.classList.toggle("is-expanded", isExpanded);
+  widget.setAttribute("aria-expanded", String(isExpanded));
+}
+
+function dashboardPaymentPlanDetails(groups, quotas) {
+  if (!groups.length) {
+    return `<div class="dashboard-plain-empty dashboard-expanded-empty">No hay cuotas proximas.</div>`;
+  }
+  return groups.map((group) => `
+    <section class="dashboard-payment-plan-group">
+      <div class="dashboard-payment-plan-group-header">
+        <span>${formatDate(group.date)} · ${formatNumber(group.count)} ${group.count === 1 ? "cuota" : "cuotas"}</span>
+        <strong>${formatMoney(group.amount)}</strong>
+      </div>
+      <div class="dashboard-payment-plan-details">
+        ${quotas.filter((quota) => quota.dueDate === group.date).map(dashboardPaymentPlanQuotaRow).join("")}
+      </div>
+    </section>
+  `).join("");
+}
+
+function dashboardPaymentPlanQuotaRow(quota) {
+  const planName = displayNameLabel(quota.planName || "");
+  const planAgency = displayNameLabel(quota.planAgency || "");
+  const planLabel = planName || planAgency || "Plan de pago";
+  const normalizedPlanLabel = normalizeCategory(planLabel);
+  const normalizedAgency = normalizeCategory(planAgency);
+  const agencyLabel = planAgency && !normalizedPlanLabel.includes(normalizedAgency)
+    ? ` · ${planAgency}`
+    : "";
+  const quotaLabel = quota.quotaNumber ? `Cuota ${quota.quotaNumber}` : "Cuota";
+  const statusLabel = displayNameLabel(quota.status || "");
+  const dueLabel = `${formatDate(quota.dueDate)}${statusLabel ? ` · ${statusLabel}` : ""}`;
+  return `
+    <div class="dashboard-plain-row dashboard-payment-plan-quota">
+      <span>
+        <strong>${escapeHtml(`${planLabel}${agencyLabel} · ${quotaLabel}`)}</strong>
+        <small>${escapeHtml(dueLabel)}</small>
+      </span>
+      <strong>${formatMoney(centsToMoney(quota.amountCents))}</strong>
+    </div>
+  `;
 }
 
 function renderDashboardReceivedChecksWidget() {
@@ -527,6 +661,7 @@ function renderDashboardReceivedChecksWidget() {
       ? `<div class="dashboard-more">+${formatNumber(pendingChecks.length - visibleChecks.length)} cobro(s) más</div>`
       : "");
   widget.classList.toggle("is-expanded", isExpanded);
+  widget.setAttribute("aria-expanded", String(isExpanded));
 }
 
 function buildDashboardPendingReceivedChecks(collections, receivedChecks, clients) {
@@ -544,7 +679,7 @@ function buildDashboardPendingReceivedChecks(collections, receivedChecks, client
 
 function dashboardReceivedCheckMiniRow(check) {
   return `
-    <div class="dashboard-mini-row">
+    <div class="dashboard-plain-row">
       <span>${escapeHtml(check.date ? formatDate(check.date) : "Sin fecha")} · ${escapeHtml(check.client)}</span>
       <strong>${formatMoney(check.amount)}</strong>
     </div>

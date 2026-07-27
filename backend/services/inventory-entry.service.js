@@ -12,9 +12,13 @@ function createInventoryEntryService(dependencies) {
     normalizeInventoryDetailRows,
     normalizeSelectedInventoryShifts,
     readJsonBody,
+    readInventoryPurchaseSnapshot,
     resolveInventoryEmployeeId,
     saveBackendCache,
     sendJson,
+    storeInventoryPurchaseSnapshot,
+    buildInventoryPurchaseSnapshot,
+    clearInventoryPurchaseSnapshot,
     valueBackendInventories
   } = dependencies;
 
@@ -36,6 +40,7 @@ function createInventoryEntryService(dependencies) {
       id_empleado: resolveInventoryEmployeeId(body.employeeId || employee),
       valor_total: ""
     });
+    clearInventoryPurchaseSnapshot(cache, date, [inventoryId]);
     finalizeTable(inventories);
     saveBackendCache(cache);
     return sendJson(response, 200, { ok: true, date, employee, inventoryId, backendTable: "inventarios" });
@@ -92,6 +97,12 @@ function createInventoryEntryService(dependencies) {
     });
 
     valueBackendInventories(cache, Object.values(inventoryIds));
+    storeInventoryPurchaseSnapshot(cache, buildInventoryPurchaseSnapshot(cache, {
+      date,
+      inventoryIds,
+      selectedShifts,
+      cleanRows
+    }));
     finalizeTable(inventories);
     finalizeTable(details);
     saveBackendCache(cache);
@@ -125,6 +136,14 @@ function createInventoryEntryService(dependencies) {
     }));
     const lastInventoryId = Math.max(...latestInventories.map((row) => Number(row.id_inventario)).filter(Number.isFinite));
     return sendJson(response, 200, { lastInventoryId, inventoryId: backendNextNumericId(inventories, "id_inventario"), rows });
+  }
+
+  async function handleInventoryPurchaseSnapshot(response) {
+    const cache = loadCache();
+    return sendJson(response, 200, {
+      ok: true,
+      snapshot: readInventoryPurchaseSnapshot(cache)
+    });
   }
 
   async function handleInventoryDetailAppend(request, response) {
@@ -178,7 +197,14 @@ function createInventoryEntryService(dependencies) {
     return "";
   }
 
-  return { handleInventoryAppend, handleInventoryDetailAppend, handleInventoryDetailTemplate, handleInventoryFullEntry, handleInventoryLatestDate };
+  return {
+    handleInventoryAppend,
+    handleInventoryDetailAppend,
+    handleInventoryDetailTemplate,
+    handleInventoryFullEntry,
+    handleInventoryLatestDate,
+    handleInventoryPurchaseSnapshot
+  };
 }
 
 module.exports = { createInventoryEntryService };

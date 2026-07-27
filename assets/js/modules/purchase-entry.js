@@ -1,13 +1,14 @@
 function updateInventoryPurchaseAlerts() {
   const rows = els["inventory-detail-body"]?.querySelectorAll("tr[data-item-id]") || [];
-  const thresholdRows = [];
+  const snapshotItems = Array.isArray(inventoryPurchaseSnapshot?.items)
+    ? inventoryPurchaseSnapshot.items
+    : [];
   rows.forEach((row) => {
     const itemName = row.dataset.itemName || "";
     const alert = row.querySelector("[data-purchase-alert]");
     if (!alert) return;
 
-    const data = purchaseAlertDataForItem(row, itemName);
-    if (isPurchasableInventoryItem(itemName)) thresholdRows.push({ itemName, data, row });
+    const data = inventoryPurchaseSnapshotItem(itemName, row.dataset.itemId);
     alert.hidden = !data;
     alert.classList.toggle("is-visible", Boolean(data));
     if (data) {
@@ -19,65 +20,39 @@ function updateInventoryPurchaseAlerts() {
       }
     }
   });
-  renderPurchaseThresholdTable(thresholdRows);
+  renderPurchaseThresholdTable(snapshotItems);
 }
 
-function purchaseAlertDataForItem(row, itemName) {
-  const dailyConsumption = purchaseDailyConsumption(itemName);
-  if (!isPurchasableInventoryItem(itemName) || !dailyConsumption) return null;
-
-  const provider = lastPurchaseProviderForItem(itemName);
-  const leadDays = providerLeadDays(provider);
-  if (!provider || !leadDays) return null;
-
-  const stock = currentInventoryRowStock(row);
-  if (!Number.isFinite(stock)) return null;
-
-  const businessDays = purchaseBusinessDaysWithinLeadTime(leadDays);
-  const required = dailyConsumption * businessDays;
-  if (stock >= required) return null;
-  return { stock, required, provider, leadDays, businessDays, dailyConsumption };
+function inventoryPurchaseSnapshotItem(itemName, itemId = "") {
+  const normalizedId = String(itemId || "").trim();
+  const normalizedName = normalizeCategory(itemName);
+  return (inventoryPurchaseSnapshot?.items || []).find((item) => (
+    (normalizedId && String(item.itemId || "").trim() === normalizedId)
+    || normalizeCategory(item.itemName) === normalizedName
+  )) || null;
 }
 
-function purchaseThresholdInfoForItem(row, itemName) {
-  if (!isPurchasableInventoryItem(itemName)) return null;
-  const dailyConsumption = purchaseDailyConsumption(itemName);
-  const provider = lastPurchaseProviderForItem(itemName);
-  const leadDays = providerLeadDays(provider);
-  const businessDays = leadDays ? purchaseBusinessDaysWithinLeadTime(leadDays) : 0;
-  const stock = currentInventoryRowStock(row);
-  const required = provider && leadDays ? dailyConsumption * businessDays : NaN;
-  return {
-    itemName,
-    stock,
-    provider,
-    leadDays,
-    businessDays,
-    dailyConsumption,
-    required,
-    shouldBuy: Number.isFinite(stock) && Number.isFinite(required) && stock < required
-  };
-}
-
-function renderPurchaseThresholdTable(rows) {
+function renderPurchaseThresholdTable(infos) {
   if (!els["purchase-threshold-body"]) return;
-  const infos = rows
-    .map(({ itemName, row }) => purchaseThresholdInfoForItem(row, itemName))
-    .filter(Boolean);
+  if (els["purchase-threshold-snapshot-date"]) {
+    els["purchase-threshold-snapshot-date"].textContent = inventoryPurchaseSnapshot?.inventoryDate
+      ? `Fotografia del inventario del ${formatDate(inventoryPurchaseSnapshot.inventoryDate)}`
+      : "Todavia no hay una fotografia valida de inventario";
+  }
 
   els["purchase-threshold-body"].innerHTML = infos.length
     ? infos.map((info) => `
       <tr>
-        <td>${escapeHtml(info.itemName)}</td>
-        <td class="num">${formatNullableNumber(info.stock)}</td>
+        <td>${escapeHtml(displayNameLabel(info.itemName || "Insumo sin nombre"))}</td>
+        <td class="num">${escapeHtml(purchaseInventoryQuantityLabel(info.stock, info.unit))}</td>
         <td>${escapeHtml(info.provider || missingPurchaseProviderLabel())}</td>
         <td class="num">${formatLeadAndConsumptionDays(info)}</td>
         <td class="num">${formatNumber(info.dailyConsumption)}</td>
         <td class="num" title="${escapeHtml(formatStockMinimumFormula(info))}">${formatNullableNumber(info.required)}</td>
-        <td><span class="purchase-threshold-state ${info.shouldBuy ? "is-low" : "is-ok"}">${info.shouldBuy ? "Comprar" : "OK"}</span></td>
+        <td><span class="purchase-threshold-state is-low">Comprar</span></td>
       </tr>
     `).join("")
-    : emptyRow(7, "No hay insumos comprables en el detalle preparado.");
+    : emptyRow(7, "No hay insumos a comprar segun el ultimo inventario.");
 }
 
 function formatLeadAndConsumptionDays(info) {
@@ -88,27 +63,6 @@ function formatLeadAndConsumptionDays(info) {
 function formatStockMinimumFormula(info) {
   if (!Number.isFinite(info.required)) return "";
   return `Stock minimo = ${formatNumber(info.dailyConsumption)} consumo diario x ${formatNumber(info.businessDays)} dias habiles`;
-}
-
-function purchaseBusinessDaysWithinLeadTime(leadDays) {
-  const stockDate = els["inventory-date-input"]?.value || toIsoDate(new Date());
-  return countInventoryConsumptionDays(stockDate, leadDays);
-}
-
-function countInventoryConsumptionDays(startIso, totalDays) {
-  const start = dateFromIso(startIso);
-  if (!start || Number.isNaN(start.getTime()) || !Number.isFinite(totalDays) || totalDays <= 0) return 0;
-
-  let count = 0;
-  for (let offset = 1; offset <= totalDays; offset += 1) {
-    const date = addDays(start, offset);
-    if (isInventoryConsumptionDate(date)) count += 1;
-  }
-  return count;
-}
-
-function isInventoryConsumptionDate(date) {
-  return isBusinessDay(date);
 }
 
 function isBusinessDay(date) {
@@ -125,45 +79,6 @@ function addDays(date, days) {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
-}
-
-function currentInventoryRowStock(row) {
-  const enabled = selectedInventoryShifts();
-  const priority = ["afternoon", "morning", "dawn"].filter((shift) => enabled.includes(shift));
-  for (const shift of priority) {
-    const value = parseQuantity(row.querySelector(`[data-detail-field="${shift}"]`)?.value);
-    if (Number.isFinite(value) && row.querySelector(`[data-detail-field="${shift}"]`)?.value.trim() !== "") return value;
-  }
-  return latestPreviousStockFromRow(row);
-}
-
-function latestPreviousStockFromRow(row) {
-  for (const key of ["previousAfternoon", "previousMorning", "previousDawn"]) {
-    const value = parseQuantity(row.dataset[key]);
-    if (Number.isFinite(value) && String(row.dataset[key] || "").trim() !== "") return value;
-  }
-  return NaN;
-}
-
-function isPurchasableInventoryItem(itemName) {
-  const key = normalizeInventoryToken(itemName);
-  return Boolean(purchaseDailyConsumptionByKey()[key]);
-}
-
-function purchaseDailyConsumption(itemName) {
-  return purchaseDailyConsumptionByKey()[normalizeInventoryToken(itemName)] || 0;
-}
-
-function purchaseDailyConsumptionByKey() {
-  return {
-    maizpisingallo: 496.65 * 1.285,
-    azucar: 496.65 * 0.143,
-    aceite: 496.65 * 0.186,
-    escenciadevainilla: 496.65 * 0.007,
-    esenciadevainilla: 496.65 * 0.007,
-    bobinabarrapop: 30100 / 5212,
-    caja140: 215 / 25
-  };
 }
 
 function lastPurchaseProviderForItem(itemName) {
@@ -479,7 +394,8 @@ async function openPurchaseEntryForItem(itemName, itemId = "") {
   }
   syncSelectedPurchaseSupply();
   updatePurchaseProviderOptions();
-  const preferredProvider = lastPurchaseProviderForItem(supply?.nombre || itemName);
+  const snapshotItem = inventoryPurchaseSnapshotItem(supply?.nombre || itemName, itemId);
+  const preferredProvider = snapshotItem?.provider || lastPurchaseProviderForItem(supply?.nombre || itemName);
   selectPreferredPurchaseSupplier(preferredProvider);
   const today = toIsoDate(new Date());
   els["purchase-order-date"].value = today;
@@ -488,10 +404,7 @@ async function openPurchaseEntryForItem(itemName, itemId = "") {
   const supplierUnit = supplierInfo?.supplierUnit || lastPurchaseUnitForItem(itemName);
   const stockUnit = supplierInfo?.countUnit || inventoryUnitForItem(currentItemName);
   setPurchaseUnitLabel(els["purchase-quantity-unit"], stockUnit);
-  const row = [...(els["inventory-detail-body"]?.querySelectorAll("tr[data-item-id]") || [])]
-    .find((candidate) => candidate.dataset.itemName === itemName || String(candidate.dataset.itemId || "") === String(itemId || ""));
-  const alertData = row ? purchaseAlertDataForItem(row, currentItemName) : null;
-  const missingStock = alertData ? Math.max(0, alertData.required - alertData.stock) : NaN;
+  const missingStock = snapshotItem ? Math.max(0, snapshotItem.required - snapshotItem.stock) : NaN;
   const roundedOrder = roundedPurchaseOrder(currentItemName, missingStock, stockUnit, supplierUnit, rawInputValue(els["purchase-provider"]));
   const recipeQuantity = recipeUnitsFromCountUnits(currentItemName, Number(roundedOrder.stockQuantity));
   els["purchase-quantity"].value = integerPurchaseDisplay(roundedOrder.stockQuantity);
@@ -1074,8 +987,67 @@ function setPurchaseStatus(message, status) {
   els["purchase-status"].dataset.status = status;
 }
 
+async function loadPurchaseInventorySuggestions() {
+  const list = els["purchase-inventory-suggestions-list"];
+  const status = els["purchase-inventory-suggestions-status"];
+  if (!list || !status) return;
+
+  status.textContent = "Cargando recomendacion del ultimo inventario...";
+  try {
+    const payload = await requestBackendApi("/api/inventory/purchase-snapshot");
+    inventoryPurchaseSnapshot = payload?.snapshot && !Array.isArray(payload.snapshot)
+      ? payload.snapshot
+      : { inventoryDate: "", inventoryIds: [], items: [] };
+    renderPurchaseInventorySuggestions(inventoryPurchaseSnapshot);
+    updateInventoryPurchaseAlerts();
+  } catch (error) {
+    els["purchase-inventory-suggestions-count"].textContent = "!";
+    status.textContent = `No se pudo cargar la recomendacion: ${error.message || "error desconocido"}.`;
+    list.innerHTML = "";
+  }
+}
+
+function renderPurchaseInventorySuggestions(snapshot) {
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+  const count = els["purchase-inventory-suggestions-count"];
+  const status = els["purchase-inventory-suggestions-status"];
+  const list = els["purchase-inventory-suggestions-list"];
+  if (!count || !status || !list) return;
+
+  count.textContent = formatNumber(items.length);
+  status.textContent = snapshot?.inventoryDate
+    ? `Fotografia del inventario del ${formatDate(snapshot.inventoryDate)}. El selector de insumos permanece libre.`
+    : "Todavia no hay una fotografia valida de inventario.";
+  list.innerHTML = items.length
+    ? items.map((item) => `
+        <div class="purchase-inventory-suggestion-row">
+          <strong>${escapeHtml(displayNameLabel(item.itemName || "Insumo sin nombre"))}</strong>
+          <span>${escapeHtml(purchaseInventoryQuantityLabel(item.stock, item.unit))}</span>
+          <span>${escapeHtml(purchaseInventoryDaysLabel(item.daysRemaining))}</span>
+        </div>
+      `).join("")
+    : `<p class="purchase-inventory-suggestions-empty">No hay insumos a comprar segun el ultimo inventario.</p>`;
+}
+
+function purchaseInventoryQuantityLabel(stock, unit) {
+  const quantity = Number(stock);
+  const label = purchaseInventoryMeasurementLabel(quantity);
+  return [label, displayUnitLabel(unit)].filter(Boolean).join(" ");
+}
+
+function purchaseInventoryDaysLabel(daysRemaining) {
+  const label = purchaseInventoryMeasurementLabel(Number(daysRemaining));
+  return label === "-" ? label : `${label} dias de produccion`;
+}
+
+function purchaseInventoryMeasurementLabel(value) {
+  return Number.isFinite(value)
+    ? new Intl.NumberFormat("es-AR", { maximumSignificantDigits: 10 }).format(value)
+    : "-";
+}
 
 async function loadPurchaseBackendOptions({ force = false } = {}) {
+  loadPurchaseInventorySuggestions();
   if (purchaseBackendOptions.loaded && !force) {
     updatePurchaseItemOptions();
     updatePurchaseProviderOptions();

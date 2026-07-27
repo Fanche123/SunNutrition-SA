@@ -587,7 +587,7 @@
 
       <section class="view active" id="view-dashboard">
         <section class="dashboard-widget-grid">
-          <article class="dashboard-widget dashboard-payment-plans-widget" id="dashboard-payment-plans-widget">
+          <article class="dashboard-widget dashboard-payment-plans-widget" id="dashboard-payment-plans-widget" role="button" tabindex="0" aria-expanded="false">
             <div class="dashboard-widget-header">
               <div>
                 <span>Tesoreria</span>
@@ -599,7 +599,7 @@
             <div class="dashboard-widget-list" id="dashboard-payment-plans-list"></div>
           </article>
 
-          <article class="dashboard-widget" id="dashboard-received-checks-widget" role="button" tabindex="0" hidden>
+          <article class="dashboard-widget" id="dashboard-received-checks-widget" role="button" tabindex="0" aria-expanded="false" hidden>
             <div class="dashboard-widget-header">
               <div>
                 <span>Tesoreria</span>
@@ -609,6 +609,18 @@
             </div>
             <p id="dashboard-received-checks-summary"></p>
             <div class="dashboard-widget-list dashboard-received-checks-list" id="dashboard-received-checks-list"></div>
+          </article>
+
+          <article class="dashboard-widget" id="dashboard-inventory-purchases-widget" role="button" tabindex="0" aria-expanded="false" hidden>
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Inventario</span>
+                <h2>Insumos a comprar</h2>
+              </div>
+              <strong id="dashboard-inventory-purchases-count">0</strong>
+            </div>
+            <p id="dashboard-inventory-purchases-summary"></p>
+            <div class="dashboard-widget-list" id="dashboard-inventory-purchases-list"></div>
           </article>
 
           <article class="dashboard-widget" id="dashboard-checks-widget" role="button" tabindex="0">
@@ -754,8 +766,8 @@
             </div>
             <div class="purchase-threshold-panel">
               <div class="purchase-threshold-header">
-                <strong>Control minimo de compra</strong>
-                <span>Calculo provisional por ultimo proveedor, dias corridos de entrega y dias habiles de consumo</span>
+                <strong>Insumos a comprar</strong>
+                <span id="purchase-threshold-snapshot-date">Cargando fotografia del ultimo inventario</span>
               </div>
               <div class="table-wrap purchase-threshold-wrap">
                 <table class="purchase-threshold-table">
@@ -790,6 +802,17 @@
           <h2>Compras</h2>
           <p>Carga de pedidos a proveedores y detalle de insumos.</p>
         </div>
+        <section class="panel purchase-inventory-suggestions" aria-labelledby="purchase-inventory-suggestions-title">
+          <div class="purchase-inventory-suggestions-header">
+            <div>
+              <span>Ultimo inventario</span>
+              <h3 id="purchase-inventory-suggestions-title">Insumos a comprar</h3>
+            </div>
+            <strong id="purchase-inventory-suggestions-count" aria-label="Cantidad de insumos sugeridos">0</strong>
+          </div>
+          <p id="purchase-inventory-suggestions-status" aria-live="polite">Cargando recomendacion del ultimo inventario...</p>
+          <div class="purchase-inventory-suggestions-list" id="purchase-inventory-suggestions-list"></div>
+        </section>
         <div class="purchase-entry-layout">
           <section class="panel purchase-entry-panel">
             <form id="purchase-form" class="purchase-form">

@@ -38,6 +38,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 ## Persistencia y contratos
 
 - `tmp/backend-data-cache.json` contiene las tablas canónicas; `loadCache()` lee y `saveBackendCache()` escribe a `.tmp` y renombra. No hay motor SQL persistente ni bloqueo de concurrencia confirmado.
+- El cache puede contener `inventoryPurchaseSnapshot` como metadato superior de Inventario. Se reemplaza en el mismo guardado atómico de `/api/inventory/full-entry`; no forma parte del registry ni agrega columnas a tablas.
 - `tmp/app-state.json` guarda preferencias/compatibilidad de UI mediante el repositorio; no reemplaza tablas operativas.
 - La consola crea SQLite en memoria desde una fotografía del cache, infiere `REAL`/`TEXT`, excluye `_rowNumber`, permite una sola consulta `SELECT`/`WITH` y limita a 5000 filas.
 - Contratos genéricos confirmados: `GET /api/backend/schema`, `GET /api/backend/tables`, `GET|POST /api/backend/tables/:tabla`, `GET /api/backend/map`, `POST /api/backend/sql`.

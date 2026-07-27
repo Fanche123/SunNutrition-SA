@@ -45,6 +45,7 @@ async function submitInventoryDetail(event) {
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
 
+    loadPurchaseInventorySuggestions();
     renderInventoryDetailTemplate(null);
     initializeInventoryEntryDefaults({ force: true });
     setInventoryDetailStatus(`Inventario completo enviado: ${payload.rowsWritten} filas de detalle.`, "success");

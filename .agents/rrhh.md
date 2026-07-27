@@ -24,7 +24,7 @@ Fuera de alcance: vacaciones, fichadas/asistencia, licencias, legajos u otras fu
 
 - Frontend propio: `assets/js/modules/salary-entry.js`, `assets/js/modules/salary-expense-entry.js`.
 - Backend propio: `backend/services/payroll-normalization.service.js`, `backend/services/payroll-summary.service.js`, `backend/services/payroll-expense-entry.service.js`.
-- Configuración propia: `assets/js/config/payroll-calendars.js`, consumida también por Compras y la tarjeta de inventario del Dashboard; pruebas focalizadas: `tests/payroll-safety.test.js`.
+- Configuración propia: `assets/js/config/payroll-calendars.js`, consumida también por Compras, la captura fija de alertas de Inventario y la tarjeta de inventario del Dashboard; expone el mismo contrato en navegador y CommonJS. Pruebas focalizadas: `tests/payroll-safety.test.js`.
 - Dependencias directas: `backend/services/attachments.service.js` (escala y lectura de comprobante), `expense-classification.service.js`, `income-statement.service.js`, `income-calculation.service.js`; `assets/js/modules/payment-entry.js` consume egresos/sueldos.
 - Compartidos sensibles: `assets/js/app.js` (estado y valores por defecto), `assets/js/core/api.js`, `index.html`, `server.js`, `backend/routes/router.js`, `backend/services/backend-table.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`.
 

@@ -46,6 +46,8 @@ const { createBankParserService } = require("./backend/services/bank-parser.serv
 const { createBankMatchingService } = require("./backend/services/bank-matching.service");
 const { createBankReferenceService } = require("./backend/services/bank-reference.service");
 const { createInventoryEntryService } = require("./backend/services/inventory-entry.service");
+const { createInventoryPurchaseSnapshotService } = require("./backend/services/inventory-purchase-snapshot.service");
+const { payrollCalendarForYear } = require("./assets/js/config/payroll-calendars");
 const {
   filterInventoryRowsBySelectedShifts,
   inventoryPhotoReviewPrompt,
@@ -426,11 +428,23 @@ const {
   resolveInventoryEmployeeId
 } = inventoryPhoto;
 const {
+  buildInventoryPurchaseSnapshot,
+  clearInventoryPurchaseSnapshot,
+  readInventoryPurchaseSnapshot,
+  storeInventoryPurchaseSnapshot
+} = createInventoryPurchaseSnapshotService({
+  backendId,
+  backendIsoDate,
+  defaultInventoryItemName,
+  payrollCalendarForYear
+});
+const {
   handleInventoryAppend,
   handleInventoryDetailAppend,
   handleInventoryDetailTemplate,
   handleInventoryFullEntry,
-  handleInventoryLatestDate
+  handleInventoryLatestDate,
+  handleInventoryPurchaseSnapshot
 } = createInventoryEntryService({
   backendId,
   backendIsoDate,
@@ -444,9 +458,13 @@ const {
   normalizeInventoryDetailRows,
   normalizeSelectedInventoryShifts,
   readJsonBody,
+  readInventoryPurchaseSnapshot,
   resolveInventoryEmployeeId,
   saveBackendCache,
   sendJson,
+  storeInventoryPurchaseSnapshot,
+  buildInventoryPurchaseSnapshot,
+  clearInventoryPurchaseSnapshot,
   valueBackendInventories
 });
 const {
@@ -706,6 +724,7 @@ const server = http.createServer(createRequestHandler({
     handleInventoryDetailTemplate,
     handleInventoryFullEntry,
     handleInventoryLatestDate,
+    handleInventoryPurchaseSnapshot,
     handleOtherExpenseFullEntry,
     handlePayrollScaleRead,
     handlePayrollExpenseEntry,

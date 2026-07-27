@@ -69,9 +69,11 @@ let dashboardWidgetData = {
   missingInventoryDays: [],
   pendingPurchases: [],
   pendingOrders: [],
-  pendingReceivedChecks: []
+  pendingReceivedChecks: [],
+  inventoryPurchaseSnapshot: { inventoryDate: "", inventoryIds: [], items: [] }
 };
 let dashboardExpandedWidget = "";
+let inventoryPurchaseSnapshot = { inventoryDate: "", inventoryIds: [], items: [] };
 let receptionInvoiceReadRequestId = 0;
 let logisticsInvoiceReadRequestId = 0;
 let otherExpenseInvoiceReadRequestId = 0;
@@ -311,6 +313,10 @@ function cacheElements() {
     "dashboard-received-checks-count",
     "dashboard-received-checks-summary",
     "dashboard-received-checks-list",
+    "dashboard-inventory-purchases-widget",
+    "dashboard-inventory-purchases-count",
+    "dashboard-inventory-purchases-summary",
+    "dashboard-inventory-purchases-list",
     "dashboard-checks-widget",
     "dashboard-checks-count",
     "dashboard-next-check",
@@ -453,6 +459,7 @@ function cacheElements() {
     "inventory-detail-id-label",
     "inventory-detail-body",
     "purchase-threshold-body",
+    "purchase-threshold-snapshot-date",
     "inventory-counter-manual-morning",
     "inventory-counter-manual-afternoon",
     "inventory-counter-manual-dawn",
@@ -473,6 +480,9 @@ function cacheElements() {
     "inventory-detail-submit",
     "inventory-detail-status",
     "purchase-form",
+    "purchase-inventory-suggestions-count",
+    "purchase-inventory-suggestions-status",
+    "purchase-inventory-suggestions-list",
     "purchase-item-id",
     "purchase-item-name",
     "purchase-provider",
@@ -1068,8 +1078,12 @@ function bindEvents() {
     render();
   });
 
+  els["dashboard-payment-plans-widget"]?.addEventListener("click", () => toggleDashboardWidget("paymentPlans"));
+  els["dashboard-payment-plans-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "paymentPlans"));
   els["dashboard-received-checks-widget"]?.addEventListener("click", () => toggleDashboardWidget("receivedChecks"));
   els["dashboard-received-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "receivedChecks"));
+  els["dashboard-inventory-purchases-widget"]?.addEventListener("click", () => toggleDashboardWidget("inventoryPurchases"));
+  els["dashboard-inventory-purchases-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "inventoryPurchases"));
   els["dashboard-checks-widget"]?.addEventListener("click", () => toggleDashboardWidget("checks"));
   els["dashboard-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "checks"));
   els["dashboard-inventory-widget"]?.addEventListener("click", () => toggleDashboardWidget("inventory"));

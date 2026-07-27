@@ -26,3 +26,7 @@ function payrollCalendarForYear(year) {
   const dates = PAYROLL_HOLIDAYS_BY_YEAR[Number(year)];
   return dates ? { configured: true, dates: new Set(dates) } : { configured: false, dates: new Set() };
 }
+
+if (typeof module === "object" && module.exports) {
+  module.exports = { PAYROLL_HOLIDAYS_BY_YEAR, payrollCalendarForYear };
+}

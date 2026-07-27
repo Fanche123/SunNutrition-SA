@@ -1024,17 +1024,6 @@ textarea {
   cursor: default;
 }
 
-.dashboard-payment-plans-widget {
-  grid-column: 1 / -1;
-  min-height: 0;
-  cursor: default;
-}
-
-.dashboard-payment-plans-widget .dashboard-widget-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-}
-
 .dashboard-widget:hover,
 .dashboard-widget:focus-visible {
   border-color: #0f766e;
@@ -1097,6 +1086,7 @@ textarea {
   align-content: start;
 }
 
+.dashboard-payment-plans-widget .dashboard-widget-list,
 .dashboard-received-checks-list {
   display: grid;
 }
@@ -1139,6 +1129,74 @@ textarea {
   font-size: 13px;
 }
 
+.dashboard-plain-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 2px 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-plain-row > span {
+  min-width: 0;
+}
+
+.dashboard-plain-row > span > strong,
+.dashboard-plain-row > span > small {
+  display: block;
+}
+
+.dashboard-plain-row > span > small {
+  margin-top: 2px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-plain-row > strong {
+  max-width: 100%;
+  color: #0d1f33;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.dashboard-plain-empty {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dashboard-payment-plan-group + .dashboard-payment-plan-group {
+  margin-top: 10px;
+}
+
+.dashboard-payment-plan-group-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #cbd5e1;
+  color: #0d1f33;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.dashboard-payment-plan-details {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.dashboard-payment-plan-quota + .dashboard-payment-plan-quota {
+  padding-top: 8px;
+  border-top: 1px solid rgba(203, 213, 225, 0.7);
+}
+
 .dashboard-mini-row.is-warning,
 .dashboard-row-warning td {
   background: #fff3c4;
@@ -1165,6 +1223,16 @@ textarea {
 
 .dashboard-expanded-table table {
   min-width: 820px;
+}
+
+.dashboard-inventory-purchases-table table {
+  min-width: 620px;
+}
+
+.dashboard-inventory-purchases-table td:first-child {
+  max-width: 460px;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .dashboard-expanded-empty {
@@ -3286,7 +3354,11 @@ button.danger {
 .photo-drop-zone input {
   position: absolute;
   width: 1px;
+  max-width: 1px;
+  min-width: 0;
   height: 1px;
+  padding: 0;
+  border: 0;
   opacity: 0;
   pointer-events: none;
 }
@@ -3727,6 +3799,81 @@ button.danger {
   width: 110px;
   text-align: right;
   font-weight: 800;
+}
+
+.purchase-inventory-suggestions {
+  margin-bottom: 18px;
+  padding: 18px 22px;
+}
+
+.purchase-inventory-suggestions-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.purchase-inventory-suggestions-header span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.purchase-inventory-suggestions-header h3 {
+  margin: 3px 0 0;
+  color: #0d1f33;
+  font-size: 18px;
+}
+
+.purchase-inventory-suggestions-header > strong {
+  color: #b45309;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.purchase-inventory-suggestions > p {
+  margin: 8px 0 12px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.purchase-inventory-suggestions-list {
+  display: grid;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.purchase-inventory-suggestion-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) minmax(120px, auto) minmax(150px, auto);
+  gap: 16px;
+  align-items: center;
+  min-width: 0;
+  padding: 9px 0;
+  border-top: 1px solid #e2e8f0;
+  color: #334155;
+  font-size: 13px;
+}
+
+.purchase-inventory-suggestion-row strong {
+  min-width: 0;
+  color: #0d1f33;
+  overflow-wrap: anywhere;
+}
+
+.purchase-inventory-suggestion-row span {
+  text-align: right;
+}
+
+.purchase-inventory-suggestions-empty {
+  margin: 0;
+  padding-top: 4px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .purchase-entry-layout {
@@ -5391,6 +5538,15 @@ button.danger {
   .purchase-pricing-grid {
     grid-template-columns: 1fr;
   }
+
+  .purchase-inventory-suggestion-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+
+  .purchase-inventory-suggestion-row span {
+    text-align: left;
+  }
 }
 
 .purchase-threshold-panel {
@@ -5677,6 +5833,14 @@ button.danger {
   .settings-grid,
   .dashboard-widget-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-plain-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-plain-row > strong {
+    text-align: left;
   }
 
   .metric-top-row,

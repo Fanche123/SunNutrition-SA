@@ -65,7 +65,7 @@ Compartidos o integraciones relevantes:
 
 - Alta de acreedor en UI: rama específica de `assets/js/modules/bank-reconciliation-drafts.js`.
 - Helpers/carga: `assets/js/modules/operational-shared.js`, `assets/js/modules/operational-data-coordinator.js`, `assets/js/core/api.js`.
-- Inventario: `assets/js/modules/inventory-detail-template.js`, `assets/js/modules/inventory-theoretical-model.js`, `backend/services/income-calculation.service.js`, `backend/services/inventory-valuation.service.js`.
+- Inventario: `assets/js/modules/inventory-detail-template.js`, `assets/js/modules/inventory-theoretical-model.js`, `shared/inventory-purchase-evaluation.js`, `backend/services/inventory-purchase-snapshot.service.js`, `backend/services/income-calculation.service.js`, `backend/services/inventory-valuation.service.js`.
 - Egresos/reportes: `assets/js/modules/payment-entry.js`, `backend/services/expense-classification.service.js`, `backend/services/income-statement.service.js`.
 - UI/coordinación: `index.html`, `assets/js/app.js`, `assets/js/core/formatters.js`, `assets/js/dom-utils.js`.
 - Infraestructura: `backend/services/backend-table.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/config/backend-projections.js`, `backend/table-registry.json`, `backend/routes/router.js`, `server.js`.
@@ -102,7 +102,7 @@ La UI de Compra, Recepción y Otros gastos usa los endpoints integrales especial
 
 ## Dependencias
 
-- **Inventario:** inicia alertas y consume costos de compras/recepciones.
+- **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. La lista superior de Compras lee esa fotografía sin recalcularla y no filtra ni limita el selector de insumos.
 - **Tesorería:** acreedores, etiquetas, `egresos`, pagos y conciliación; no cambiar su cancelación desde Compras.
 - **Reportes:** clasificación de egresos y costo de mercadería.
 - **RRHH:** empleados de recepción y rama salarial del servicio compartido de adjuntos.

@@ -18,6 +18,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/app.js` | Arquitectura | Todos frontend | Bootstrap/eventos globales y contrato `saveState({ scheduleRemote })`; core | Alto | `arquitectura.md` + afectados |
 | `assets/js/core/*.js`, `assets/js/dom-utils.js` | Arquitectura | Todos frontend | API, archivos, formatos y DOM; core | Medio | `arquitectura.md` + consumidores |
 | `shared/money.js`, `shared/money-columns.js`, `backend/utils/money-input.js`, `docs/money-contract.md`, `tests/money*.test.js` | Arquitectura | RRHH, Tesorería, Compras, Ventas, Inventario, Reportes, Contabilidad, Administración | Contrato monetario único frontend/backend, clasificación semántica y validación estricta de payloads | Alto | `arquitectura.md` + consumidores financieros |
+| `shared/inventory-purchase-evaluation.js` | Inventario | Compras, Reportes, Arquitectura | Regla única frontend/backend de consumo, umbral y días disponibles para alertas de compra | Alto | `inventario.md` + consumidores |
 | `index.html` | UI/UX | Todos frontend | Shell, vistas y contratos DOM; core | Alto | `ui-ux.md` + afectados |
 | `assets/css/*.css`, `assets/icons/*.svg` | UI/UX | Todos frontend | Apariencia, responsive e iconos; dominio UI | Medio | `ui-ux.md` |
 | `assets/js/modules/inventory-*.js` | Inventario | Compras, Reportes | Captura, OCR, teórico y detalle; dominio | Medio/alto | `inventario.md` |
@@ -33,10 +34,11 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/modules/bank-reconciliation-*.js` | Tesorería | Compras, Ventas | Conciliación; dominio | Alto | `tesoreria.md` |
 | `assets/js/modules/*check*.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js` | Tesorería | Compras, Ventas, Reportes (`dashboard.js` consume Planes de pago en solo lectura) | Pagos, cheques, planes y aportes; dominio | Alto | `tesoreria.md` |
 | `assets/js/modules/salary-*.js` | RRHH | Compras, Reportes | Sueldos y egreso salarial; dominio | Alto | `rrhh.md` |
-| `assets/js/config/payroll-calendars.js` | RRHH | Arquitectura, Compras, Reportes | Calendarios laborales configurados por año; configuración de dominio compartida | Alto | `rrhh.md` + consumidores |
+| `assets/js/config/payroll-calendars.js` | RRHH | Arquitectura, Compras, Inventario, Reportes | Calendarios laborales configurados por año; configuración de dominio compartida | Alto | `rrhh.md` + consumidores |
 | `assets/js/modules/dashboard.js`, `reports-*.js` | Reportes | Todos | Indicadores y presentación financiera; dominio | Alto | `reportes.md` |
 | `assets/js/modules/data-*.js`, `sql-console.js` | Administración | Base de datos, Arquitectura | Editor, mapa y SQL; dominio | Alto | `administracion.md` |
 | `backend/services/inventory-*.service.js`, `backend/utils/inventory-*.js` | Inventario | Compras, Reportes | Inventario/OCR; la carga integral coordina valuación previa a persistencia; dominio | Alto | `inventario.md` |
+| `backend/services/inventory-*.service.test.js` | Inventario | Arquitectura, Reportes | Regresión aislada de carga, evaluación fija y persistencia de Inventario | Alto | `inventario.md` |
 | `backend/services/purchase-*.service.js`, `reception-entry.service.js`, `other-expense-entry.service.js`, `creditor-*.service.js`, `attachments.service.js` | Compras | Inventario, Tesorería, Reportes, RRHH | Altas atómicas de compras/recepciones/otros gastos, acreedores y adjuntos; dominio | Alto | `compras.md` (+ RRHH si escala) |
 | `tests/purchase-integrity.test.js` | Compras | Arquitectura | Pruebas aisladas de integridad, compensación y reintentos del dominio | Medio | `compras.md` |
 | `backend/services/bank-*.service.js`, `backend/utils/bank.js`, `backend/bank-rules.js` | Tesorería | Compras, Ventas | Banco y conciliación; dominio | Alto | `tesoreria.md` |
