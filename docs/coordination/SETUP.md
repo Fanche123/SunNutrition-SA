@@ -84,7 +84,7 @@ Iniciar_Coordinador.bat
 Ver_Estado_Coordinacion.bat
 ```
 
-`Iniciar_ERP_y_Coordinador.bat` conserva su nombre histórico, pero ahora inicia únicamente el ERP y no activa el watcher. Los launchers nunca contienen la clave.
+`Iniciar_ERP_y_Coordinador.bat` conserva su nombre histórico, pero ahora inicia únicamente el ERP con el control de ciclo de vida documentado en [`docs/local-server.md`](../local-server.md) y no activa el watcher. Los launchers nunca contienen la clave.
 
 ## 5. Aviso local del legado
 

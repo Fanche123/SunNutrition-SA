@@ -5,6 +5,7 @@ function createRequestHandler(dependencies) {
     backendOverview,
     backendSchema,
     handlers,
+    runtimeIdentity,
     sendJson,
     serveStaticFile,
   } = dependencies;
@@ -54,7 +55,15 @@ function createRequestHandler(dependencies) {
         return;
       }
 
-      if (request.url === "/api/health") return sendJson(response, 200, { ok: true });
+      if (request.url === "/api/runtime/shutdown" && request.method === "POST") {
+        return handlers.handleRuntimeShutdown(request, response);
+      }
+      if (request.url === "/api/health") {
+        return sendJson(response, 200, {
+          ok: true,
+          ...(runtimeIdentity ? { runtime: runtimeIdentity } : {})
+        });
+      }
       if (request.url === "/api/backend/schema" && request.method === "GET") {
         return sendJson(response, 200, { ok: true, schema: backendSchema() });
       }

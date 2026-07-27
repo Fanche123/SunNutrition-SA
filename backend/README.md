@@ -35,4 +35,6 @@ El Editor usa exclusivamente `/api/admin/tables`. Todas las tablas visibles tien
 
 Sin configuracion explicita el servidor escucha solo en `127.0.0.1`. El modo LAN y cualquier bind no local se rechazan mientras no exista autenticacion/autorizacion. La configuracion esta en `backend/config/access.js` y el control comun en `backend/services/access-control.service.js`.
 
+El arranque, identidad de `/api/health`, deteccion de codigo obsoleto y comandos seguros `start/status/restart/stop` se documentan en `docs/local-server.md`.
+
 Ver `docs/administration-security.md` para limites SQL, metricas `all=true` y requisitos previos al modo LAN.

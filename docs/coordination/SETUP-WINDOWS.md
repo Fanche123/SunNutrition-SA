@@ -43,7 +43,7 @@ npm run coordination:await -- --task-id <id> --domain <dominio> --handoff-hash <
 
 ## Launchers
 
-El archivo `Iniciar_ERP_y_Coordinador.bat` conserva su nombre histórico, pero ahora inicia únicamente el ERP y puede usarse como launcher habitual.
+El archivo `Iniciar_ERP_y_Coordinador.bat` conserva su nombre histórico, pero ahora inicia únicamente el ERP mediante el control seguro de puerto e identidad y puede usarse como launcher habitual. El procedimiento canónico está en [`docs/local-server.md`](../local-server.md).
 
 Las utilidades manuales del legado son:
 

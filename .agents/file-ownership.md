@@ -5,6 +5,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | Ruta o patrón | Propietario | Consumidores | Finalidad / categoría | Riesgo | AGENT a actualizar |
 |---|---|---|---|---|---|
 | `server.js`, `package.json` | Arquitectura | Todos | Composición/arranque; infraestructura | Alto | `arquitectura.md` |
+| `backend/utils/server-runtime.js`, `tools/erp-server.js`, `tests/erp-server-lifecycle.test.js`, `docs/local-server.md` | Arquitectura | Todos, usuario local | Identidad, huella, ownership, comandos y regresión del ciclo de vida del servidor local; infraestructura/documentación | Alto | `arquitectura.md` |
 | `.gitattributes`, `.gitignore`, `.env.example` | Arquitectura | Todos | Configuración versionada; infraestructura | Medio | `arquitectura.md` |
 | `.codex/config.toml`, `.codex/agents/*.toml` | Arquitectura | Coordinador, todos los dominios | Configuración de subagentes nativos, modelos, concurrencia y permisos heredados | Alto | `arquitectura.md` + `coordinador.md` |
 | `.coordination/tasks/<taskId>/**` | Coordinador | Jefe de tarea, especialistas | Contexto e informe runtime del flujo nativo; ignorado por Git | Alto | `coordinador.md` + `arquitectura.md` |

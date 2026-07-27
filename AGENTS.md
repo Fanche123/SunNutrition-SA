@@ -219,6 +219,13 @@ Aplicar la verificación mínima suficiente para cada tarea.
 - ejecutar pruebas más amplias;
 - indicar posibles riesgos.
 
+### Validación contra el servidor local
+
+- antes de validar HTTP o interfaz, ejecutar `npm.cmd run server:status` desde el checkout y puerto esperados;
+- continuar únicamente si informa `running_fresh`;
+- en Worktrees usar un puerto aislado, timeout y cleanup garantizado;
+- un `404` de una ruta recién implementada obliga a corregir el runtime o la ruta y no permite cerrar la tarea como aprobada.
+
 No ejecutar automáticamente toda la suite, builds completos o auditorías generales para cambios pequeños.
 
 ---

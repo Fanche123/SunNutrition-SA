@@ -2,7 +2,7 @@
 
 ## Estructura
 
-El proyecto conserva CommonJS, JavaScript clasico en navegador y arranque con `node server.js`.
+El proyecto conserva CommonJS y JavaScript clasico en navegador. `tools/erp-server.js` administra el ciclo local y carga `server.js` como raíz de composición.
 
 ## Fuente unica de verdad
 
@@ -24,7 +24,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `backend/repositories/`: persistencia de archivos locales; no contiene reglas de negocio.
 - `backend/routes/router.js`: despacho HTTP y manejo comun de CORS, 404 y errores.
 - `backend/services/`: servicios extraidos por dominio.
-- `backend/utils/`: helpers de HTTP, archivos e IDs.
+- `backend/utils/`: helpers de HTTP, archivos, IDs e identidad/ownership del servidor local.
 - `backend/data-store.js`: acceso y persistencia de las tablas que constituyen la base backend.
 - `backend/table-registry.json`: registro publico de tablas y fuentes.
 - `shared/money.js`: contrato monetario único para frontend, backend y pruebas; se carga antes de los scripts de dominio y también se importa mediante CommonJS.
@@ -45,6 +45,8 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 6. Las rutas no API terminan en el servidor de archivos estaticos de `backend/utils/files.js`.
 
 Antes del despacho, `access-control.service.js` valida el origen y concentra el punto futuro de autenticacion, sesion, roles y autorizacion. `backend/config/access.js` fuerza por defecto modo local y bind `127.0.0.1`; el modo LAN no puede arrancar mientras autenticacion/autorizacion no esten implementadas.
+
+`GET /api/health` agrega la identidad pública del runtime: instancia, PID, inicio, checkout, working directory, host, puerto, Node y huella del código. `backend/utils/server-runtime.js` calcula esa identidad y administra un lock ignorado por Git. `POST /api/runtime/shutdown` es un control local interno: exige el token secreto del lock y hace que la instancia verificada se cierre a sí misma; el token nunca se publica en health.
 
 ## Dominios extraidos
 
@@ -106,7 +108,10 @@ La extraccion del markup a fragmentos requiere primero convertir el arranque en 
 ## Ejecucion y validacion
 
 ```powershell
-node server.js
+npm.cmd start
+npm.cmd run server:status
+npm.cmd run server:restart
+npm.cmd run server:stop
 ```
 
 Validacion de sintaxis disponible en el proyecto:
@@ -120,10 +125,13 @@ Si Node no esta en `PATH`, usar el runtime provisto por el workspace. La verific
 - `node --check` de todos los `.js`, excluyendo dependencias y artefactos;
 - arranque en un puerto alternativo;
 - `GET /api/health`;
+- `server:status` en estado `running_fresh` desde el checkout esperado;
 - schema, tablas, fuentes y mapa;
 - reportes de resultados y cashflow;
 - consulta SQL de solo lectura;
 - carga de `index.html` y de los scripts extraidos.
+
+El ciclo completo, los estados de diagnóstico, la recuperación segura y las reglas para pruebas en Worktrees están en `docs/local-server.md`. Un endpoint nuevo que responde `404` no se considera validado hasta confirmar un runtime fresco y resolver el arranque o la ruta.
 
 ## Coordinación nativa y recuperación
 

@@ -36,6 +36,7 @@ Pedir confirmación humana adicional únicamente cuando falte una decisión cont
 - No modificar datos reales durante pruebas. Usar lecturas, payloads inválidos, fixtures o repositorios/copias temporales aisladas.
 - No tocar `.env`, adjuntos, caches ni temporales reales.
 - Validar según riesgo: sintaxis y vista para frontend localizado; sintaxis, servidor y endpoint para backend; casos representativos y consumidores para cálculos; regresión amplia solo para cambios transversales.
+- Antes de validar contra un servidor local, ejecutar `npm.cmd run server:status` desde el checkout/puerto esperado y exigir `running_fresh`. En Worktrees usar puerto aislado, timeout y cleanup en `finally`. Un `404` de una ruta nueva no puede aprobarse como “runtime viejo”: se resuelve o se declara bloqueo real. Ver `docs/local-server.md`.
 - Informar con honestidad toda prueba no ejecutada.
 
 ## Mantenimiento obligatorio de AGENTS

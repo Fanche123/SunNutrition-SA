@@ -94,6 +94,13 @@ const {
   normalizePartnerName
 } = require("./backend/utils/runtime");
 const {
+  createRuntimeSession,
+  loadEnvFile,
+  removeRuntimeLockIfOwned,
+  safeTokenEquals,
+  writeRuntimeLock
+} = require("./backend/utils/server-runtime");
+const {
   backendBankMatches: matchBackendBank,
   bankDateDistance,
   bankTextOverlapScore,
@@ -104,9 +111,14 @@ const {
   normalizeBankCuit
 } = require("./backend/utils/bank");
 
-loadEnvFile();
+loadEnvFile(ROOT_DIR);
 
 const accessConfig = createAccessConfig(process.env);
+const runtimeSession = createRuntimeSession({
+  rootDir: ROOT_DIR,
+  host: accessConfig.host,
+  port: accessConfig.port
+});
 const queryLimits = createQueryLimits(process.env);
 const recordAllRowsRead = createTableReadMetrics({ config: queryLimits.allRows });
 const runBackendSqlQuery = createSqlService({
@@ -711,11 +723,14 @@ const { handleComparison: handleEconomicExpenseComparison } = createEconomicExpe
   sendJson
 });
 
+let shutdownStarted = false;
+
 const server = http.createServer(createRequestHandler({
   applyRequestAccess,
   backendColumnsMap,
   backendOverview,
   backendSchema,
+  runtimeIdentity: runtimeSession.publicIdentity,
   handlers: {
     handleAppStateGet,
     handleAppStateSave,
@@ -776,37 +791,102 @@ const server = http.createServer(createRequestHandler({
     handleReceptionFullEntry,
     handleReceptionAttachmentSave,
     handleReceptionInvoiceRead,
+    handleRuntimeShutdown,
     handleSalesOrderFullEntry
   },
   sendJson,
   serveStaticFile
 }));
 
+if (typeof server.on === "function") {
+  server.on("error", handleServerError);
+}
+
 server.listen(accessConfig.port, accessConfig.host, () => {
+  try {
+    writeRuntimeLock(ROOT_DIR, runtimeSession);
+  } catch (error) {
+    console.error(`[ERP_SERVER_LOCK_ERROR] No se pudo registrar ownership: ${error.message}`);
+    console.error("El servidor se cerrara para no quedar como una instancia no administrada.");
+    shutdownServer("lock-error", 1);
+    return;
+  }
+
   console.log(`SunNutrition ERP escuchando en http://${accessConfig.host}:${accessConfig.port} (${accessConfig.mode})`);
+  console.log(`Runtime ${runtimeSession.publicIdentity.instanceId}; PID ${runtimeSession.publicIdentity.pid}; inicio ${runtimeSession.publicIdentity.startedAt}`);
+  console.log(`Codigo ${runtimeSession.publicIdentity.projectRoot}`);
+  console.log(`Huella ${runtimeSession.publicIdentity.sourceFingerprint}`);
 });
+
+if (typeof server.close === "function") {
+  process.once("SIGINT", () => shutdownServer("SIGINT"));
+  process.once("SIGTERM", () => shutdownServer("SIGTERM"));
+  process.once("exit", () => {
+    removeRuntimeLockIfOwned(ROOT_DIR, runtimeSession);
+  });
+}
 
 function serveStaticFile(request, response) {
   return serveStaticFileFromRoot(request, response, ROOT_DIR, MIME_TYPES);
 }
 
-function loadEnvFile() {
-  const envPath = path.join(__dirname, ".env");
-  if (!fs.existsSync(envPath)) return;
+function handleRuntimeShutdown(request, response) {
+  const providedToken = request.headers["x-erp-runtime-token"];
+  if (!safeTokenEquals(providedToken, runtimeSession.controlToken)) {
+    return sendJson(response, 403, {
+      ok: false,
+      code: "RUNTIME_CONTROL_FORBIDDEN",
+      error: "Token de control de runtime invalido."
+    });
+  }
 
-  const lines = fs.readFileSync(envPath, "utf8").split(/\r?\n/);
-  lines.forEach((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) return;
-    const separatorIndex = trimmed.indexOf("=");
-    if (separatorIndex === -1) return;
+  sendJson(response, 202, {
+    ok: true,
+    instanceId: runtimeSession.publicIdentity.instanceId
+  });
+  setImmediate(() => shutdownServer("runtime-control"));
+}
 
-    const key = trimmed.slice(0, separatorIndex).trim();
-    let value = trimmed.slice(separatorIndex + 1).trim();
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
+function handleServerError(error) {
+  if (error?.code === "EADDRINUSE") {
+    console.error(
+      `[ERP_SERVER_PORT_IN_USE] ${accessConfig.host}:${accessConfig.port} ya esta ocupado.`
+    );
+    console.error('Ejecute "npm.cmd run server:status" para identificar el runtime antes de validar.');
+    console.error("No se detuvo ningun proceso.");
+  } else {
+    console.error(`[ERP_SERVER_ERROR] ${error?.message || error}`);
+  }
+  removeRuntimeLockIfOwned(ROOT_DIR, runtimeSession);
+  process.exitCode = 1;
+}
+
+function shutdownServer(reason, exitCode = 0) {
+  if (shutdownStarted) return;
+  shutdownStarted = true;
+  console.log(`Cerrando SunNutrition ERP (${reason})...`);
+
+  const forceConnectionsTimer = setTimeout(() => {
+    if (typeof server.closeAllConnections === "function") server.closeAllConnections();
+  }, 2000);
+  forceConnectionsTimer.unref();
+
+  const forceExitTimer = setTimeout(() => {
+    removeRuntimeLockIfOwned(ROOT_DIR, runtimeSession);
+    process.exit(exitCode || 1);
+  }, 5000);
+  forceExitTimer.unref();
+
+  server.close((error) => {
+    clearTimeout(forceConnectionsTimer);
+    clearTimeout(forceExitTimer);
+    removeRuntimeLockIfOwned(ROOT_DIR, runtimeSession);
+    if (error) {
+      console.error(`[ERP_SERVER_CLOSE_ERROR] ${error.message}`);
+      process.exitCode = 1;
+      return;
     }
-    if (!process.env[key]) process.env[key] = value;
+    process.exitCode = exitCode;
   });
 }
 

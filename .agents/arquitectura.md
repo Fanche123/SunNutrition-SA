@@ -33,9 +33,10 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Gobierno: `.agents/README.md`, `_base-development.md`, `file-ownership.md`, `arquitectura.md`, `docs/agent-manuals-plan.md`.
 - Coordinación heredada opcional: `.agents/coordinador.md`, `.coordination/`, `tools/coordination*`, `docs/coordination/`, `Iniciar_Coordinador.bat` y `Ver_Estado_Coordinacion.bat` se conservan como tooling manual legado; su propietario operativo sigue siendo Coordinador.
 - Composición/configuración: `server.js`, `package.json`, `AGENTS.md`, `.gitattributes`, `.gitignore`, `.env.example`, `backend/routes/router.js` e `Iniciar_ERP_y_Coordinador.bat`, cuyo nombre histórico se conserva aunque ahora inicia únicamente el ERP.
+- Ciclo de vida local: `backend/utils/server-runtime.js`, `tools/erp-server.js`, `tests/erp-server-lifecycle.test.js` y `docs/local-server.md` concentran identidad/huella, lock autenticado por checkout y puerto, comandos `start/status/restart/stop`, conflicto legible y regresión aislada.
 - Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; `.codex/agents/*.toml` incluye especialistas y `validador_tarea`, read-only y obligatorio una vez por iteración.
 - Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`; `shared/inventory-purchase-evaluation.js` centraliza la regla operativa de alerta para frontend y backend bajo ownership de Inventario. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
-- Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js`.
+- Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js` y `server-runtime.js`.
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
 - Referencias/validación: `docs/architecture.md`, `docs/refactor-architecture-plan.md`, `backend/README.md`, `tools/check-js.ps1`. `.codex-snippet.txt` es un snippet no cargado por runtime y queda bajo revisión arquitectónica, no como fuente funcional.
 
@@ -63,7 +64,7 @@ Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnósti
 - Dominio: buscar el módulo/servicio dueño antes de tocar compartidos.
 - Documentación: `docs/architecture.md` y ownership.
 - Flujo de desarrollo: el Coordinador crea un hilo principal visible por pedido y termina inmediatamente. Ese hilo ejecuta la tarea completa y puede crear especialistas; el Coordinador no recibe su informe.
-- Arranque: `npm start` conserva el ERP normal. Los scripts `coordinator`, `coordinator:once`, `coordination:status`, `coordination:action`, `coordination:await`, `coordination:test` y la prueba real quedan disponibles solo como herramientas manuales del legado.
+- Arranque: `npm start` pasa por `tools/erp-server.js`; `server:status` solo aprueba un runtime fresco del checkout esperado y `server:restart`/`server:stop` controlan únicamente la instancia cuyo health y lock autenticado coinciden. El contrato y los puertos aislados se documentan en `docs/local-server.md`. Los scripts `coordinator`, `coordinator:once`, `coordination:status`, `coordination:action`, `coordination:await`, `coordination:test` y la prueba real quedan disponibles solo como herramientas manuales del legado.
 
 ## Flujo de trabajo
 
