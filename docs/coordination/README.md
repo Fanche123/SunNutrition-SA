@@ -10,13 +10,9 @@ El hilo visible puede crear especialistas funcionales, exploradores y revisores 
 
 Las correcciones del mismo objetivo se escriben directamente dentro del hilo visible. Coordinador sólo crea tareas nuevas. Los perfiles `jefe_tarea_*` pueden conservarse para otros consumidores, pero Coordinador no los usa.
 
-Antes de cerrar cada iteración, el hilo visible crea exactamente un `validador_tarea` read-only. Debe recibir pedido, alcance, dominio, riesgo, impacto visual, archivos, diff resumido, pruebas, evidencias y riesgos. Coordinador no participa.
+Antes de cerrar cada iteración, el hilo o subagente que implementó ejecuta la única validación principal y documenta criterios de completitud, pruebas proporcionales, resultados, evidencias, riesgos y controles no ejecutados. Coordinador no repite esa validación; solo revisa faltantes, inconsistencias, riesgos o decisiones.
 
-- `approved`: cierre directo con validación independiente aprobada.
-- `fix_required`: una única corrección, repetición de pruebas afectadas y cierre sin segundo validador.
-- `blocked`: pregunta o autorización al usuario, sin solución inventada.
-
-Una corrección posterior del usuario inicia una nueva iteración y habilita un nuevo validador único.
+`validador_tarea` es read-only y excepcional. Solo se crea si el hilo declara una razón concreta —alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible— y se enfoca en esa brecha sin repetir toda la validación principal. Si pide correcciones, el ejecutor aplica una única ronda y repite las pruebas afectadas sin segundo validador; si queda bloqueado, consulta al usuario.
 
 El watcher no necesita estar activo. El usuario no pulsa New thread, no copia prompts o reportes y no usa `Revisar pendiente`.
 

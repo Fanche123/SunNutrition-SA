@@ -99,7 +99,7 @@ El Coordinador recibe tareas nuevas y crea hilos principales visibles del proyec
 
 El progreso de los hilos se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador obtiene una fotografía read-only sin crear subagentes ni adquirir ownership funcional sobre las tareas inspeccionadas.
 
-Cada hilo crea exactamente un `validador_tarea` read-only al final de cada iteración. Ese validador pertenece a Arquitectura como infraestructura de calidad y no adquiere ownership funcional ni modifica archivos.
+La validación principal pertenece al hilo o subagente que implementa y no se duplica en el Coordinador. `validador_tarea` permanece bajo Arquitectura como infraestructura read-only opcional: solo se usa con una razón concreta de revisión independiente, no adquiere ownership funcional ni modifica archivos.
 
 El Coordinador conserva la infraestructura anterior como recuperación v2 opcional. El watcher no participa del flujo normal y ningún consumidor puede activar el legado, modificar estado histórico o ejecutar ambos circuitos para la misma tarea salvo pedido explícito.
 

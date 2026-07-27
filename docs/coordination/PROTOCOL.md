@@ -8,11 +8,13 @@ El Coordinador no usa `spawn_agent` ni perfiles `jefe_tarea_*`, no espera el res
 
 El hilo visible lee AGENTS y el manual del dominio, ejecuta la tarea completa, mantiene su contexto técnico y puede crear subagentes nativos. El resultado queda dentro de ese hilo; no vuelve al Coordinador.
 
-Al finalizar su implementación y pruebas, el hilo crea exactamente un `validador_tarea` read-only y espera ese único veredicto. El prompt incluye taskId explícito, intención, objetivo, exclusiones, dominio, riesgo, impacto visual, archivos propios, diff relevante, pruebas, evidencias, riesgos, cambios preexistentes identificados y estado relevante del working tree. Un árbol sucio conocido no bloquea salvo superposición material.
+Al finalizar, el hilo o subagente que implementó ejecuta la única validación principal. El resumen incluye taskId explícito, intención, objetivo, exclusiones, criterios de completitud, dominio, riesgo, impacto visual, archivos propios, diff relevante, pruebas y resultados, evidencias, riesgos, controles no ejecutados, cambios preexistentes identificados y estado relevante del working tree. Un árbol sucio conocido no bloquea salvo superposición material.
 
-`approved` termina directamente. `fix_required` permite aplicar una sola ronda concreta, repetir pruebas afectadas y terminar sin segunda validación ni afirmar aprobación final. `blocked` detiene el hilo y consulta al usuario. Una corrección explícita posterior constituye otra iteración con un nuevo validador único.
+El Coordinador no repite comandos, navegador o inspecciones rutinarias ya respaldadas; revisa únicamente puntos no cubiertos, inconsistencias, riesgos o decisiones necesarias.
 
-El Coordinador no crea, espera, lee ni procesa validadores.
+Solo si existe una razón concreta declarada —alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible— el hilo crea un `validador_tarea` read-only y focaliza esa revisión en la brecha. `approved` termina; `fix_required` permite una sola ronda concreta y repetición por el ejecutor de las pruebas afectadas, sin segundo validador; `blocked` detiene y consulta al usuario.
+
+El Coordinador no crea ni espera validadores.
 
 Las correcciones se escriben directamente en el hilo de tarea. Local se usa para runtime principal o localhost; Worktree para aislamiento o si otra tarea escritora está activa. Escritura concurrente exige worktrees. Ningún agente hace commit o push automático.
 

@@ -65,15 +65,30 @@ Las tareas y correcciones no crean monitores automáticos. Cuando el usuario pid
 
 La consulta es estrictamente read-only: descubre y lee hilos con las herramientas nativas, no espera su finalización, no les envía mensajes y no cambia archivos ni estado. El Coordinador no crea subagentes, watchers, timers, automations ni procesos residentes para estimar progreso.
 
-## Validación independiente única
+## Validación principal única y proporcional
 
-Al finalizar cada pedido o corrección explícita, el hilo principal prepara una entrega preliminar y crea exactamente un `validador_tarea` read-only. Le entrega taskId explícito, intención, alcance, dominio, riesgo, impacto visual, archivos propios, resumen del diff relevante, pruebas, evidencias, riesgos, cambios preexistentes identificados y estado relevante del working tree.
+La única validación principal la ejecuta el mismo hilo o subagente que realizó la implementación. El hilo que delega consolida su evidencia, pero no repite comandos, navegador o inspecciones equivalentes si el ejecutor ya dejó resultados suficientes.
 
-- `approved`: entregar `TRABAJO REALIZADO`, `VALIDACIONES`, `VALIDACIÓN INDEPENDIENTE` y `REVISIÓN DEL USUARIO`, indicando validador, aprobación y ausencia de correcciones posteriores.
-- `fix_required`: aplicar únicamente las correcciones concretas, repetir pruebas afectadas y terminar sin otro validador. Declarar: “Se aplicaron las correcciones solicitadas en la única revisión independiente. No se ejecutó una segunda revisión, conforme al flujo definido.”
-- `blocked`: detenerse y formular al usuario la decisión o autorización requerida; no convertir el bloqueo en una corrección técnica.
+Antes de cerrar, el ejecutor debe:
 
-No existe loop validador–corrección–validador. La regla se reinicia únicamente ante un nuevo pedido o una corrección explícita posterior del usuario dentro del mismo hilo. Coordinador nunca crea ni espera validadores.
+1. convertir la intención y el alcance en criterios explícitos de completitud;
+2. verificar el comportamiento solicitado y las exclusiones;
+3. ejecutar sintaxis, pruebas focalizadas y casos representativos proporcionales al riesgo;
+4. revisar consumidores directos y regresiones previsibles cuando corresponda;
+5. validar la interfaz real y aportar evidencia si el impacto visual es `material`;
+6. confirmar que no modificó datos reales durante las pruebas;
+7. distinguir archivos propios de cambios preexistentes o concurrentes;
+8. informar comandos o casos, resultados, evidencia verificable, riesgos y toda prueba no ejecutada.
+
+El Coordinador revisa solamente ese resumen para detectar cobertura faltante, inconsistencias, riesgos o decisiones necesarias. No relanza validaciones rutinarias equivalentes ni exige controles ya respaldados con evidencia suficiente.
+
+Una revisión independiente es excepcional. Solo ante una razón concreta y declarada —alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible— el hilo puede crear un único `validador_tarea` read-only. Debe transmitirle taskId, intención, alcance, dominio, riesgo, impacto visual, archivos propios, diff relevante, pruebas, evidencias, riesgos, cambios preexistentes y la razón de revisión. El validador enfoca su análisis en ese riesgo o brecha y no repite toda la validación principal.
+
+- `approved`: informar la revisión excepcional y cerrar.
+- `fix_required`: aplicar únicamente las correcciones concretas y repetir con el ejecutor las pruebas afectadas, sin segundo validador.
+- `blocked`: detenerse y formular al usuario la decisión o autorización requerida.
+
+No existe loop validador–corrección–validador. El Coordinador nunca crea ni espera validadores.
 
 Clasificar el impacto visual como `none`, `minor` o `material`. Un impacto material requiere vista real o aislada, capturas y revisión de overflow, alineación, jerarquía y responsive.
 

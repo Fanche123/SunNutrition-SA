@@ -56,11 +56,11 @@ Coordinador no usa `spawn_agent` ni perfiles `jefe_tarea_*` en el flujo normal. 
 
 El progreso se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador responde con una fotografía inmediata y read-only basada en evidencia de los hilos visibles; no crea subagentes, watchers, timers ni automations para estimarlo.
 
-Cada iteración termina con exactamente un `validador_tarea` read-only. `approved` cierra; `fix_required` permite una sola corrección y pruebas focalizadas sin revalidación; `blocked` consulta al usuario. Una corrección posterior solicitada por el usuario inicia una nueva iteración con un nuevo validador único.
+Cada iteración tiene una única validación principal, ejecutada por el hilo o subagente que implementa y respaldada con criterios de completitud, pruebas proporcionales y evidencia verificable. El Coordinador no repite esos controles: revisa únicamente cobertura, inconsistencias, riesgos y decisiones pendientes.
 
 Rol auxiliar de infraestructura:
 
-- `.codex/agents/validador_tarea.toml`: único veredicto independiente al final de la iteración.
+- `.codex/agents/validador_tarea.toml`: revisión independiente read-only excepcional y focalizada, solo ante alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible.
 
 ## Coordinación anterior
 

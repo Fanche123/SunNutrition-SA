@@ -2,11 +2,13 @@ function bankReconciliationMovementsByStatus(status) {
   const movements = (bankReconciliationReport?.movements || []).filter((movement) => (
     movement.status === status
     && !bankReconciliationExcludedMovementKeys.has(String(movement.movementKey || ""))
+    && !bankReconciliationIsInvestmentFundCandidate(movement)
   ));
 
   const pendingMappedMovements = (bankReconciliationReport?.movements || []).filter((movement) => (
     ["agregar_gasto", "agregar_egreso", "agregar_pago"].includes(movement.status)
     && !bankReconciliationExcludedMovementKeys.has(String(movement.movementKey || ""))
+    && !bankReconciliationIsInvestmentFundCandidate(movement)
     && movement.providerMatch?.type === "datos_bancarios"
   ));
 
@@ -15,6 +17,15 @@ function bankReconciliationMovementsByStatus(status) {
   return pendingMappedMovements.length
     ? movements.filter((movement) => movement.providerMatch?.type === "datos_bancarios")
     : movements;
+}
+
+function bankReconciliationIsInvestmentFundCandidate(movement) {
+  const movementKey = String(movement?.movementKey || "");
+  const movementId = String(movement?.canonicalMovementId || "");
+  return (bankReconciliationReport?.investmentFundCandidates || []).some((candidate) => (
+    (movementKey && String(candidate.movement?.movementKey || "") === movementKey)
+    || (movementId && String(candidate.movement?.id_movimiento_bancario || "") === movementId)
+  ));
 }
 
 function collectBankReconciliationReviewRows(status) {
@@ -47,7 +58,7 @@ function renderBankReconciliation() {
   const visibleMovements = movements
     .map((movement, index) => ({ movement, index }))
     .filter(({ movement }) => movement.status !== "conciliado");
-  const readyMovements = movements.filter((movement) => movement.status === "listo");
+  const readyMovements = bankReconciliationMovementsByStatus("listo");
   if (els["bank-reconciliation-apply"]) els["bank-reconciliation-apply"].disabled = !readyMovements.length;
   renderBankReconciliationStages();
   renderBankCheckDepositReview();
@@ -90,6 +101,9 @@ function renderBankReconciliationStages() {
   renderBankExpenseStage(bankReconciliationMovementsByStatus("agregar_gasto"));
   renderBankEgressStage(bankReconciliationMovementsByStatus("agregar_egreso"));
   renderBankPaymentStage(bankReconciliationMovementsByStatus("agregar_pago"));
+  if (typeof renderInvestmentFundReconciliationCandidates === "function") {
+    renderInvestmentFundReconciliationCandidates(bankReconciliationReport?.investmentFundCandidates || []);
+  }
 }
 
 function renderBankReconciliationOptionLists() {

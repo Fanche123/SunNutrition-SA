@@ -17,15 +17,15 @@ No usar `spawn_agent`, `jefe_tarea_estandar`, `jefe_tarea_alto_riesgo` ni otro s
 
 Elegir Local cuando la tarea necesite runtime principal, localhost o archivos locales. Elegir Worktree cuando pueda aislarse o exista otra tarea escritora activa. No crear dos escritores sobre la misma carpeta principal. `create_thread` no recibe un parámetro de permisos: el nuevo hilo usa la configuración efectiva de su entorno y del usuario; el prompt debe declarar las restricciones adicionales.
 
-El nuevo hilo asume ejecución completa, lee AGENTS y el manual de dominio, inspecciona y modifica según autorización, valida, usa navegador y crea sus propios subagentes nativos cuando lo necesite. Todo el contexto técnico y el resultado permanecen en ese hilo.
+El nuevo hilo asume ejecución completa, lee AGENTS y el manual de dominio, inspecciona y modifica según autorización, usa navegador y hace que el hilo o subagente que implementó sea responsable de la única validación principal. Todo el contexto técnico y el resultado permanecen en ese hilo.
 
 El prompt completo insertado en cada hilo debe incluir literalmente:
 
-> Al finalizar la implementación y tus propias pruebas, creá exactamente un subagente read-only `validador_tarea`. Si aprueba, terminá. Si solicita correcciones, aplicalas una sola vez, repetí las pruebas afectadas y terminá sin una segunda validación. Si queda bloqueado por una decisión funcional o acción de riesgo, consultá al usuario.
+> La validación principal y rutinaria debe ejecutarla una sola vez el hilo o subagente que realiza la implementación. Antes de cerrar, definí criterios de completitud según el riesgo, ejecutá las pruebas proporcionales y entregá evidencia verificable: comandos o casos y resultados, revisión visual si aplica, archivos y diff propios, riesgos y pruebas no ejecutadas. No delegues ni repitas esa misma validación. Creá un `validador_tarea` read-only únicamente si existe una razón concreta de revisión independiente —alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible—; declarala y enfocá la revisión en ese riesgo, sin repetir controles de rutina. Si queda bloqueado por una decisión funcional o acción de riesgo, consultá al usuario.
 
-El Coordinador no crea ese validador, no espera su veredicto y no procesa su resultado.
+El Coordinador no crea validadores ni espera su veredicto. Si recibe el resumen de una tarea, revisa únicamente cobertura, inconsistencias, riesgos y decisiones pendientes; no vuelve a ejecutar pruebas, navegador o inspecciones ya respaldadas con evidencia suficiente.
 
-El prompt del hilo debe exigir que transmita al validador el `taskId` explícito y distinga archivos propios de cambios preexistentes o concurrentes. Un working tree sucio conocido no debe tratarse como bloqueo salvo superposición material.
+El prompt del hilo debe exigir que el resumen final incluya el `taskId` explícito y distinga archivos propios de cambios preexistentes o concurrentes. Si excepcionalmente se crea un validador, debe recibir además intención, alcance, dominio, riesgo, impacto visual, diff relevante, pruebas y evidencias. Un working tree sucio conocido no debe tratarse como bloqueo salvo superposición material.
 
 Cuando el usuario pide el progreso de una o varias tareas, el Coordinador usa `$estimar-progreso-hilos` y responde con una fotografía inmediata y read-only. No envía mensajes ni cambia el estado de los hilos inspeccionados, y no crea subagentes, watchers, timers ni automations para estimar avance.
 

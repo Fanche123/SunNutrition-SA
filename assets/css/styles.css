@@ -1031,6 +1031,61 @@ textarea {
   min-height: 38px;
 }
 
+.bank-fund-stage-table th:nth-child(3),
+.bank-fund-stage-table td:nth-child(3) {
+  min-width: 260px;
+}
+
+.bank-fund-confidence {
+  display: inline-flex;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #fff2d8;
+  color: #875600;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.bank-fund-confidence.is-reliable {
+  background: #e7f7ef;
+  color: #16704a;
+}
+
+.bank-fund-reason {
+  display: block;
+  min-width: 220px;
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.bank-fund-register {
+  min-height: 34px;
+  white-space: nowrap;
+}
+
+.bank-fund-review-only {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.bank-fund-stage-status {
+  min-height: 20px;
+  margin: 0;
+  padding: 10px 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.bank-fund-stage-status[data-status="ok"] {
+  color: var(--good);
+}
+
+.bank-fund-stage-status[data-status="warn"] {
+  color: var(--warn);
+}
+
 .bank-amount-debit {
   color: #b42318;
   font-weight: 800;

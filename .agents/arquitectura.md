@@ -34,7 +34,7 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Coordinación heredada opcional: `.agents/coordinador.md`, `.coordination/`, `tools/coordination*`, `docs/coordination/`, `Iniciar_Coordinador.bat` y `Ver_Estado_Coordinacion.bat` se conservan como tooling manual legado; su propietario operativo sigue siendo Coordinador.
 - Composición/configuración: `server.js`, `package.json`, `AGENTS.md`, `.gitattributes`, `.gitignore`, `.env.example`, `backend/routes/router.js` e `Iniciar_ERP_y_Coordinador.bat`, cuyo nombre histórico se conserva aunque ahora inicia únicamente el ERP.
 - Ciclo de vida local: `backend/utils/server-runtime.js`, `tools/erp-server.js`, `tests/erp-server-lifecycle.test.js` y `docs/local-server.md` concentran identidad/huella, lock autenticado por checkout y puerto, comandos `start/status/restart/stop`, conflicto legible y regresión aislada.
-- Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; `.codex/agents/*.toml` incluye especialistas y `validador_tarea`, read-only y obligatorio una vez por iteración.
+- Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; el ejecutor realiza la única validación principal y `.codex/agents/*.toml` conserva `validador_tarea` como revisión read-only excepcional y focalizada.
 - Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`; `shared/inventory-purchase-evaluation.js` centraliza la regla operativa de alerta para frontend y backend bajo ownership de Inventario. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
 - Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js` y `server-runtime.js`.
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
@@ -84,7 +84,7 @@ El despliegue predeterminado es local sobre `127.0.0.1`. `backend/config/access.
 
 El Coordinador recibe pedidos nuevos y crea un hilo principal visible con `create_thread`, nunca un Jefe anidado mediante `spawn_agent`. El nuevo hilo determina ownership y coordina sus subagentes. No se ejecutan dos escritores sobre la misma carpeta; el paralelismo de escritura requiere worktrees.
 
-El progreso de tareas Codex se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía read-only basada en estado, turnos y timestamps; no crea subagentes, watchers, timers ni automations para seguimiento. El único `validador_tarea` final permanece sin cambios.
+El progreso de tareas Codex se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía read-only basada en estado, turnos y timestamps; no crea subagentes, watchers, timers ni automations para seguimiento. La validación principal queda en el ejecutor; `validador_tarea` solo se usa por una razón independiente concreta.
 
 La coordinación v2 basada en archivos se conserva únicamente para recuperación manual y nunca se combina con el flujo nativo de una misma tarea.
 

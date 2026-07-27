@@ -1,5 +1,7 @@
 const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/money");
 
+const { investmentFundCandidates } = require("./investment-fund.service");
+
 function createBankReconciliationService(dependencies) {
   const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankMovementAssociation, bankMovementFingerprint, canonicalPendingBankMovements, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, importBankMovements, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
   const failureInjector = dependencies.failureInjector || (() => {});
@@ -249,6 +251,10 @@ function createBankReconciliationService(dependencies) {
         invoiceTypes: backendBankLookupValues(tables.egresos?.rows, "tipo_factura", ["Factura A", "Factura B", "Factura C", "Remito X"]),
         paymentMethods: backendBankLookupValues(tables.pagos?.rows, "metodo", ["Transferencia", "Cheque", "Debito", "Movimiento bancario"])
       },
+      investmentFundCandidates: investmentFundCandidates(
+        analyzedMovements.map((movement) => ({ ...movement, bank })),
+        tables
+      ),
       movements: analyzedMovements
     };
   }
@@ -371,6 +377,16 @@ function createBankReconciliationService(dependencies) {
     };
     const notes = [];
     const selectedKeys = new Set(report.movementKeys || []);
+    const fundCandidateKeys = new Set(
+      (report.investmentFundCandidates || [])
+        .map((candidate) => cleanBackendText(candidate.movement?.movementKey))
+        .filter(Boolean)
+    );
+    const fundCandidateIds = new Set(
+      (report.investmentFundCandidates || [])
+        .map((candidate) => backendId(candidate.movement?.id_movimiento_bancario))
+        .filter(Boolean)
+    );
     const selectedMovements = (report.movements || []).filter((movement) => (
       !selectedKeys.size || selectedKeys.has(String(movement.movementKey || ""))
     ));
@@ -383,6 +399,13 @@ function createBankReconciliationService(dependencies) {
     }
   
     selectedMovements.forEach((movement) => {
+      const isFundCandidate = fundCandidateKeys.has(cleanBackendText(movement.movementKey))
+        || fundCandidateIds.has(backendId(movement.canonicalMovementId));
+      if (isFundCandidate) {
+        counters.skipped += 1;
+        notes.push(`${movement.date} · ${movement.detail || movement.concept}: debe resolverse en Movimientos de fondo para agregar.`);
+        return;
+      }
       const operationKey = `${report.applyMode}:${bankMovementFingerprint(movement, report.bank)}:${movement.movementKey || ""}`;
       const operationPayload = stableSerialize({
         applyMode: report.applyMode,

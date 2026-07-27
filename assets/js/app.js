@@ -1811,6 +1811,7 @@ function switchView(view) {
     "other-expenses-entry",
     "commissions-entry",
     "payment-plans",
+    "investment-fund",
     "partner-contributions-entry",
     "payments-entry",
     "issued-check-entry",
@@ -1857,6 +1858,7 @@ function switchView(view) {
       "deposited-checks-entry",
       "bank-reconciliation",
       "payment-plans",
+      "investment-fund",
       "partner-contributions-entry"
     ],
     hr: ["salary-entry"],
@@ -1889,6 +1891,7 @@ function switchView(view) {
     "partner-contributions-entry": ["Aportes de socios", "Registro de aportes y retiros sin impacto en el Estado de Resultados."],
     "commissions-entry": ["Comisiones", "Carga y control de comisiones por ventas y cobros."],
     "payment-plans": ["Planes de pago", "Seguimiento de cuotas, vencimientos y pagos de ARCA."],
+    "investment-fund": ["Fondo de inversión", "Registro, historial y saldo del fondo común de inversión."],
     "payments-entry": ["Pagos", "Carga agrupada de pagos y medios de cancelacion."],
     "issued-check-entry": ["Cheques entregados", "Carga y control de cheques propios entregados."],
     "sales-entry": ["Ventas", "Carga agrupada de ventas, pedidos y entregas."],
@@ -1923,6 +1926,7 @@ function switchView(view) {
   if (view === "other-expenses-entry") loadOtherExpenseEntryOptions();
   if (view === "partner-contributions-entry") loadPartnerContributions();
   if (view === "payment-plans") renderPaymentPlans();
+  if (view === "investment-fund") loadInvestmentFund();
   if (view === "salary-entry") initializeViewOnce(view, initializeSalaryEntry);
   if (view === "reception-entry") {
     initializeViewOnce(view, async () => {

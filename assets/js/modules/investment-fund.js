@@ -58,6 +58,80 @@ function renderInvestmentFundRows(rows) {
     : '<tr><td class="empty" colspan="6">Todavia no hay movimientos registrados.</td></tr>';
 }
 
+function renderInvestmentFundReconciliationCandidates(candidates) {
+  const body = document.getElementById("bank-fund-stage-body");
+  const count = document.getElementById("bank-fund-stage-count");
+  if (count) count.textContent = String(candidates.length);
+  if (!body) return;
+  body.innerHTML = candidates.length
+    ? candidates.map((candidate) => `
+      <tr data-fund-candidate-id="${escapeHtml(String(candidate.id || ""))}">
+        <td>${escapeHtml(formatDate(candidate.movement?.fecha))}</td>
+        <td>${escapeHtml(candidate.movement?.banco || "-")}</td>
+        <td>${escapeHtml(candidate.movement?.detalle || "-")}</td>
+        <td><span class="investment-fund-type is-${escapeHtml(candidate.type || "review")}">${escapeHtml(investmentFundTypeLabel(candidate.type) || "Sin definir")}</span></td>
+        <td class="num">${escapeHtml(formatMoney(candidate.movement?.importe || 0))}</td>
+        <td>
+          <span class="bank-fund-confidence is-${escapeHtml(candidate.confidence)}">${candidate.confidence === "reliable" ? "Confiable" : "Revisar"}</span>
+          <small class="bank-fund-reason">${escapeHtml(candidate.reason || "")}</small>
+        </td>
+        <td>${candidate.confidence === "reliable"
+          ? `<button type="button" class="bank-fund-register" data-register-fund-candidate="${escapeHtml(String(candidate.id || ""))}">Registrar en fondo</button>`
+          : '<span class="bank-fund-review-only">Sin registro automático</span>'}</td>
+      </tr>
+    `).join("")
+    : '<tr><td class="empty" colspan="7">No hay movimientos de fondo para agregar.</td></tr>';
+}
+
+async function registerInvestmentFundCandidate(candidateId, button) {
+  const candidates = bankReconciliationReport?.investmentFundCandidates || [];
+  const candidate = candidates.find((row) => String(row.id) === String(candidateId));
+  const status = document.getElementById("bank-fund-stage-status");
+  if (!candidate?.payload || candidate.confidence !== "reliable") {
+    if (status) {
+      status.textContent = "El movimiento requiere revisión y no puede registrarse automáticamente.";
+      status.dataset.status = "warn";
+    }
+    return;
+  }
+  const originalText = button?.textContent || "Registrar en fondo";
+  try {
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Registrando...";
+    }
+    if (status) {
+      status.textContent = "Registrando y asociando el movimiento...";
+      status.dataset.status = "";
+    }
+    const response = await fetch(`${API_BASE_URL}/api/treasury/investment-fund`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(candidate.payload)
+    });
+    const result = await response.json();
+    if (!response.ok || !result.ok) throw new Error(result.error || "No se pudo registrar el movimiento del fondo.");
+    await loadInvestmentFund();
+    await refreshBankReconciliationFromBackend();
+    if (status) {
+      status.textContent = result.idempotent
+        ? "El movimiento ya estaba registrado y asociado."
+        : "Movimiento registrado y asociado al fondo.";
+      status.dataset.status = "ok";
+    }
+  } catch (error) {
+    if (status) {
+      status.textContent = error.message;
+      status.dataset.status = "warn";
+    }
+  } finally {
+    if (button?.isConnected) {
+      button.disabled = false;
+      button.textContent = originalText;
+    }
+  }
+}
+
 function renderInvestmentFundBankOptions() {
   const select = document.getElementById("investment-fund-bank-movement");
   if (!select) return;
@@ -216,6 +290,10 @@ document.addEventListener("DOMContentLoaded", () => {
   form.addEventListener("submit", submitInvestmentFund);
   document.getElementById("investment-fund-type")?.addEventListener("change", updateInvestmentFundFields);
   document.getElementById("investment-fund-bank-movement")?.addEventListener("change", applySelectedInvestmentFundBankMovement);
+  document.getElementById("bank-fund-stage-body")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-register-fund-candidate]");
+    if (!button) return;
+    registerInvestmentFundCandidate(button.dataset.registerFundCandidate, button);
+  });
   setInvestmentFundDefaults();
-  loadInvestmentFund();
 });

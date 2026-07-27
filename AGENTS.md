@@ -262,7 +262,9 @@ No producir explicaciones extensas cuando la tarea sea pequeña.
 
 Los pedidos nuevos se envían al Coordinador. Este crea `taskId`, elige título, dominio, modelo, esfuerzo y modo, resuelve el proyecto ERP y crea mediante `create_thread` un hilo principal visible con la consigna completa. Siempre asigna un título específico con `set_thread_title` y responde de inmediato, sin esperar el resultado.
 
-El hilo principal creado inspecciona el contexto relevante, implementa lo solicitado, valida proporcionalmente y entrega el resultado. El Coordinador no crea subagentes, no ejecuta trabajo técnico y no recibe el informe. Las correcciones del mismo objetivo continúan en el hilo visible original.
+El hilo principal creado inspecciona el contexto relevante, implementa lo solicitado y es responsable de la única validación principal, ejecutada por el hilo o subagente que realizó el trabajo. Esa validación debe ser proporcional al riesgo y dejar criterios de completitud, pruebas y evidencia verificable en el resumen. El Coordinador no crea subagentes ni ejecuta trabajo técnico; si recibe o revisa un resumen, se limita a detectar puntos no cubiertos, inconsistencias, riesgos o decisiones necesarias, sin relanzar pruebas o inspecciones rutinarias equivalentes. Las correcciones del mismo objetivo continúan en el hilo visible original.
+
+Una revisión independiente no es obligatoria por defecto. Solo se crea un `validador_tarea` read-only cuando exista una razón concreta y declarada, como alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible. Esa revisión debe enfocarse en el riesgo que la motivó y no repetir toda la validación principal.
 
 Pedir confirmación adicional solo cuando exista una decisión contable, destructiva, de datos, contrato o seguridad realmente bloqueante. La infraestructura de coordinación anterior permanece disponible únicamente como legado manual opcional; no usarla salvo pedido explícito ni alterar sus tareas o estado existentes por defecto.
 
@@ -272,4 +274,4 @@ Pedir confirmación adicional solo cuando exista una decisión contable, destruc
 
 El progreso de los hilos se consulta únicamente cuando el usuario lo solicita mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía inmediata y read-only basada en estado, turnos, timestamps y evidencia de fases; no envía mensajes ni altera los hilos analizados.
 
-Las tareas y correcciones futuras no crean `monitor_progreso`, watchers, timers ni automations para estimar avance. Este cambio no modifica la obligación de crear exactamente un `validador_tarea` read-only al final de cada iteración técnica.
+Las tareas y correcciones futuras no crean `monitor_progreso`, watchers, timers ni automations para estimar avance. La consulta de progreso no agrega validaciones ni revisiones independientes al flujo de la tarea.

@@ -64,6 +64,7 @@
             <button class="nav-item nav-subitem" data-view="collections-entry" type="button">Cobros</button>
             <button class="nav-item nav-subitem" data-view="received-check-entry" type="button">Cheques recibidos</button>
             <button class="nav-item nav-subitem" data-view="payment-plans" type="button">Planes de pago</button>
+            <button class="nav-item nav-subitem" data-view="investment-fund" type="button">Fondo de inversión</button>
             <button class="nav-item nav-subitem" data-view="partner-contributions-entry" type="button">Aportes de socios</button>
           </div>
         </div>
@@ -373,6 +374,91 @@
         </div>
       </section>
 
+      <section class="view" id="view-investment-fund">
+        <div class="data-entry-page-heading">
+          <h2>Fondo de inversión</h2>
+          <p>Registro manual, historial y saldo del fondo común de inversión.</p>
+        </div>
+        <section class="panel investment-fund-panel" aria-labelledby="investment-fund-title">
+          <div class="panel-header investment-fund-heading">
+            <div>
+              <span class="investment-fund-eyebrow">Tesorería · Fondo común de inversión</span>
+              <h2 id="investment-fund-title">Fondo de inversión</h2>
+              <span id="investment-fund-status">Cargando movimientos del fondo...</span>
+            </div>
+            <div class="investment-fund-balance-card">
+              <span>Saldo actual del fondo</span>
+              <strong id="investment-fund-balance">$ 0,00</strong>
+              <small>Separado del saldo bancario</small>
+            </div>
+          </div>
+          <form id="investment-fund-form" class="investment-fund-form">
+            <label>
+              <span>Tipo *</span>
+              <select id="investment-fund-type" required>
+                <option value="deposito">Depósito</option>
+                <option value="rescate">Rescate</option>
+                <option value="rendimiento">Rendimiento</option>
+              </select>
+            </label>
+            <label>
+              <span>Fecha *</span>
+              <input id="investment-fund-date" type="date" required>
+            </label>
+            <label>
+              <span>Importe *</span>
+              <span class="unit-input money-input">
+                <input id="investment-fund-amount" type="text" inputmode="decimal" data-money-input required>
+                <span>$</span>
+              </span>
+            </label>
+            <label id="investment-fund-period-field" hidden>
+              <span>Mes del rendimiento *</span>
+              <input id="investment-fund-period" type="month">
+            </label>
+            <label id="investment-fund-tag-field" hidden>
+              <span>Etiqueta económica *</span>
+              <select id="investment-fund-tag"></select>
+            </label>
+            <label id="investment-fund-bank-field" class="investment-fund-bank-field">
+              <span>Movimiento bancario</span>
+              <select id="investment-fund-bank-movement">
+                <option value="">Sin asociación bancaria</option>
+              </select>
+            </label>
+            <label>
+              <span>Referencia</span>
+              <input id="investment-fund-reference" type="text" maxlength="120" placeholder="Ej. ICBC FCI">
+            </label>
+            <label class="investment-fund-observation-field">
+              <span>Observación</span>
+              <input id="investment-fund-observation" type="text" maxlength="240" placeholder="Detalle auditable del movimiento">
+            </label>
+            <div class="investment-fund-form-actions">
+              <p id="investment-fund-form-status" class="form-status" aria-live="polite"></p>
+              <button type="submit">Registrar movimiento</button>
+            </div>
+          </form>
+          <div class="table-wrap investment-fund-history-wrap">
+            <table class="investment-fund-history">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th class="num">Importe</th>
+                  <th>Referencia bancaria / mes</th>
+                  <th class="num">Saldo resultante</th>
+                  <th>Observación</th>
+                </tr>
+              </thead>
+              <tbody id="investment-fund-history-body">
+                <tr><td class="empty" colspan="6">Cargando movimientos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </section>
+
       <section class="view" id="view-bank-reconciliation">
         <div class="data-entry-page-heading">
           <h2>Conciliacion bancaria</h2>
@@ -428,85 +514,6 @@
             <strong id="bank-reconciliation-net-pending">$ 0,00</strong>
           </div>
         </div>
-
-        <section class="panel investment-fund-panel" aria-labelledby="investment-fund-title">
-          <div class="panel-header investment-fund-heading">
-            <div>
-              <span class="investment-fund-eyebrow">Tesoreria · Fondo comun de inversion</span>
-              <h2 id="investment-fund-title">Fondo de inversion</h2>
-              <span id="investment-fund-status">Cargando movimientos del fondo...</span>
-            </div>
-            <div class="investment-fund-balance-card">
-              <span>Saldo actual del fondo</span>
-              <strong id="investment-fund-balance">$ 0,00</strong>
-              <small>Separado del saldo bancario</small>
-            </div>
-          </div>
-          <form id="investment-fund-form" class="investment-fund-form">
-            <label>
-              <span>Tipo *</span>
-              <select id="investment-fund-type" required>
-                <option value="deposito">Deposito</option>
-                <option value="rescate">Rescate</option>
-                <option value="rendimiento">Rendimiento</option>
-              </select>
-            </label>
-            <label>
-              <span>Fecha *</span>
-              <input id="investment-fund-date" type="date" required>
-            </label>
-            <label>
-              <span>Importe *</span>
-              <span class="unit-input money-input">
-                <input id="investment-fund-amount" type="text" inputmode="decimal" data-money-input required>
-                <span>$</span>
-              </span>
-            </label>
-            <label id="investment-fund-period-field" hidden>
-              <span>Mes del rendimiento *</span>
-              <input id="investment-fund-period" type="month">
-            </label>
-            <label id="investment-fund-tag-field" hidden>
-              <span>Etiqueta economica *</span>
-              <select id="investment-fund-tag"></select>
-            </label>
-            <label id="investment-fund-bank-field" class="investment-fund-bank-field">
-              <span>Movimiento bancario</span>
-              <select id="investment-fund-bank-movement">
-                <option value="">Sin asociacion bancaria</option>
-              </select>
-            </label>
-            <label>
-              <span>Referencia</span>
-              <input id="investment-fund-reference" type="text" maxlength="120" placeholder="Ej. ICBC FCI">
-            </label>
-            <label class="investment-fund-observation-field">
-              <span>Observacion</span>
-              <input id="investment-fund-observation" type="text" maxlength="240" placeholder="Detalle auditable del movimiento">
-            </label>
-            <div class="investment-fund-form-actions">
-              <p id="investment-fund-form-status" class="form-status" aria-live="polite"></p>
-              <button type="submit">Registrar movimiento</button>
-            </div>
-          </form>
-          <div class="table-wrap investment-fund-history-wrap">
-            <table class="investment-fund-history">
-              <thead>
-                <tr>
-                  <th>Fecha</th>
-                  <th>Tipo</th>
-                  <th class="num">Importe</th>
-                  <th>Referencia bancaria / mes</th>
-                  <th class="num">Saldo resultante</th>
-                  <th>Observacion</th>
-                </tr>
-              </thead>
-              <tbody id="investment-fund-history-body">
-                <tr><td class="empty" colspan="6">Cargando movimientos...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
 
         <section class="panel">
           <div class="panel-header">
@@ -662,6 +669,35 @@
               <div class="bank-stage-actions">
                 <button type="button" id="bank-create-payments">Agregar pagos</button>
               </div>
+            </section>
+
+            <section class="panel bank-stage-panel" id="bank-fund-stage">
+              <div class="panel-header">
+                <div>
+                  <h2>Movimientos de fondo para agregar</h2>
+                  <span>Operaciones de fondo detectadas en movimientos bancarios todavía pendientes.</span>
+                </div>
+                <strong class="bank-stage-count" id="bank-fund-stage-count">0</strong>
+              </div>
+              <div class="table-wrap">
+                <table class="bank-stage-table bank-fund-stage-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Banco</th>
+                      <th>Detalle</th>
+                      <th>Clasificación</th>
+                      <th class="num">Importe</th>
+                      <th>Confianza</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bank-fund-stage-body">
+                    <tr><td class="empty" colspan="7">No hay movimientos de fondo para agregar.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <p class="bank-fund-stage-status" id="bank-fund-stage-status" role="status" aria-live="polite"></p>
             </section>
           </div>
           <datalist id="bank-invoice-type-options"></datalist>

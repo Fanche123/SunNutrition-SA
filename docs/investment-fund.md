@@ -6,7 +6,7 @@
 
 - `deposito`: aumenta el fondo y, si se vincula a banco, exige un debito exacto;
 - `rescate`: reduce el fondo, exige saldo suficiente y, si se vincula a banco, exige un credito exacto;
-- `rendimiento`: aumenta el fondo, requiere mes y etiqueta economica, y no admite movimiento bancario.
+- `rendimiento`: aumenta el fondo, requiere mes y etiqueta economica; puede asociarse a un credito bancario exacto cuando la conciliacion identifica de forma confiable el rendimiento del fondo.
 
 El saldo se calcula exclusivamente en centavos como `depositos + rendimientos - rescates`. No se persiste un saldo duplicado: el servicio devuelve `saldo_resultante` derivado para cada fila.
 
@@ -18,6 +18,10 @@ La relacion es bilateral:
 - `movimientos_bancarios.id_movimiento_fondo`.
 
 Una fila bancaria vinculada deja de estar pendiente de conciliacion. `id_pago` e `id_cobro` permanecen vacios: un movimiento del fondo no simula pagos ni cobros comerciales.
+
+La conciliacion clasifica candidatos solo cuando el detalle normalizado contiene una operacion explicita (suscripcion, rescate, rendimiento o compra/venta de cuotapartes) y evidencia de fondo. La direccion debe ser inequivoca: debito para suscripcion y credito para rescate/rendimiento. Signos contradictorios, datos incompletos, otra asociacion financiera candidata, un rescate sin saldo suficiente o un rendimiento mensual ya registrado quedan visibles para revision y no habilitan escritura.
+
+Todo candidato identificado como fondo, confiable o pendiente de revision, queda excluido de las acciones genericas de gasto, egreso, pago y conciliacion. El backend aplica la misma exclusion aunque un cliente intente invocar esos modos directamente.
 
 ## Rendimiento y Estado de Resultados
 
@@ -36,6 +40,8 @@ El Estado de Resultados consume unicamente estos gastos economicos originados en
 - `POST /api/treasury/investment-fund`: alta atomica e idempotente de un movimiento.
 
 El POST exige `fecha`, `tipo`, `importe` y `clave_idempotencia`. Rendimiento exige además `periodo_rendimiento` e `id_etiqueta`.
+
+Los candidatos confiables usan una clave durable derivada del movimiento bancario. Un reintento devuelve la operacion existente; una asociacion previa diferente se rechaza, y fondo + relacion bancaria + gasto economico de rendimiento se persisten en un unico snapshot.
 
 ## Migracion e inicializacion
 

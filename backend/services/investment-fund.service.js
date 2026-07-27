@@ -5,6 +5,12 @@ const { strictMoneyToCents } = require("../utils/money-input");
 const FUND_TYPES = Object.freeze(["deposito", "rescate", "rendimiento"]);
 const FUND_TYPE_SET = new Set(FUND_TYPES);
 const FUND_TYPE_ORDER = Object.freeze({ deposito: 0, rendimiento: 1, rescate: 2 });
+const FUND_OPERATION_PATTERNS = Object.freeze({
+  deposito: /\b(?:susc(?:ripcion|rip|r)?|suscripcion|suscribir|compra\s+(?:de\s+)?cuotapartes?)\b/,
+  rescate: /\b(?:resc(?:ate)?|rescate|venta\s+(?:de\s+)?cuotapartes?)\b/,
+  rendimiento: /\b(?:rend(?:imiento)?|rentabilidad|utilidad|intereses?)\b/
+});
+const FUND_MARKER_PATTERN = /\b(?:fci|fc|fondo(?:s)?\s+comun(?:es)?(?:\s+de\s+inversion)?|cuotapartes?)\b/;
 
 function createInvestmentFundService(dependencies) {
   const {
@@ -81,9 +87,6 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
   }
   if (type !== "rendimiento" && period) {
     throw fundError("INVESTMENT_FUND_PERIOD_NOT_ALLOWED", "Solo los rendimientos pueden indicar un mes.");
-  }
-  if (type === "rendimiento" && bankMovementId) {
-    throw fundError("INVESTMENT_FUND_BANK_NOT_ALLOWED", "Un rendimiento no puede simular un movimiento bancario.");
   }
   if (type !== "rendimiento" && tagId) {
     throw fundError("INVESTMENT_FUND_TAG_NOT_ALLOWED", "La etiqueta economica corresponde unicamente a rendimientos.");
@@ -240,6 +243,127 @@ function validateBankAssociation(rows, movement, movementId, backendId) {
   return row;
 }
 
+function investmentFundCandidates(movements, tables = {}) {
+  return (movements || [])
+    .map((movement) => classifyInvestmentFundCandidate(movement, tables))
+    .filter(Boolean);
+}
+
+function classifyInvestmentFundCandidate(movement, tables = {}) {
+  const normalizedDetail = normalizeFundText([
+    movement?.concept,
+    movement?.detail
+  ].filter(Boolean).join(" "));
+  const operationTypes = Object.entries(FUND_OPERATION_PATTERNS)
+    .filter(([, pattern]) => pattern.test(normalizedDetail))
+    .map(([type]) => type);
+  const hasFundMarker = FUND_MARKER_PATTERN.test(normalizedDetail);
+  const mentionsSpecificFundOperation = operationTypes.some((type) => type !== "rendimiento");
+  if (!hasFundMarker && !mentionsSpecificFundOperation) return null;
+
+  const movementId = text(movement?.canonicalMovementId || movement?.id_movimiento_bancario);
+  const amountCents = toCents(
+    movement?.amount ?? (Number(movement?.credit || 0) - Number(movement?.debit || 0))
+  );
+  const debitCents = Math.abs(toCents(movement?.debit || 0));
+  const creditCents = Math.abs(toCents(movement?.credit || 0));
+  const date = validIsoDate(movement?.date || movement?.fecha);
+  const evidence = text(movement?.detail || movement?.concept);
+  const review = (reason, type = operationTypes[0] || "") => ({
+    id: movementId || text(movement?.movementKey),
+    confidence: "review",
+    type,
+    reason,
+    evidence,
+    movement: fundCandidateMovementSummary(movement, amountCents, movementId, date),
+    payload: null
+  });
+
+  if (!hasFundMarker) {
+    return review("La operacion menciona una suscripcion o rescate, pero no identifica de forma explicita un fondo.");
+  }
+  if (operationTypes.length !== 1) {
+    return review(operationTypes.length
+      ? "El detalle contiene mas de un tipo de operacion de fondo."
+      : "El detalle identifica un fondo, pero no permite determinar la operacion.");
+  }
+
+  const type = operationTypes[0];
+  const expectsDebit = type === "deposito";
+  const directionIsReliable = expectsDebit
+    ? debitCents > 0 && creditCents === 0 && amountCents < 0
+    : creditCents > 0 && debitCents === 0 && amountCents > 0;
+  if (!directionIsReliable) {
+    return review(
+      type === "deposito"
+        ? "La suscripcion no tiene un debito bancario inequivoco."
+        : `El ${type} no tiene un credito bancario inequivoco.`,
+      type
+    );
+  }
+  if (!movementId || !date || amountCents === 0) {
+    return review("Faltan identificador, fecha o importe canonico para asociar el movimiento con seguridad.", type);
+  }
+  const competingMatchType = normalizeFundText(movement?.match?.type);
+  if ((competingMatchType && competingMatchType !== "dato bancario") || movement?.checkMatch || movement?.sourceMatch) {
+    return review("El movimiento tambien tiene otra asociacion financiera candidata y requiere revision.", type);
+  }
+  const fundRows = tables.fondos_inversion_movimientos?.rows || [];
+  if (type === "rescate" && Math.abs(amountCents) > investmentFundLedger(fundRows).balanceCents) {
+    return review("El rescate supera el saldo disponible del fondo y no puede registrarse automaticamente.", type);
+  }
+  if (type === "rendimiento" && fundRows.some((row) => (
+    text(row.tipo) === "rendimiento" && text(row.periodo_rendimiento) === date.slice(0, 7)
+  ))) {
+    return review("Ya existe un rendimiento registrado para el mes del movimiento.", type);
+  }
+
+  const payload = {
+    fecha: date,
+    tipo: type,
+    importe: fromCents(Math.abs(amountCents)),
+    periodo_rendimiento: "",
+    id_movimiento_bancario: movementId,
+    id_etiqueta: "",
+    referencia: evidence.slice(0, 120),
+    observacion: "Clasificado desde Conciliacion bancaria por evidencia explicita de fondo.",
+    clave_idempotencia: `fondo-banco:${movementId}`
+  };
+  if (type === "rendimiento") {
+    const yieldTags = (tables.etiquetas?.rows || []).filter((row) => (
+      normalizeFundText(row.etiqueta) === "rendimiento fondo"
+    ));
+    if (yieldTags.length !== 1) {
+      return review("El rendimiento requiere una unica etiqueta economica 'Rendimiento Fondo'.", type);
+    }
+    payload.periodo_rendimiento = date.slice(0, 7);
+    payload.id_etiqueta = text(yieldTags[0].id_etiqueta);
+  }
+
+  return {
+    id: movementId,
+    confidence: "reliable",
+    type,
+    reason: type === "deposito"
+      ? "Suscripcion de fondo con debito bancario explicito."
+      : `${type === "rescate" ? "Rescate" : "Rendimiento"} de fondo con credito bancario explicito.`,
+    evidence,
+    movement: fundCandidateMovementSummary(movement, amountCents, movementId, date),
+    payload
+  };
+}
+
+function fundCandidateMovementSummary(movement, amountCents, movementId, date) {
+  return {
+    id_movimiento_bancario: movementId,
+    movementKey: text(movement?.movementKey),
+    banco: text(movement?.bank || movement?.banco),
+    fecha: date || text(movement?.date || movement?.fecha),
+    detalle: text(movement?.detail || movement?.concept),
+    importe: fromCents(Math.abs(amountCents))
+  };
+}
+
 function investmentFundState(cache) {
   const rows = cache.tables?.fondos_inversion_movimientos?.rows || [];
   const ledger = investmentFundLedger(rows);
@@ -351,6 +475,16 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function normalizeFundText(value) {
+  return text(value)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -365,7 +499,9 @@ function fundError(code, message, statusCode = 400) {
 module.exports = {
   FUND_TYPES,
   applyInvestmentFundMovement,
+  classifyInvestmentFundCandidate,
   createInvestmentFundService,
+  investmentFundCandidates,
   investmentFundLedger,
   investmentFundState
 };
