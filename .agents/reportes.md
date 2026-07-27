@@ -44,7 +44,7 @@ Endpoints confirmados:
 
 - `GET /api/reports/income-statement?year=AAAA&month=0..11&comparison=none|previousMonth|previousYear` → `{ ok, report, comparisonReport }`. El mes es base cero.
 - `GET /api/reports/cashflow` → `{ ok, report }` con `cards`, `groups`, `visibleGroups` y cuatro `weeks`.
-- `GET /api/inventory/purchase-snapshot` → fotografía de solo lectura del último inventario integral; Reportes presenta `snapshot.items` y no reconstruye la regla.
+- `GET /api/inventory/purchase-snapshot` → evaluación de solo lectura del último lote de inventario. Inventario la materializa al cargar y el backend la reconstruye determinísticamente desde tablas canónicas cuando falta o está obsoleta; Reportes presenta el contrato y no reconstruye la regla.
 - `GET /api/backend/tables/:tabla?all=true` alimenta el dashboard.
 - `GET/POST /api/app-state` persiste filtros/overrides de presentación; no debe alterar movimientos operativos.
 - `saveState` admite omitir la sincronización remota para operaciones con persistencia explícita; Reportes conserva el comportamiento predeterminado con sincronización programada.
@@ -57,7 +57,7 @@ Endpoints confirmados:
 - Cashflow: `cashflow.service.js`; saldos = total menos aplicaciones; solo cheques con estado normalizado `pendiente`; eventos menores o iguales a 10 se omiten.
 - Dashboard: `dashboard.js`, helpers de deuda de `payment-entry.js` y `GET /api/treasury/payment-plans[/:id]` para cuotas próximas con estado de pago derivado por Tesorería.
 - El widget de cheques recibidos sin cargar reutiliza `pendingReceivedCheckCollections` de Tesorería y cruza `cobros.id_cobro` con `cheques_recibidos.id_cobro`; presenta fecha, cliente resuelto solo por `id_cliente` y monto del cobro, y se oculta por completo con resultado cero o fuente fallida.
-- El widget `Insumos a comprar` se oculta si la fotografía válida no tiene alertas y, si las tiene, muestra cantidad, existencia/unidad, días de producción y fecha base. Su expansión usa el patrón común del Dashboard.
+- El widget `Insumos a comprar` se oculta si la evaluación válida no tiene alertas o no existe inventario; si hay alertas muestra cantidad, existencia/unidad, días de producción y fecha base. Una evaluación incompleta queda visible con `!` y mensaje de dependencias insuficientes. Su expansión usa el patrón común del Dashboard.
 - Si una cifra nace mal, ubicar primero al productor. Modificar Reportes solo si falla la agregación o presentación; coordinar con el dueño si cambia el significado del dato.
 
 ## Modos de trabajo
@@ -72,7 +72,7 @@ Endpoints confirmados:
 - Endpoint: cache/fixture temporal, status y estructura JSON, mes base cero, límites de período y comparación.
 - Estado de Resultados: sin datos; ventas A/no A; escuelas/otros; inventario inicial/final; compras de mercadería; categorías y no categorizados; comisiones; IIBB; nómina con/sin horas; redondeo y resultados intermedios/final.
 - Cashflow: caja inicial, pago/cobro parcial y total, fechas fallback, signos, estados de cheque, agrupación/deduplicación, corte de cuatro semanas, búsqueda y override visual sin mutar fuente.
-- Dashboard: tabla fuente vacía/faltante, vencidos/próximos, inventario por día hábil, fotografía de insumos con/sin alertas y sustitución entre cargas, compra parcialmente recibida y pedido entregado/no entregado.
+- Dashboard: tabla fuente vacía/faltante, vencidos/próximos, inventario por día hábil, evaluación histórica reconstruida, con/sin alertas, dependencias insuficientes y sustitución entre cargas, compra parcialmente recibida y pedido entregado/no entregado.
 - Cambio de fórmula: casos representativos y regresión de todos los consumidores directos; documentar criterio y cualquier prueba no ejecutada. No hay suite automática que reemplace estas comprobaciones.
 
 ## Seguridad y gaps confirmados

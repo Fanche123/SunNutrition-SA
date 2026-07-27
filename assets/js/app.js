@@ -70,10 +70,24 @@ let dashboardWidgetData = {
   pendingPurchases: [],
   pendingOrders: [],
   pendingReceivedChecks: [],
-  inventoryPurchaseSnapshot: { inventoryDate: "", inventoryIds: [], items: [] }
+  inventoryPurchaseSnapshot: {
+    inventoryDate: "",
+    inventoryIds: [],
+    state: "no_inventory",
+    source: "reconstructed",
+    items: [],
+    unavailableItems: []
+  }
 };
 let dashboardExpandedWidget = "";
-let inventoryPurchaseSnapshot = { inventoryDate: "", inventoryIds: [], items: [] };
+let inventoryPurchaseSnapshot = {
+  inventoryDate: "",
+  inventoryIds: [],
+  state: "no_inventory",
+  source: "reconstructed",
+  items: [],
+  unavailableItems: []
+};
 let receptionInvoiceReadRequestId = 0;
 let logisticsInvoiceReadRequestId = 0;
 let otherExpenseInvoiceReadRequestId = 0;

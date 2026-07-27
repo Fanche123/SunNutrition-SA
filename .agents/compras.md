@@ -102,7 +102,7 @@ La UI de Compra, Recepción y Otros gastos usa los endpoints integrales especial
 
 ## Dependencias
 
-- **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. La lista superior de Compras lee esa fotografía sin recalcularla y no filtra ni limita el selector de insumos.
+- **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. Si falta el metadato nuevo, el backend reconstruye la misma salida desde el último lote persistido. La lista superior de Compras lee ese contrato sin recalcularlo, distingue ausencia/dependencias/resultado válido y no filtra ni limita el selector de insumos.
 - **Tesorería:** acreedores, etiquetas, `egresos`, pagos y conciliación; no cambiar su cancelación desde Compras.
 - **Reportes:** clasificación de egresos y costo de mercadería.
 - **RRHH:** empleados de recepción y rama salarial del servicio compartido de adjuntos.

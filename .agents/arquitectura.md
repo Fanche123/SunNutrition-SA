@@ -55,7 +55,7 @@ Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnósti
 - API/router: `server.js`, `backend/routes/router.js`, `backend/utils/http.js`.
 - API frontend: `assets/js/core/api.js` centraliza requests JSON. Las rutas `/api/...` son same-origin; ningún módulo debe fijar host, IP o puerto del backend.
 - Dinero: `shared/money.js` se carga antes de cualquier consumidor, opera con centavos enteros y es la única fuente de parsing/formato. `formatters.js` solo expone adaptadores históricos. Porcentajes, cantidades, horas e IDs no usan este contrato.
-- Alertas de compra: `inventory-purchase-snapshot.service.js` importa la regla compartida de Inventario; Inventario, Dashboard y la lista superior de Compras consumen únicamente la fotografía persistida por el servicio.
+- Alertas de compra: `inventory-purchase-snapshot.service.js` importa la regla compartida de Inventario; conserva la fotografía materializada por una carga nueva y, si falta o está obsoleta, reconstruye en memoria desde el último lote persistido. Inventario, Dashboard y la lista superior de Compras consumen únicamente ese contrato derivado.
 - Persistencia: `data-store.js`, repositorios, config y AGENT Base de datos.
 - Dominio: buscar el módulo/servicio dueño antes de tocar compartidos.
 - Documentación: `docs/architecture.md` y ownership.

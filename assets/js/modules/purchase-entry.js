@@ -35,9 +35,9 @@ function inventoryPurchaseSnapshotItem(itemName, itemId = "") {
 function renderPurchaseThresholdTable(infos) {
   if (!els["purchase-threshold-body"]) return;
   if (els["purchase-threshold-snapshot-date"]) {
-    els["purchase-threshold-snapshot-date"].textContent = inventoryPurchaseSnapshot?.inventoryDate
-      ? `Fotografia del inventario del ${formatDate(inventoryPurchaseSnapshot.inventoryDate)}`
-      : "Todavia no hay una fotografia valida de inventario";
+    els["purchase-threshold-snapshot-date"].textContent = inventoryPurchaseSnapshotStatusMessage(
+      inventoryPurchaseSnapshot
+    );
   }
 
   els["purchase-threshold-body"].innerHTML = infos.length
@@ -52,7 +52,7 @@ function renderPurchaseThresholdTable(infos) {
         <td><span class="purchase-threshold-state is-low">Comprar</span></td>
       </tr>
     `).join("")
-    : emptyRow(7, "No hay insumos a comprar segun el ultimo inventario.");
+    : emptyRow(7, inventoryPurchaseSnapshotEmptyMessage(inventoryPurchaseSnapshot));
 }
 
 function formatLeadAndConsumptionDays(info) {
@@ -997,7 +997,14 @@ async function loadPurchaseInventorySuggestions() {
     const payload = await requestBackendApi("/api/inventory/purchase-snapshot");
     inventoryPurchaseSnapshot = payload?.snapshot && !Array.isArray(payload.snapshot)
       ? payload.snapshot
-      : { inventoryDate: "", inventoryIds: [], items: [] };
+      : {
+          inventoryDate: "",
+          inventoryIds: [],
+          state: "no_inventory",
+          source: "reconstructed",
+          items: [],
+          unavailableItems: []
+        };
     renderPurchaseInventorySuggestions(inventoryPurchaseSnapshot);
     updateInventoryPurchaseAlerts();
   } catch (error) {
@@ -1014,11 +1021,10 @@ function renderPurchaseInventorySuggestions(snapshot) {
   const list = els["purchase-inventory-suggestions-list"];
   if (!count || !status || !list) return;
 
-  count.textContent = formatNumber(items.length);
-  status.textContent = snapshot?.inventoryDate
-    ? `Fotografia del inventario del ${formatDate(snapshot.inventoryDate)}. El selector de insumos permanece libre.`
-    : "Todavia no hay una fotografia valida de inventario.";
-  list.innerHTML = items.length
+  const state = inventoryPurchaseSnapshotState(snapshot);
+  count.textContent = state === "insufficient_dependencies" ? "!" : formatNumber(items.length);
+  status.textContent = `${inventoryPurchaseSnapshotStatusMessage(snapshot)} El selector de insumos permanece libre.`;
+  const itemRows = items.length
     ? items.map((item) => `
         <div class="purchase-inventory-suggestion-row">
           <strong>${escapeHtml(displayNameLabel(item.itemName || "Insumo sin nombre"))}</strong>
@@ -1026,7 +1032,43 @@ function renderPurchaseInventorySuggestions(snapshot) {
           <span>${escapeHtml(purchaseInventoryDaysLabel(item.daysRemaining))}</span>
         </div>
       `).join("")
-    : `<p class="purchase-inventory-suggestions-empty">No hay insumos a comprar segun el ultimo inventario.</p>`;
+    : "";
+  const stateMessage = state === "insufficient_dependencies" || !items.length
+    ? `<p class="purchase-inventory-suggestions-empty">${escapeHtml(inventoryPurchaseSnapshotEmptyMessage(snapshot))}</p>`
+    : "";
+  list.innerHTML = `${itemRows}${stateMessage}`;
+}
+
+function inventoryPurchaseSnapshotState(snapshot) {
+  if (snapshot?.state) return snapshot.state;
+  if (!snapshot?.inventoryDate) return "no_inventory";
+  return Array.isArray(snapshot.items) && snapshot.items.length
+    ? "valid_with_alerts"
+    : "valid_no_alerts";
+}
+
+function inventoryPurchaseSnapshotStatusMessage(snapshot) {
+  const state = inventoryPurchaseSnapshotState(snapshot);
+  if (state === "no_inventory") return "No existe un inventario persistido para evaluar.";
+  const dateLabel = snapshot?.inventoryDate ? formatDate(snapshot.inventoryDate) : "fecha desconocida";
+  if (state === "insufficient_dependencies") {
+    return `El inventario del ${dateLabel} existe, pero faltan dependencias para completar la evaluacion.`;
+  }
+  return `Inventario del ${dateLabel} evaluado correctamente.`;
+}
+
+function inventoryPurchaseSnapshotEmptyMessage(snapshot) {
+  const state = inventoryPurchaseSnapshotState(snapshot);
+  if (state === "no_inventory") return "No existe un inventario persistido para evaluar.";
+  if (state === "insufficient_dependencies") {
+    const names = (snapshot?.unavailableItems || [])
+      .map((item) => displayNameLabel(item.itemName || "Insumo sin nombre"))
+      .filter(Boolean);
+    return names.length
+      ? `No se pudo completar la evaluacion de: ${names.join(", ")}.`
+      : "No se pudo completar la evaluacion porque faltan datos del inventario o sus dependencias.";
+  }
+  return "El ultimo inventario fue evaluado y no requiere compras.";
 }
 
 function purchaseInventoryQuantityLabel(stock, unit) {

@@ -95,14 +95,14 @@ Endpoints específicos registrados en `backend/routes/router.js`:
 
 La lectura/edición genérica usa `GET|POST /api/backend/tables/:tabla`; no reemplazar el flujo integral por el editor genérico sin una decisión explícita.
 
-La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida.
+La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida. Si el metadato falta, es antiguo o no corresponde al inventario más nuevo, la lectura reconstruye en memoria la evaluación desde el tramo final de la última fecha persistida, sin escribir el cache. El contrato distingue `no_inventory`, `insufficient_dependencies`, `valid_no_alerts` y `valid_with_alerts`.
 
 ## Dependencias
 
 - **Compras:** costos históricos desde compras/recepciones y navegación desde alertas.
 - **Ventas:** pedidos/detalles/productos para unidades del modelo teórico.
-- **Reportes:** Estado de Resultados consume inventario valorizado y Dashboard lee la fotografía fija de insumos a comprar sin recalcularla.
-- **Compras:** la lista superior lee la misma fotografía y conserva libre el selector operativo de insumos.
+- **Reportes:** Estado de Resultados consume inventario valorizado y Dashboard lee la evaluación fija o reconstruida de insumos a comprar sin recalcularla.
+- **Compras:** la lista superior lee la misma evaluación derivada y conserva libre el selector operativo de insumos.
 - **Base de datos:** `data-store.js`, registry y proyecciones son fuente técnica de persistencia.
 - **UI/Arquitectura:** `app.js`, `index.html`, router y orden de scripts son compartidos sensibles.
 - **OpenAI Vision:** solo interpreta la imagen actual; la transcripción es borrador y nunca fuente maestra.

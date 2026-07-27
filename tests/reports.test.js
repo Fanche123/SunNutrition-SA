@@ -603,6 +603,7 @@ test("Dashboard muestra la fotografia fija de insumos a comprar y oculta el esta
     dashboardWidgetData: {
       inventoryPurchaseSnapshot: {
         inventoryDate: "2026-07-20",
+        state: "valid_with_alerts",
         items: [{
           itemName: "Azucar premium con nombre muy largo <script>",
           stock: 2.5,
@@ -670,12 +671,32 @@ test("Dashboard muestra la fotografia fija de insumos a comprar y oculta el esta
   assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /&lt;script&gt;/);
 
   context.dashboardWidgetData = {
-    inventoryPurchaseSnapshot: { inventoryDate: "2026-07-21", items: [] },
+    inventoryPurchaseSnapshot: {
+      inventoryDate: "2026-07-21",
+      state: "valid_no_alerts",
+      items: []
+    },
     errors: {}
   };
   context.renderDashboardInventoryPurchasesWidget();
   assert.equal(widget.hidden, true);
   assert.equal(widget.attributes["aria-expanded"], "false");
+
+  context.dashboardExpandedWidget = "inventoryPurchases";
+  context.dashboardWidgetData = {
+    inventoryPurchaseSnapshot: {
+      inventoryDate: "2026-07-22",
+      state: "insufficient_dependencies",
+      items: [],
+      unavailableItems: [{ itemName: "Aceite" }]
+    },
+    errors: {}
+  };
+  context.renderDashboardInventoryPurchasesWidget();
+  assert.equal(widget.hidden, false);
+  assert.equal(context.els["dashboard-inventory-purchases-count"].textContent, "!");
+  assert.match(context.els["dashboard-inventory-purchases-summary"].textContent, /dependencias insuficientes/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /Aceite/);
 });
 
 test("Dashboard registra el widget de insumos y consume solo el contrato de fotografia", () => {
@@ -723,6 +744,7 @@ test("Compras muestra la misma fotografia sin limitar el selector libre", () => 
 
   const snapshot = {
     inventoryDate: "2026-07-20",
+    state: "valid_with_alerts",
     items: [
       { itemName: "Azucar <script>", stock: 2.5, unit: "Kg", daysRemaining: 0.0352 },
       { itemName: "Aceite", stock: 0, unit: "Lt", daysRemaining: 0 }
@@ -739,9 +761,32 @@ test("Compras muestra la misma fotografia sin limitar el selector libre", () => 
   assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0 Lt/);
   assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /&lt;script&gt;/);
 
-  context.renderPurchaseInventorySuggestions({ inventoryDate: "2026-07-21", items: [] });
+  context.renderPurchaseInventorySuggestions({
+    inventoryDate: "2026-07-21",
+    state: "valid_no_alerts",
+    items: []
+  });
   assert.equal(selector.value, "Aceite");
-  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /No hay insumos a comprar/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /evaluado y no requiere compras/);
+
+  context.renderPurchaseInventorySuggestions({
+    inventoryDate: "2026-07-22",
+    state: "insufficient_dependencies",
+    items: [],
+    unavailableItems: [{ itemName: "Bobina_Barra_Pop" }]
+  });
+  assert.equal(selector.value, "Aceite");
+  assert.equal(context.els["purchase-inventory-suggestions-count"].textContent, "!");
+  assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /faltan dependencias/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /Bobina Barra Pop/);
+
+  context.renderPurchaseInventorySuggestions({
+    inventoryDate: "",
+    state: "no_inventory",
+    items: []
+  });
+  assert.equal(context.els["purchase-inventory-suggestions-count"].textContent, "0");
+  assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /No existe un inventario persistido/);
 });
 
 test("Compras registra la lista superior y lee la fotografia canonica", () => {
@@ -786,6 +831,7 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
   const context = {
     inventoryPurchaseSnapshot: {
       inventoryDate: "2026-07-20",
+      state: "valid_with_alerts",
       items: [{
         itemId: "101",
         itemName: "Azucar",
@@ -826,6 +872,16 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
   assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /20\/07\/2026/);
   assert.match(context.els["purchase-threshold-body"].innerHTML, /2,5 Kg/);
   assert.match(context.els["purchase-threshold-body"].innerHTML, /Comprar/);
+
+  context.inventoryPurchaseSnapshot = {
+    inventoryDate: "2026-07-21",
+    state: "insufficient_dependencies",
+    items: [],
+    unavailableItems: [{ itemName: "Aceite" }]
+  };
+  context.updateInventoryPurchaseAlerts();
+  assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /faltan dependencias/);
+  assert.match(context.els["purchase-threshold-body"].innerHTML, /Aceite/);
 
   const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
   assert.doesNotMatch(purchaseSource, /inventoryPurchaseAlert|inventoryPurchaseMetrics|DAILY_CONSUMPTION_BY_ITEM/);

@@ -13,7 +13,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - El alta canónica de pedidos usa `POST /api/sales/orders/full-entry`: valida referencias y contenido, genera IDs en backend y persiste encabezado y detalles con un único `saveBackendCache()`.
 - No existen endpoints de fuentes, refresh ni imports externos.
 - Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
-- La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva; Dashboard y Compras lo leen por `GET /api/inventory/purchase-snapshot`.
+- La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva. `GET /api/inventory/purchase-snapshot` conserva ese resultado si está vigente o lo reconstruye en memoria desde el último lote de `inventarios`/`detalle_inventarios` si falta o está obsoleto; Inventario, Dashboard y Compras leen el mismo contrato.
 - El OCR de adjuntos o fotos solo interpreta el archivo entregado por el usuario; no constituye una fuente de tablas.
 
 - `server.js`: composicion del servidor y dominios backend operativos aun no extraidos.

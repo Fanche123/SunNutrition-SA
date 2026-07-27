@@ -1,7 +1,13 @@
 const InventoryPurchaseEvaluation = require("../../shared/inventory-purchase-evaluation");
 
 const SNAPSHOT_KEY = "inventoryPurchaseSnapshot";
-const SNAPSHOT_VERSION = 1;
+const SNAPSHOT_VERSION = 2;
+const SNAPSHOT_STATES = Object.freeze({
+  NO_INVENTORY: "no_inventory",
+  INSUFFICIENT_DEPENDENCIES: "insufficient_dependencies",
+  VALID_NO_ALERTS: "valid_no_alerts",
+  VALID_WITH_ALERTS: "valid_with_alerts"
+});
 
 function createInventoryPurchaseSnapshotService(dependencies) {
   const {
@@ -12,6 +18,13 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   } = dependencies;
 
   function buildInventoryPurchaseSnapshot(cache, input) {
+    return evaluateInventoryPurchaseSnapshot(cache, input, {
+      source: "stored",
+      tolerateCalendarErrors: false
+    });
+  }
+
+  function evaluateInventoryPurchaseSnapshot(cache, input, options = {}) {
     const date = backendIsoDate(input.date);
     const inventoryIds = Object.values(input.inventoryIds || {}).map(backendId).filter(Boolean);
     const selectedShifts = Array.isArray(input.selectedShifts) ? input.selectedShifts : [];
@@ -19,6 +32,7 @@ function createInventoryPurchaseSnapshotService(dependencies) {
     const previousStocks = previousStockByItem(cache, date, inventoryIds);
     const itemContext = inventoryItemContext(cache.tables || {});
     const providerContext = inventoryProviderContext(cache.tables || {});
+    const unavailableItems = [];
 
     const items = cleanRows.map((row) => {
       const itemId = backendId(row.itemId);
@@ -27,12 +41,22 @@ function createInventoryPurchaseSnapshotService(dependencies) {
         unit: "",
         supplyId: ""
       };
-      const stock = currentOrPreviousStock(row, selectedShifts, previousStocks.get(itemId));
+      const previousStock = previousStocks.get(itemId);
+      const stock = currentOrPreviousStock(row, selectedShifts, previousStock);
+      const hasResolvableInventoryDetail = selectedShifts.some((shift) => hasInventoryQuantity(row[shift]))
+        || hasInventoryQuantity(previousStock);
       const provider = providerContext.get(item.supplyId) || {};
-      const businessDays = provider.leadDays
-        ? countInventoryConsumptionDays(date, provider.leadDays)
-        : 0;
-      return InventoryPurchaseEvaluation.inventoryPurchaseAlert({
+      let businessDays = Number.NaN;
+      let calendarUnavailable = false;
+      if (provider.leadDays) {
+        try {
+          businessDays = countInventoryConsumptionDays(date, provider.leadDays);
+        } catch (error) {
+          if (!options.tolerateCalendarErrors) throw error;
+          calendarUnavailable = true;
+        }
+      }
+      const metrics = InventoryPurchaseEvaluation.inventoryPurchaseMetrics({
         itemId,
         itemName: item.name,
         stock,
@@ -41,13 +65,30 @@ function createInventoryPurchaseSnapshotService(dependencies) {
         leadDays: provider.leadDays,
         businessDays
       });
-    }).filter(Boolean).map(snapshotItem);
+      if (!metrics.dailyConsumption) return null;
+      if (!metrics.canEvaluate) {
+        unavailableItems.push(snapshotUnavailableItem(metrics, {
+          calendarUnavailable,
+          missingInventoryDetails: !hasResolvableInventoryDetail
+        }));
+        return null;
+      }
+      return metrics.shouldBuy ? snapshotItem(metrics) : null;
+    }).filter(Boolean);
+    const state = unavailableItems.length
+      ? SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES
+      : items.length
+        ? SNAPSHOT_STATES.VALID_WITH_ALERTS
+        : SNAPSHOT_STATES.VALID_NO_ALERTS;
 
     return {
       version: SNAPSHOT_VERSION,
       inventoryDate: date,
       inventoryIds,
-      items
+      state,
+      source: options.source || "stored",
+      items,
+      unavailableItems
     };
   }
 
@@ -58,26 +99,122 @@ function createInventoryPurchaseSnapshotService(dependencies) {
 
   function readInventoryPurchaseSnapshot(cache) {
     const snapshot = cache?.[SNAPSHOT_KEY];
-    if (!snapshot || Number(snapshot.version) !== SNAPSHOT_VERSION) return emptySnapshot();
-    if (!snapshotMatchesLatestInventory(cache, snapshot)) return emptySnapshot(latestInventoryDate(cache));
-    return {
-      version: SNAPSHOT_VERSION,
-      inventoryDate: backendIsoDate(snapshot.inventoryDate),
-      inventoryIds: (snapshot.inventoryIds || []).map(backendId).filter(Boolean),
-      items: (snapshot.items || [])
-        .filter((item) => item && typeof item === "object" && !Array.isArray(item))
-        .map(snapshotItem)
-        .filter(validSnapshotItem)
-    };
+    if (
+      snapshot
+      && Number(snapshot.version) === SNAPSHOT_VERSION
+      && validSnapshotState(snapshot.state)
+      && snapshotMatchesLatestInventory(cache, snapshot)
+    ) {
+      return normalizeSnapshot(snapshot, "stored");
+    }
+    return rebuildInventoryPurchaseSnapshot(cache);
+  }
+
+  function rebuildInventoryPurchaseSnapshot(cache) {
+    const batch = latestInventoryBatch(cache);
+    const latestDate = latestInventoryDate(cache);
+    if (!latestDate) return emptySnapshot();
+    if (!batch.length) {
+      return emptySnapshot(
+        SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES,
+        latestDate,
+        [],
+        [{
+          itemId: "",
+          itemName: "Ultimo inventario",
+          missingDependencies: ["inventory_batch"]
+        }]
+      );
+    }
+    const inventoryIds = Object.fromEntries(batch.map((row) => [
+      inventoryShiftKey(row.turno),
+      backendId(row.id_inventario)
+    ]));
+    const selectedShifts = batch.map((row) => inventoryShiftKey(row.turno)).filter(Boolean);
+    const details = cache.tables?.detalle_inventarios?.rows || [];
+    const shiftByInventoryId = new Map(batch.map((row) => [
+      backendId(row.id_inventario),
+      inventoryShiftKey(row.turno)
+    ]));
+    const rowsByItem = new Map();
+
+    details.forEach((detail) => {
+      const shift = shiftByInventoryId.get(backendId(detail.id_inventario));
+      if (!shift) return;
+      const itemId = backendId(detail.id_item);
+      if (!itemId) return;
+      if (!rowsByItem.has(itemId)) {
+        rowsByItem.set(itemId, { itemId, dawn: "", morning: "", afternoon: "" });
+      }
+      rowsByItem.get(itemId)[shift] = detail.cantidad ?? "";
+    });
+
+    const date = backendIsoDate(batch.at(-1)?.fecha);
+    const evaluableItems = inventoryItemContext(cache.tables || {});
+    evaluableItems.forEach((item, itemId) => {
+      if (!InventoryPurchaseEvaluation.dailyConsumptionForItem(item.name)) return;
+      if (!rowsByItem.has(itemId)) {
+        rowsByItem.set(itemId, { itemId, dawn: "", morning: "", afternoon: "" });
+      }
+    });
+    if (!rowsByItem.size) return emptySnapshot(
+      SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES,
+      date,
+      Object.values(inventoryIds),
+      [{
+        itemId: "",
+        itemName: "Ultimo inventario",
+        missingDependencies: ["inventory_details"]
+      }]
+    );
+    return evaluateInventoryPurchaseSnapshot(cache, {
+      date,
+      inventoryIds,
+      selectedShifts,
+      cleanRows: [...rowsByItem.values()]
+    }, {
+      source: "reconstructed",
+      tolerateCalendarErrors: true
+    });
   }
 
   function clearInventoryPurchaseSnapshot(cache, inventoryDate = "", inventoryIds = []) {
     return storeInventoryPurchaseSnapshot(cache, {
-      version: SNAPSHOT_VERSION,
+      version: 0,
       inventoryDate: backendIsoDate(inventoryDate),
       inventoryIds: inventoryIds.map(backendId).filter(Boolean),
-      items: []
+      state: "pending",
+      source: "stored",
+      items: [],
+      unavailableItems: []
     });
+  }
+
+  function latestInventoryBatch(cache) {
+    const latestDate = latestInventoryDate(cache);
+    if (!latestDate) return [];
+    const sameDate = (cache.tables?.inventarios?.rows || [])
+      .filter((row) => (
+        backendIsoDate(row.fecha) === latestDate
+        && backendId(row.id_inventario)
+        && inventoryShiftKey(row.turno)
+      ))
+      .sort(compareInventoryRows);
+    const latest = sameDate.at(-1);
+    if (!latest) return [];
+    const batch = [latest];
+    let currentShiftOrder = inventoryShiftOrder(latest.turno);
+    const employeeId = backendId(latest.id_empleado);
+
+    for (let index = sameDate.length - 2; index >= 0; index -= 1) {
+      const candidate = sameDate[index];
+      const candidateShiftOrder = inventoryShiftOrder(candidate.turno);
+      if (backendId(candidate.id_empleado) !== employeeId) break;
+      if (candidateShiftOrder >= currentShiftOrder) break;
+      batch.unshift(candidate);
+      currentShiftOrder = candidateShiftOrder;
+    }
+    return batch;
   }
 
   function previousStockByItem(cache, currentDate, currentInventoryIds) {
@@ -221,7 +358,9 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   return {
     buildInventoryPurchaseSnapshot,
     clearInventoryPurchaseSnapshot,
+    latestInventoryBatch,
     readInventoryPurchaseSnapshot,
+    rebuildInventoryPurchaseSnapshot,
     storeInventoryPurchaseSnapshot
   };
 }
@@ -254,6 +393,20 @@ function snapshotItem(item) {
   };
 }
 
+function snapshotUnavailableItem(item, options = {}) {
+  const missingDependencies = [];
+  if (!Number.isFinite(item.stock)) missingDependencies.push("stock");
+  if (options.missingInventoryDetails) missingDependencies.push("inventory_details");
+  if (!item.provider) missingDependencies.push("provider");
+  if (!Number.isFinite(item.leadDays) || item.leadDays <= 0) missingDependencies.push("lead_days");
+  if (options.calendarUnavailable) missingDependencies.push("business_calendar");
+  return {
+    itemId: String(item.itemId ?? "").trim(),
+    itemName: String(item.itemName || "").trim(),
+    missingDependencies: [...new Set(missingDependencies)]
+  };
+}
+
 function validSnapshotItem(item) {
   return Boolean(
     item.itemId
@@ -265,12 +418,62 @@ function validSnapshotItem(item) {
   );
 }
 
-function emptySnapshot(inventoryDate = "") {
+function validSnapshotUnavailableItem(item) {
+  return Boolean(
+    item
+    && typeof item === "object"
+    && !Array.isArray(item)
+    && Array.isArray(item.missingDependencies)
+  );
+}
+
+function normalizeSnapshot(snapshot, source = "") {
+  const items = (snapshot.items || [])
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map(snapshotItem)
+    .filter(validSnapshotItem);
+  const unavailableItems = (snapshot.unavailableItems || [])
+    .filter(validSnapshotUnavailableItem)
+    .map((item) => ({
+      itemId: String(item.itemId ?? "").trim(),
+      itemName: String(item.itemName || "").trim(),
+      missingDependencies: [...new Set(item.missingDependencies.map((value) => String(value || "").trim()).filter(Boolean))]
+    }));
+  return {
+    version: SNAPSHOT_VERSION,
+    inventoryDate: String(snapshot.inventoryDate || "").trim(),
+    inventoryIds: (snapshot.inventoryIds || []).map((value) => String(value ?? "").trim()).filter(Boolean),
+    state: validSnapshotState(snapshot.state)
+      ? snapshot.state
+      : unavailableItems.length
+        ? SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES
+        : items.length
+          ? SNAPSHOT_STATES.VALID_WITH_ALERTS
+          : SNAPSHOT_STATES.VALID_NO_ALERTS,
+    source: source || String(snapshot.source || "").trim() || "stored",
+    items,
+    unavailableItems
+  };
+}
+
+function validSnapshotState(value) {
+  return Object.values(SNAPSHOT_STATES).includes(value);
+}
+
+function emptySnapshot(
+  state = SNAPSHOT_STATES.NO_INVENTORY,
+  inventoryDate = "",
+  inventoryIds = [],
+  unavailableItems = []
+) {
   return {
     version: SNAPSHOT_VERSION,
     inventoryDate,
-    inventoryIds: [],
-    items: []
+    inventoryIds,
+    state,
+    source: "reconstructed",
+    items: [],
+    unavailableItems
   };
 }
 
@@ -294,12 +497,26 @@ function inventoryShiftKey(value) {
   return "";
 }
 
+function inventoryShiftOrder(value) {
+  return { dawn: 0, morning: 1, afternoon: 2 }[inventoryShiftKey(value)] ?? Number.POSITIVE_INFINITY;
+}
+
+function compareInventoryRows(left, right) {
+  const leftId = Number(left.id_inventario);
+  const rightId = Number(right.id_inventario);
+  if (Number.isFinite(leftId) && Number.isFinite(rightId) && leftId !== rightId) {
+    return leftId - rightId;
+  }
+  return String(left.id_inventario || "").localeCompare(String(right.id_inventario || ""));
+}
+
 function normalizeCategory(value) {
   return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 }
 
 module.exports = {
   SNAPSHOT_KEY,
+  SNAPSHOT_STATES,
   SNAPSHOT_VERSION,
   createInventoryPurchaseSnapshotService
 };

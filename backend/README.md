@@ -24,7 +24,7 @@ La base de datos backend es la unica fuente de verdad del ERP.
 
 No existen endpoints de fuentes, refresh ni imports externos. Las tablas se cargan y modifican desde las pantallas operativas, conciliacion o el Editor de datos.
 
-`POST /api/inventory/full-entry` persiste inventarios, detalles, valuación y el metadato superior `inventoryPurchaseSnapshot` con un único guardado atómico del cache. Este metadato no agrega tablas ni columnas y una nueva carga válida lo reemplaza por completo, incluso sin alertas.
+`POST /api/inventory/full-entry` persiste inventarios, detalles, valuación y el metadato superior `inventoryPurchaseSnapshot` con un único guardado atómico del cache. Este metadato no agrega tablas ni columnas y una nueva carga válida lo reemplaza por completo, incluso sin alertas. `GET /api/inventory/purchase-snapshot` reconstruye la evaluación en memoria desde el último lote persistido cuando el metadato falta, tiene una versión anterior o no corresponde al inventario más nuevo; la lectura no escribe datos.
 
 El Editor usa exclusivamente `/api/admin/tables`. Todas las tablas visibles tienen CRUD administrativo completo con validacion de columnas, tipos, PK y relaciones; los borrados referenciados se bloquean. El endpoint generico se conserva temporalmente para flujos operativos y debe migrarse antes de habilitar LAN.
 

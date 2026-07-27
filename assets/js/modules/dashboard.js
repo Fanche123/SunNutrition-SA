@@ -119,7 +119,14 @@ async function loadDashboardInventoryPurchaseSnapshot() {
   const snapshot = payload?.snapshot;
   return snapshot && !Array.isArray(snapshot)
     ? snapshot
-    : { inventoryDate: "", inventoryIds: [], items: [] };
+    : {
+        inventoryDate: "",
+        inventoryIds: [],
+        state: "no_inventory",
+        source: "reconstructed",
+        items: [],
+        unavailableItems: []
+      };
 }
 
 function calculateDashboardWidget(label, callback) {
@@ -491,9 +498,13 @@ function renderDashboardWidgets() {
 function renderDashboardInventoryPurchasesWidget() {
   const snapshot = dashboardWidgetData.inventoryPurchaseSnapshot || {};
   const items = Array.isArray(snapshot.items) ? snapshot.items : [];
+  const state = dashboardInventoryPurchaseState(snapshot);
+  const incomplete = state === "insufficient_dependencies";
   const loadError = dashboardWidgetData.errors?.inventoryPurchases;
   const widget = els["dashboard-inventory-purchases-widget"];
-  widget.hidden = Boolean(loadError) || items.length === 0;
+  widget.hidden = Boolean(loadError)
+    || state === "no_inventory"
+    || state === "valid_no_alerts";
   if (widget.hidden) {
     widget.classList.remove("is-expanded", "is-warning");
     widget.setAttribute("aria-expanded", "false");
@@ -502,16 +513,39 @@ function renderDashboardInventoryPurchasesWidget() {
   }
 
   const isExpanded = dashboardExpandedWidget === "inventoryPurchases";
-  els["dashboard-inventory-purchases-count"].textContent = formatNumber(items.length);
-  els["dashboard-inventory-purchases-summary"].textContent = items.length === 1
-    ? `1 insumo a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`
-    : `${formatNumber(items.length)} insumos a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`;
+  els["dashboard-inventory-purchases-count"].textContent = incomplete ? "!" : formatNumber(items.length);
+  els["dashboard-inventory-purchases-summary"].textContent = incomplete
+    ? `Inventario del ${formatDate(snapshot.inventoryDate)} con dependencias insuficientes para completar la evaluacion.`
+    : items.length === 1
+      ? `1 insumo a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`
+      : `${formatNumber(items.length)} insumos a comprar · Inventario del ${formatDate(snapshot.inventoryDate)}.`;
   els["dashboard-inventory-purchases-list"].innerHTML = isExpanded
-    ? dashboardInventoryPurchasesTable(items)
+    ? dashboardInventoryPurchasesDetail(snapshot)
     : "";
   widget.classList.toggle("is-expanded", isExpanded);
   widget.classList.add("is-warning");
   widget.setAttribute("aria-expanded", String(isExpanded));
+}
+
+function dashboardInventoryPurchaseState(snapshot) {
+  if (snapshot?.state) return snapshot.state;
+  if (!snapshot?.inventoryDate) return "no_inventory";
+  return Array.isArray(snapshot.items) && snapshot.items.length
+    ? "valid_with_alerts"
+    : "valid_no_alerts";
+}
+
+function dashboardInventoryPurchasesDetail(snapshot) {
+  const items = Array.isArray(snapshot?.items) ? snapshot.items : [];
+  const table = items.length ? dashboardInventoryPurchasesTable(items) : "";
+  if (dashboardInventoryPurchaseState(snapshot) !== "insufficient_dependencies") return table;
+  const names = (snapshot?.unavailableItems || [])
+    .map((item) => displayNameLabel(item.itemName || "Insumo sin nombre"))
+    .filter(Boolean);
+  const message = names.length
+    ? `No se pudo completar la evaluacion de: ${names.join(", ")}.`
+    : "No se pudo completar la evaluacion porque faltan datos del inventario o sus dependencias.";
+  return `${table}<p>${escapeHtml(message)}</p>`;
 }
 
 function dashboardInventoryPurchasesTable(items) {

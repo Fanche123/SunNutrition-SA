@@ -4,7 +4,11 @@ const test = require("node:test");
 const { payrollCalendarForYear } = require("../../assets/js/config/payroll-calendars");
 const InventoryPurchaseEvaluation = require("../../shared/inventory-purchase-evaluation");
 const { createInventoryEntryService } = require("./inventory-entry.service");
-const { createInventoryPurchaseSnapshotService } = require("./inventory-purchase-snapshot.service");
+const {
+  SNAPSHOT_STATES,
+  SNAPSHOT_VERSION,
+  createInventoryPurchaseSnapshotService
+} = require("./inventory-purchase-snapshot.service");
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -65,6 +69,35 @@ function baseCache() {
       }
     }
   };
+}
+
+function historicalCache() {
+  const cache = baseCache();
+  cache.tables.items.rows.push(
+    { id_item: 103, origen_tipo: "insumo", id_origen: 12, ud_conteo: "Ud" }
+  );
+  cache.tables.insumos.rows.push(
+    { id_insumo: 12, nombre: "Bobina_Barra_Pop", ud_receta: "Ud" }
+  );
+  cache.tables.insumos_proveedores.rows.push(
+    { id_insumos_proveedores: 32, id_insumo: 12, id_proveedor: 20 }
+  );
+  cache.tables.detalle_compras.rows.push(
+    { id_detalle_compra: 52, id_compra: 40, id_insumos_proveedores: 32 }
+  );
+  cache.tables.inventarios.rows.push(
+    { id_inventario: 1705, fecha: "2026-07-03", turno: "Mañana", id_empleado: 4 },
+    { id_inventario: 1706, fecha: "2026-07-03", turno: "Tarde", id_empleado: 4 }
+  );
+  cache.tables.detalle_inventarios.rows.push(
+    { id_detalle_inventario: 1, id_inventario: 1705, id_item: 101, cantidad: 10000 },
+    { id_detalle_inventario: 2, id_inventario: 1705, id_item: 102, cantidad: 150 },
+    { id_detalle_inventario: 3, id_inventario: 1705, id_item: 103, cantidad: 10 },
+    { id_detalle_inventario: 4, id_inventario: 1706, id_item: 101, cantidad: 10000 },
+    { id_detalle_inventario: 5, id_inventario: 1706, id_item: 102, cantidad: 150 },
+    { id_detalle_inventario: 6, id_inventario: 1706, id_item: 103, cantidad: 10 }
+  );
+  return cache;
 }
 
 function createHarness(initialCache = baseCache()) {
@@ -170,6 +203,135 @@ test("la regla compartida conserva umbral, decimales, cero e invalidos", () => {
     leadDays: 5,
     businessDays: 4
   }), null);
+});
+
+test("sin snapshot reconstruye el ultimo lote historico completo con la regla canonica sin escribir", async () => {
+  const harness = createHarness(historicalCache());
+  const service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryPurchaseSnapshot({});
+  const snapshot = harness.responses.at(-1).payload.snapshot;
+
+  assert.equal(harness.saveCount(), 0);
+  assert.equal(snapshot.version, SNAPSHOT_VERSION);
+  assert.equal(snapshot.source, "reconstructed");
+  assert.equal(snapshot.state, SNAPSHOT_STATES.VALID_WITH_ALERTS);
+  assert.equal(snapshot.inventoryDate, "2026-07-03");
+  assert.deepEqual(snapshot.inventoryIds, ["1705", "1706"]);
+  assert.deepEqual(snapshot.items.map((item) => item.itemName).sort(), ["Aceite", "Bobina_Barra_Pop"]);
+  assert.equal(snapshot.items.find((item) => item.itemName === "Aceite").stock, 150);
+  assert.equal(snapshot.items.find((item) => item.itemName === "Bobina_Barra_Pop").stock, 10);
+  snapshot.items.forEach((item) => {
+    assert.equal(item.shouldBuy, undefined);
+    assert.ok(item.daysRemaining > 0);
+    assert.ok(item.stock < item.required);
+  });
+});
+
+test("la reconstruccion usa el tramo final del mismo dia sin mezclar una carga anterior", () => {
+  const cache = historicalCache();
+  cache.tables.inventarios.rows.push(
+    { id_inventario: 1707, fecha: "2026-07-03", turno: "Mañana", id_empleado: 4 },
+    { id_inventario: 1708, fecha: "2026-07-03", turno: "Tarde", id_empleado: 4 }
+  );
+  cache.tables.detalle_inventarios.rows.push(
+    { id_detalle_inventario: 7, id_inventario: 1707, id_item: 102, cantidad: 10000 },
+    { id_detalle_inventario: 8, id_inventario: 1707, id_item: 103, cantidad: 10000 },
+    { id_detalle_inventario: 9, id_inventario: 1708, id_item: 102, cantidad: 10000 },
+    { id_detalle_inventario: 10, id_inventario: 1708, id_item: 103, cantidad: 10000 }
+  );
+  const harness = createHarness(cache);
+  const snapshot = harness.dependencies.readInventoryPurchaseSnapshot(harness.cache());
+
+  assert.deepEqual(snapshot.inventoryIds, ["1707", "1708"]);
+  assert.equal(snapshot.state, SNAPSHOT_STATES.VALID_NO_ALERTS);
+  assert.deepEqual(snapshot.items, []);
+});
+
+test("un insumo omitido en el ultimo lote usa su existencia del inventario anterior", () => {
+  const cache = baseCache();
+  cache.tables.inventarios.rows.push(
+    { id_inventario: 1, fecha: "2026-07-02", turno: "Tarde", id_empleado: 4 },
+    { id_inventario: 2, fecha: "2026-07-03", turno: "Tarde", id_empleado: 4 }
+  );
+  cache.tables.detalle_inventarios.rows.push(
+    { id_detalle_inventario: 1, id_inventario: 1, id_item: 102, cantidad: 0 },
+    { id_detalle_inventario: 2, id_inventario: 2, id_item: 101, cantidad: 10000 }
+  );
+  const harness = createHarness(cache);
+  const snapshot = harness.dependencies.readInventoryPurchaseSnapshot(harness.cache());
+
+  assert.equal(snapshot.state, SNAPSHOT_STATES.VALID_WITH_ALERTS);
+  assert.deepEqual(snapshot.items.map((item) => item.itemName), ["Aceite"]);
+  assert.equal(snapshot.items[0].stock, 0);
+  assert.deepEqual(snapshot.unavailableItems, []);
+});
+
+test("un insumo canonico sin detalle actual ni existencia previa no produce un vacio valido falso", () => {
+  const cache = baseCache();
+  cache.tables.inventarios.rows.push(
+    { id_inventario: 1, fecha: "2026-07-03", turno: "Tarde", id_empleado: 4 }
+  );
+  cache.tables.detalle_inventarios.rows.push(
+    { id_detalle_inventario: 1, id_inventario: 1, id_item: 101, cantidad: 10000 }
+  );
+  const harness = createHarness(cache);
+  const snapshot = harness.dependencies.readInventoryPurchaseSnapshot(harness.cache());
+  const unavailableAceite = snapshot.unavailableItems.find((item) => item.itemName === "Aceite");
+
+  assert.equal(snapshot.state, SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES);
+  assert.deepEqual(snapshot.items, []);
+  assert.ok(unavailableAceite);
+  assert.ok(unavailableAceite.missingDependencies.includes("stock"));
+  assert.ok(unavailableAceite.missingDependencies.includes("inventory_details"));
+});
+
+test("un snapshot vigente queda fijo y uno obsoleto se reconstruye desde tablas", async () => {
+  const harness = createHarness();
+  const service = createInventoryEntryService(harness.dependencies);
+  await submit(service, payload("2026-07-02", [{ itemId: 101, afternoon: 0 }]));
+  const stored = harness.dependencies.readInventoryPurchaseSnapshot(harness.cache());
+  assert.equal(stored.source, "stored");
+  assert.equal(stored.inventoryDate, "2026-07-02");
+
+  const cache = historicalCache();
+  cache.inventoryPurchaseSnapshot = stored;
+  const historicalHarness = createHarness(cache);
+  const rebuilt = historicalHarness.dependencies.readInventoryPurchaseSnapshot(historicalHarness.cache());
+  assert.equal(rebuilt.source, "reconstructed");
+  assert.equal(rebuilt.inventoryDate, "2026-07-03");
+  assert.deepEqual(rebuilt.inventoryIds, ["1705", "1706"]);
+});
+
+test("distingue ausencia de inventario, dependencias insuficientes y evaluacion valida sin alertas", () => {
+  const emptyHarness = createHarness();
+  const noInventory = emptyHarness.dependencies.readInventoryPurchaseSnapshot(emptyHarness.cache());
+  assert.equal(noInventory.state, SNAPSHOT_STATES.NO_INVENTORY);
+  assert.equal(noInventory.inventoryDate, "");
+
+  const incompleteCache = historicalCache();
+  incompleteCache.tables.detalle_compras.rows = [];
+  const incompleteHarness = createHarness(incompleteCache);
+  const incomplete = incompleteHarness.dependencies.readInventoryPurchaseSnapshot(incompleteHarness.cache());
+  assert.equal(incomplete.state, SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES);
+  assert.equal(incomplete.items.length, 0);
+  assert.deepEqual(
+    incomplete.unavailableItems.map((item) => item.itemName).sort(),
+    ["Aceite", "Azucar", "Bobina_Barra_Pop"]
+  );
+  incomplete.unavailableItems.forEach((item) => {
+    assert.ok(item.missingDependencies.includes("provider"));
+    assert.ok(item.missingDependencies.includes("lead_days"));
+  });
+
+  const completeCache = historicalCache();
+  completeCache.tables.detalle_inventarios.rows.forEach((row) => {
+    row.cantidad = 10000;
+  });
+  const completeHarness = createHarness(completeCache);
+  const noAlerts = completeHarness.dependencies.readInventoryPurchaseSnapshot(completeHarness.cache());
+  assert.equal(noAlerts.state, SNAPSHOT_STATES.VALID_NO_ALERTS);
+  assert.deepEqual(noAlerts.items, []);
+  assert.deepEqual(noAlerts.unavailableItems, []);
 });
 
 test("una carga exitosa fija la evaluacion y una posterior la reemplaza sin mezclar", async () => {
