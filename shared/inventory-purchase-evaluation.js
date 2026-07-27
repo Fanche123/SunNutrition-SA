@@ -11,13 +11,16 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function createInventoryPurchaseEvaluation() {
   "use strict";
 
+  const DEFAULT_BARS_PER_DAY = 30100;
+  const MIN_BARS_PER_DAY = 1;
+  const MAX_BARS_PER_DAY = 1000000;
   const DAILY_CONSUMPTION_BY_ITEM = Object.freeze({
     maizpisingallo: 496.65 * 1.285,
     azucar: 496.65 * 0.143,
     aceite: 496.65 * 0.186,
     escenciadevainilla: 496.65 * 0.007,
     esenciadevainilla: 496.65 * 0.007,
-    bobinabarrapop: 30100 / 5212,
+    bobinabarrapop: DEFAULT_BARS_PER_DAY / 5212,
     caja140: 215 / 25
   });
 
@@ -29,8 +32,23 @@
       .replace(/[^a-z0-9]/g, "");
   }
 
-  function dailyConsumptionForItem(itemName) {
-    return DAILY_CONSUMPTION_BY_ITEM[normalizeItemToken(itemName)] || 0;
+  function normalizeBarsPerDay(value, fallback = DEFAULT_BARS_PER_DAY) {
+    if (value === null || value === undefined || String(value).trim() === "") return fallback;
+    if (typeof value === "string" && !/^\d+$/.test(value.trim())) return NaN;
+    const barsPerDay = Number(value);
+    return Number.isInteger(barsPerDay)
+      && barsPerDay >= MIN_BARS_PER_DAY
+      && barsPerDay <= MAX_BARS_PER_DAY
+      ? barsPerDay
+      : NaN;
+  }
+
+  function dailyConsumptionForItem(itemName, barsPerDay = DEFAULT_BARS_PER_DAY) {
+    const production = normalizeBarsPerDay(barsPerDay, NaN);
+    const baselineConsumption = DAILY_CONSUMPTION_BY_ITEM[normalizeItemToken(itemName)] || 0;
+    return Number.isFinite(production)
+      ? baselineConsumption * (production / DEFAULT_BARS_PER_DAY)
+      : 0;
   }
 
   function inventoryPurchaseMetrics(input = {}) {
@@ -39,7 +57,8 @@
     const stock = finiteInputNumber(input.stock);
     const leadDays = finiteInputNumber(input.leadDays);
     const businessDays = finiteInputNumber(input.businessDays);
-    const dailyConsumption = dailyConsumptionForItem(itemName);
+    const barsPerDay = normalizeBarsPerDay(input.barsPerDay);
+    const dailyConsumption = dailyConsumptionForItem(itemName, barsPerDay);
     const canEvaluate = Boolean(
       dailyConsumption
       && provider
@@ -59,6 +78,7 @@
       provider,
       leadDays,
       businessDays,
+      barsPerDay,
       dailyConsumption,
       required,
       daysRemaining,
@@ -80,9 +100,13 @@
 
   return {
     DAILY_CONSUMPTION_BY_ITEM,
+    DEFAULT_BARS_PER_DAY,
+    MAX_BARS_PER_DAY,
+    MIN_BARS_PER_DAY,
     dailyConsumptionForItem,
     inventoryPurchaseAlert,
     inventoryPurchaseMetrics,
+    normalizeBarsPerDay,
     normalizeItemToken
   };
 });

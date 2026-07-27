@@ -49,8 +49,10 @@ Las columnas completas están en `backend/config/backend-columns.js`; claves reg
 Endpoints confirmados en `backend/routes/router.js`:
 
 - `GET /api/backend/tables/:tabla?all=true` y `POST /api/backend/tables/:tabla`: lectura y upsert genérico (`rows`; opcional `deletedIds`).
-- `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → `{ ok, report }` con resumen, opciones y movimientos.
-- `POST /api/bank-reconciliation/apply`: agrega `{ applyMode, movementKeys, reviewRows }` → contadores/notas en `result`.
+- `GET /api/bank-reconciliation/state?bank=...` → pendientes persistidos reanalizados y última fecha conciliada del banco seleccionado.
+- `GET /api/bank-reconciliation/summary` → última fecha global, días calendario en Buenos Aires y detalle por banco para Dashboard.
+- `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → combina y deduplica el archivo con pendientes canónicos, los persiste y devuelve `{ ok, report }`.
+- `POST /api/bank-reconciliation/apply`: `{ bank, applyMode, movementKeys, reviewRows }` → contadores/notas en `result`; una conciliación exitosa retira solo esas claves pendientes en el mismo guardado.
 - `POST /api/bank-reconciliation/deposit-checks`: banco, fecha, movimiento opcional, `manualDeposit` y `checkIds` → cantidad/monto depositado.
 - `POST /api/treasury/collections`: guarda cobro, detalles y retenciones en una única persistencia idempotente.
 - `POST /api/treasury/payments`: guarda pago y detalles en una única persistencia idempotente.
@@ -66,6 +68,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 - Parseo/matching: `bank-parser.service.js`, `bank-matching.service.js`, `backend/utils/bank.js`, `backend/bank-rules.js`.
 - Escritura e idempotencia: `bank-persistence.service.js`, `bank-reconciliation.service.js`, `collection-entry.service.js`, `payment-entry.service.js` y `partner-contributions.service.js`. Las operaciones compuestas trabajan sobre una copia del cache y realizan un único reemplazo atómico.
 - La idempotencia durable usa metadatos internos `_operationId`/`_operationPayload` o `_bankOperationKey`/`_bankOperationPayload` en la fila financiera propietaria. No usa memoria ni `app-state`, no altera columnas registradas y su ciclo de vida es el de la propia operación: al eliminar legítimamente la fila propietaria también desaparece su marcador. No existe un registro separado de crecimiento ilimitado.
+- `bankReconciliation.pendingMovements` es metadato superior del cache canónico: conserva por banco únicamente campos normalizados y `movementKey`, nunca el CSV completo. La clave usa la huella bancaria existente más ocurrencia; al conciliar, esa identidad exacta se conserva en `_bankMovementKey` dentro de `movimientos_bancarios`. Los registros históricos sin esa clave mantienen compatibilidad por conteo de huella.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
 - Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
 - El Dashboard consume los endpoints de Planes de pago en modo de solo lectura y conserva como autoridad el estado `Pagada` derivado por este servicio.
@@ -101,7 +104,7 @@ Pagos, cobros, cheques y planes dependen del contrato único `shared/money.js` /
 - Contabilidad posee el reconocimiento y la conciliación económica. Tesorería puede consultar esa conciliación, pero no decide períodos o etiquetas; pagos y planes no generan gastos automáticamente en la primera etapa.
 
 - No tocar `.env`, adjuntos ni `tmp/backend-data-cache.json`; no enviar POST financieros a una instancia con datos reales. `node server.js` puede escribir al arrancar: siembra planes/aportes y ajusta esquema bancario.
-- `analyze` normaliza y propone referencias solamente sobre una copia en memoria; no persiste.
+- `analyze` normaliza y propone referencias sobre una copia de tablas, pero persiste atómicamente solo el snapshot canónico de pendientes; no escribe pagos, cobros, egresos ni movimientos conciliados.
 - No reconstruir desde Excel/CSV: el CSV bancario es solo entrada de interpretación; el backend sigue siendo fuente de verdad.
 - Gaps: la cobertura automatizada de Tesorería sigue siendo parcial (`tests/treasury-safety.test.js` y `tests/payment-plans.test.js`); `caja` usa `cuenta/monto`; aportes y el helper legacy de planes conservan datos históricos fijos. Las siembras históricas quedaron como funciones explícitas no invocadas por el arranque. La persistencia no tiene control multiusuario.
 - El endpoint/UI de endoso siguen pendientes. Al implementarlos, rechazar cheques no pendientes o ya usados, exigir suma exacta y reforzar ambos caminos de depósito para que no acepten cheques con `id_pago_endoso` ni estado `Endosado`. No reinterpretar los estados históricos ya persistidos.

@@ -1,11 +1,11 @@
 async function loadSalaryExpenseEntryData(force = false) {
   if (salaryExpenseEntryData.loaded && !force) return;
   const [salaries, employees, expenses, creditorTags, labels] = await Promise.all([
-    backendTableRowsForEntry("sueldos").catch(() => []),
-    backendTableRowsForEntry("empleados").catch(() => []),
-    backendTableRowsForEntry("egresos").catch(() => []),
-    backendTableRowsForEntry("acreedores_etiquetas").catch(() => []),
-    backendTableRowsForEntry("etiquetas").catch(() => [])
+    backendTableRowsForEntry("sueldos"),
+    backendTableRowsForEntry("empleados"),
+    backendTableRowsForEntry("egresos"),
+    backendTableRowsForEntry("acreedores_etiquetas"),
+    backendTableRowsForEntry("etiquetas")
   ]);
   salaryExpenseEntryData = {
     loaded: true,

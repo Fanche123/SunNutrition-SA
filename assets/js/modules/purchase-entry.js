@@ -47,12 +47,13 @@ function renderPurchaseThresholdTable(infos) {
         <td class="num">${escapeHtml(purchaseInventoryQuantityLabel(info.stock, info.unit))}</td>
         <td>${escapeHtml(info.provider || missingPurchaseProviderLabel())}</td>
         <td class="num">${formatLeadAndConsumptionDays(info)}</td>
+        <td class="num">${escapeHtml(purchaseInventoryDaysLabel(info.daysRemaining))}</td>
         <td class="num">${formatNumber(info.dailyConsumption)}</td>
         <td class="num" title="${escapeHtml(formatStockMinimumFormula(info))}">${formatNullableNumber(info.required)}</td>
         <td><span class="purchase-threshold-state is-low">Comprar</span></td>
       </tr>
     `).join("")
-    : emptyRow(7, inventoryPurchaseSnapshotEmptyMessage(inventoryPurchaseSnapshot));
+    : emptyRow(8, inventoryPurchaseSnapshotEmptyMessage(inventoryPurchaseSnapshot));
 }
 
 function formatLeadAndConsumptionDays(info) {
@@ -387,7 +388,8 @@ function purchaseBackendSupplierInfo() {
 
 async function openPurchaseEntryForItem(itemName, itemId = "") {
   switchView("purchase-entry");
-  await loadPurchaseBackendOptions();
+  const initialized = await initializeViewOnce("purchase-entry", loadPurchaseBackendOptions);
+  if (!initialized) return;
   const supply = findPurchaseSupply(itemName, itemId);
   if (supply && els["purchase-item-name"]) {
     els["purchase-item-name"].value = String(supply.id_insumo ?? "").trim();
@@ -1011,6 +1013,7 @@ async function loadPurchaseInventorySuggestions() {
     els["purchase-inventory-suggestions-count"].textContent = "!";
     status.textContent = `No se pudo cargar la recomendacion: ${error.message || "error desconocido"}.`;
     list.innerHTML = "";
+    throw error;
   }
 }
 
@@ -1021,6 +1024,7 @@ function renderPurchaseInventorySuggestions(snapshot) {
   const list = els["purchase-inventory-suggestions-list"];
   if (!count || !status || !list) return;
 
+  syncInventoryProductionRateInput(snapshot);
   const state = inventoryPurchaseSnapshotState(snapshot);
   count.textContent = state === "insufficient_dependencies" ? "!" : formatNumber(items.length);
   status.textContent = `${inventoryPurchaseSnapshotStatusMessage(snapshot)} El selector de insumos permanece libre.`;
@@ -1078,8 +1082,10 @@ function purchaseInventoryQuantityLabel(stock, unit) {
 }
 
 function purchaseInventoryDaysLabel(daysRemaining) {
-  const label = purchaseInventoryMeasurementLabel(Number(daysRemaining));
-  return label === "-" ? label : `${label} dias de produccion`;
+  const days = Number(daysRemaining);
+  if (!Number.isFinite(days)) return "-";
+  const roundedDays = Math.round(days);
+  return `${formatNumber(roundedDays)} ${roundedDays === 1 ? "d\u00eda" : "d\u00edas"} de producci\u00f3n`;
 }
 
 function purchaseInventoryMeasurementLabel(value) {
@@ -1088,19 +1094,93 @@ function purchaseInventoryMeasurementLabel(value) {
     : "-";
 }
 
+function syncInventoryProductionRateInput(snapshot) {
+  const input = els["inventory-production-rate"];
+  if (!input) return;
+  input.dataset.minimum = String(snapshot?.minBarsPerDay ?? "");
+  input.dataset.maximum = String(snapshot?.maxBarsPerDay ?? "");
+  if (globalThis.document?.activeElement === input) return;
+  const barsPerDay = Number(snapshot?.barsPerDay);
+  input.value = Number.isInteger(barsPerDay) ? formatNumber(barsPerDay) : "";
+  input.setAttribute("aria-invalid", "false");
+}
+
+function parseInventoryProductionRate(value) {
+  const input = els["inventory-production-rate"];
+  const minimum = Number(input?.dataset?.minimum);
+  const maximum = Number(input?.dataset?.maximum);
+  if (!Number.isInteger(minimum) || !Number.isInteger(maximum)) return NaN;
+  const compact = String(value || "").trim().replace(/\s+/g, "");
+  if (!compact || (!/^\d+$/.test(compact) && !/^\d{1,3}(?:\.\d{3})+$/.test(compact))) {
+    return NaN;
+  }
+  const barsPerDay = Number(compact.replace(/\./g, ""));
+  return Number.isInteger(barsPerDay) && barsPerDay >= minimum && barsPerDay <= maximum
+    ? barsPerDay
+    : NaN;
+}
+
+async function submitInventoryProductionRate(event) {
+  event?.preventDefault();
+  const input = els["inventory-production-rate"];
+  const button = els["inventory-production-rate-submit"];
+  const status = els["inventory-production-rate-status"];
+  if (!input || !button || !status) return;
+
+  const barsPerDay = parseInventoryProductionRate(input.value);
+  if (!Number.isFinite(barsPerDay)) {
+    input.setAttribute("aria-invalid", "true");
+    status.dataset.status = "error";
+    status.textContent = `Ingresa un entero entre ${formatNumber(Number(input.dataset.minimum))} y ${formatNumber(Number(input.dataset.maximum))}.`;
+    return;
+  }
+
+  const previousSnapshot = inventoryPurchaseSnapshot;
+  input.setAttribute("aria-invalid", "false");
+  button.disabled = true;
+  status.dataset.status = "";
+  status.textContent = "Guardando y recalculando...";
+  try {
+    const payload = await requestBackendApi("/api/inventory/purchase-snapshot/production-rate", {
+      method: "POST",
+      body: JSON.stringify({ barsPerDay })
+    });
+    inventoryPurchaseSnapshot = payload.snapshot;
+    dashboardWidgetData.inventoryPurchaseSnapshot = payload.snapshot;
+    renderPurchaseInventorySuggestions(payload.snapshot);
+    updateInventoryPurchaseAlerts();
+    renderDashboardInventoryPurchasesWidget();
+    input.value = formatNumber(payload.snapshot.barsPerDay);
+    status.dataset.status = "success";
+    status.textContent = "Producci\u00f3n diaria actualizada.";
+  } catch (error) {
+    inventoryPurchaseSnapshot = previousSnapshot;
+    input.value = Number.isInteger(Number(previousSnapshot?.barsPerDay))
+      ? formatNumber(Number(previousSnapshot.barsPerDay))
+      : "";
+    input.setAttribute("aria-invalid", "true");
+    status.dataset.status = "error";
+    status.textContent = error.message || "No se pudo guardar. Se conserva el ultimo valor valido.";
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadPurchaseBackendOptions({ force = false } = {}) {
-  loadPurchaseInventorySuggestions();
+  const inventorySuggestionsPromise = loadPurchaseInventorySuggestions();
   if (purchaseBackendOptions.loaded && !force) {
+    await inventorySuggestionsPromise;
     updatePurchaseItemOptions();
     updatePurchaseProviderOptions();
     return purchaseBackendOptions;
   }
 
-  const [supplies, supplierLinks, providers, items] = await Promise.all([
-    backendTableRowsForEntry("insumos").catch(() => []),
-    backendTableRowsForEntry("insumos_proveedores").catch(() => []),
-    backendTableRowsForEntry("proveedores").catch(() => []),
-    backendTableRowsForEntry("items").catch(() => [])
+  const [, supplies, supplierLinks, providers, items] = await Promise.all([
+    inventorySuggestionsPromise,
+    backendTableRowsForEntry("insumos"),
+    backendTableRowsForEntry("insumos_proveedores"),
+    backendTableRowsForEntry("proveedores"),
+    backendTableRowsForEntry("items")
   ]);
 
   purchaseBackendOptions = {

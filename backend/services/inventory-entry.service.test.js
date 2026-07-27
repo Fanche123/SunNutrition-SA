@@ -119,6 +119,7 @@ function createHarness(initialCache = baseCache()) {
     inventoryItemNameMap: () => new Map(),
     isIsoDate: (value) => Boolean(backendIsoDate(value)),
     loadCache: () => clone(persisted),
+    logError: () => {},
     nextBusinessDayIso: (value) => value,
     normalizeInventoryDetailRows: (rows) => rows.map((row) => ({
       itemId: backendId(row.itemId),
@@ -205,6 +206,54 @@ test("la regla compartida conserva umbral, decimales, cero e invalidos", () => {
   }), null);
 });
 
+test("la produccion diaria canonica escala cobertura y clasificacion de forma monotona", () => {
+  const baseInput = {
+    itemName: "Aceite",
+    stock: 200,
+    unit: "Kg",
+    provider: "Proveedor",
+    leadDays: 5,
+    businessDays: 4
+  };
+  const atTwentyThousand = InventoryPurchaseEvaluation.inventoryPurchaseMetrics({
+    ...baseInput,
+    barsPerDay: 20000
+  });
+  const atFortyThousand = InventoryPurchaseEvaluation.inventoryPurchaseMetrics({
+    ...baseInput,
+    barsPerDay: 40000
+  });
+  const crossingStock = (atTwentyThousand.required + atFortyThousand.required) / 2;
+  const lowProduction = InventoryPurchaseEvaluation.inventoryPurchaseMetrics({
+    ...baseInput,
+    stock: crossingStock,
+    barsPerDay: 20000
+  });
+  const highProduction = InventoryPurchaseEvaluation.inventoryPurchaseMetrics({
+    ...baseInput,
+    stock: crossingStock,
+    barsPerDay: 40000
+  });
+
+  assert.equal(atTwentyThousand.barsPerDay, 20000);
+  assert.equal(atFortyThousand.barsPerDay, 40000);
+  assert.ok(atTwentyThousand.daysRemaining > atFortyThousand.daysRemaining);
+  assert.equal(lowProduction.shouldBuy, false);
+  assert.equal(highProduction.shouldBuy, true);
+  assert.ok(highProduction.dailyConsumption > lowProduction.dailyConsumption);
+});
+
+test("la configuracion usa 30.100 por compatibilidad y rechaza valores fuera del contrato", () => {
+  assert.equal(
+    InventoryPurchaseEvaluation.normalizeBarsPerDay(undefined),
+    InventoryPurchaseEvaluation.DEFAULT_BARS_PER_DAY
+  );
+  assert.equal(InventoryPurchaseEvaluation.DEFAULT_BARS_PER_DAY, 30100);
+  [0, -1, 1.5, 1000001, "20.000", "texto", Infinity, NaN].forEach((value) => {
+    assert.equal(Number.isNaN(InventoryPurchaseEvaluation.normalizeBarsPerDay(value, NaN)), true);
+  });
+});
+
 test("sin snapshot reconstruye el ultimo lote historico completo con la regla canonica sin escribir", async () => {
   const harness = createHarness(historicalCache());
   const service = createInventoryEntryService(harness.dependencies);
@@ -216,6 +265,7 @@ test("sin snapshot reconstruye el ultimo lote historico completo con la regla ca
   assert.equal(snapshot.source, "reconstructed");
   assert.equal(snapshot.state, SNAPSHOT_STATES.VALID_WITH_ALERTS);
   assert.equal(snapshot.inventoryDate, "2026-07-03");
+  assert.equal(snapshot.barsPerDay, 30100);
   assert.deepEqual(snapshot.inventoryIds, ["1705", "1706"]);
   assert.deepEqual(snapshot.items.map((item) => item.itemName).sort(), ["Aceite", "Bobina_Barra_Pop"]);
   assert.equal(snapshot.items.find((item) => item.itemName === "Aceite").stock, 150);
@@ -225,6 +275,72 @@ test("sin snapshot reconstruye el ultimo lote historico completo con la regla ca
     assert.ok(item.daysRemaining > 0);
     assert.ok(item.stock < item.required);
   });
+});
+
+test("el endpoint persiste el parametro y recalcula la misma fotografia sin tocar tablas", async () => {
+  const harness = createHarness(historicalCache());
+  let service = createInventoryEntryService(harness.dependencies);
+  const originalTables = harness.cache().tables;
+
+  await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: 20000 } }, {});
+  const twentyThousandResponse = harness.responses.at(-1);
+  const twentyThousandSnapshot = twentyThousandResponse.payload.snapshot;
+  const twentyThousandDays = twentyThousandSnapshot.items
+    .find((item) => item.itemName === "Aceite").daysRemaining;
+
+  assert.equal(twentyThousandResponse.status, 200);
+  assert.equal(harness.cache().inventoryPurchaseConfig.barsPerDay, 20000);
+  assert.equal(harness.cache().inventoryPurchaseSnapshot.barsPerDay, 20000);
+  assert.deepEqual(harness.cache().tables, originalTables);
+
+  service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryPurchaseSnapshot({});
+  assert.equal(harness.responses.at(-1).payload.snapshot.barsPerDay, 20000);
+
+  await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: 40000 } }, {});
+  const fortyThousandSnapshot = harness.responses.at(-1).payload.snapshot;
+  const fortyThousandDays = fortyThousandSnapshot.items
+    .find((item) => item.itemName === "Aceite").daysRemaining;
+
+  assert.equal(fortyThousandSnapshot.barsPerDay, 40000);
+  assert.ok(twentyThousandDays > fortyThousandDays);
+  assert.deepEqual(harness.cache().tables, originalTables);
+});
+
+test("un parametro invalido o un fallo de guardado conserva el ultimo valor valido", async () => {
+  const harness = createHarness(historicalCache());
+  let service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: 20000 } }, {});
+  const persisted = harness.cache();
+  const savesBeforeInvalid = harness.saveCount();
+
+  for (const value of [0, -1, "", "texto", "20000", "20.000", true, [20000], 1.5, 1000001]) {
+    await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: value } }, {});
+    assert.equal(harness.responses.at(-1).status, 400);
+  }
+  assert.equal(harness.saveCount(), savesBeforeInvalid);
+  assert.deepEqual(harness.cache(), persisted);
+
+  harness.dependencies.saveBackendCache = () => {
+    throw new Error("fallo de guardado");
+  };
+  service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: 40000 } }, {});
+
+  assert.equal(harness.responses.at(-1).status, 500);
+  assert.match(harness.responses.at(-1).payload.error, /último valor válido/i);
+  assert.deepEqual(harness.cache(), persisted);
+});
+
+test("una carga valida posterior conserva el parametro y reemplaza la evaluacion", async () => {
+  const harness = createHarness();
+  const service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryPurchaseProductionRate({ body: { barsPerDay: 20000 } }, {});
+  await submit(service, payload("2026-07-20", [{ itemId: 101, afternoon: 0 }]));
+
+  assert.equal(harness.cache().inventoryPurchaseConfig.barsPerDay, 20000);
+  assert.equal(harness.cache().inventoryPurchaseSnapshot.barsPerDay, 20000);
+  assert.equal(harness.cache().inventoryPurchaseSnapshot.inventoryDate, "2026-07-20");
 });
 
 test("la reconstruccion usa el tramo final del mismo dia sin mezclar una carga anterior", () => {

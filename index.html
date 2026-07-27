@@ -387,6 +387,10 @@
                 <option value="GAL">GAL</option>
               </select>
             </label>
+            <div class="bank-reconciliation-last" aria-live="polite">
+              <strong id="bank-reconciliation-last-date">Sin conciliaciones registradas</strong>
+              <small id="bank-reconciliation-last-days"></small>
+            </div>
             <label class="bank-file-drop-zone" id="bank-reconciliation-drop-zone">
               <input id="bank-reconciliation-file" type="file" accept=".csv,text/csv">
               <span>
@@ -599,6 +603,18 @@
             <div class="dashboard-widget-list" id="dashboard-payment-plans-list"></div>
           </article>
 
+          <article class="dashboard-widget" id="dashboard-bank-reconciliation-widget" role="button" tabindex="0" aria-expanded="false">
+            <div class="dashboard-widget-header">
+              <div>
+                <span>Tesoreria</span>
+                <h2>Ultima conciliacion bancaria</h2>
+              </div>
+              <strong id="dashboard-bank-reconciliation-days">-</strong>
+            </div>
+            <p id="dashboard-bank-reconciliation-summary">Cargando ultima conciliacion...</p>
+            <div class="dashboard-widget-list" id="dashboard-bank-reconciliation-list"></div>
+          </article>
+
           <article class="dashboard-widget" id="dashboard-received-checks-widget" role="button" tabindex="0" aria-expanded="false" hidden>
             <div class="dashboard-widget-header">
               <div>
@@ -777,13 +793,14 @@
                       <th>Stock actual</th>
                       <th>Ultimo proveedor</th>
                       <th>Dias entrega</th>
+                      <th>D&iacute;as de producci&oacute;n</th>
                       <th>Consumo diario</th>
                       <th>Stock minimo</th>
                       <th>Estado</th>
                     </tr>
                   </thead>
                   <tbody id="purchase-threshold-body">
-                    <tr><td class="empty" colspan="7">Prepara el detalle para ver el calculo.</td></tr>
+                    <tr><td class="empty" colspan="8">Prepara el detalle para ver el calculo.</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -808,7 +825,24 @@
               <span>Ultimo inventario</span>
               <h3 id="purchase-inventory-suggestions-title">Insumos a comprar</h3>
             </div>
-            <strong id="purchase-inventory-suggestions-count" aria-label="Cantidad de insumos sugeridos">0</strong>
+            <div class="purchase-inventory-suggestions-actions">
+              <form id="inventory-production-rate-form" class="inventory-production-rate-form" novalidate>
+                <label for="inventory-production-rate">Barritas producidas por d&iacute;a</label>
+                <div>
+                  <input
+                    id="inventory-production-rate"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    aria-describedby="inventory-production-rate-status"
+                    placeholder="30.100"
+                  >
+                  <button id="inventory-production-rate-submit" type="submit">Aplicar</button>
+                </div>
+                <small id="inventory-production-rate-status" role="status" aria-live="polite"></small>
+              </form>
+              <strong id="purchase-inventory-suggestions-count" aria-label="Cantidad de insumos sugeridos">0</strong>
+            </div>
           </div>
           <p id="purchase-inventory-suggestions-status" aria-live="polite">Cargando recomendacion del ultimo inventario...</p>
           <div class="purchase-inventory-suggestions-list" id="purchase-inventory-suggestions-list"></div>

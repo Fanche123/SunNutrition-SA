@@ -3,21 +3,45 @@ const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/
 function createBankReconciliationService(dependencies) {
   const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendPersistedBankMovementCounts, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankMovementFingerprint, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
   const failureInjector = dependencies.failureInjector || (() => {});
+  const now = dependencies.now || (() => new Date());
 
   async function handleBankReconciliationAnalyze(request, response) {
     try {
       const body = await readJsonBody(request);
-      const report = buildBankReconciliationReport(body);
+      const sourceCache = JSON.parse(JSON.stringify(loadCache()));
+      const existingKeys = new Set(pendingBankMovements(sourceCache, body.bank).map((movement) => movement.movementKey));
+      const report = buildBankReconciliationReport(body, sourceCache);
+      const resultingKeys = new Set(report.movements.map((movement) => movement.movementKey));
+      const newCount = [...resultingKeys].filter((key) => !existingKeys.has(key)).length;
+      report.merge = {
+        newCount,
+        duplicateCount: Math.max(0, report.rowsRead - newCount),
+        totalPending: report.movements.length
+      };
+      storePendingBankMovements(sourceCache, report.bank, report.movements);
+      sourceCache.generatedAt = new Date().toISOString();
+      failureInjector("before-bank-reconciliation-save");
+      saveBackendCache(sourceCache);
       sendJson(response, 200, { ok: true, report });
     } catch (error) {
-      sendJson(response, error.statusCode || 400, { ok: false, error: error.message });
+      console.error("No se pudo analizar el extracto bancario.", error);
+      const statusCode = error.statusCode || 500;
+      const message = statusCode < 500
+        ? error.message
+        : "No se pudo analizar el extracto bancario. Revisa el archivo e intentalo nuevamente.";
+      sendJson(response, statusCode, { ok: false, error: message });
     }
   }
   
   async function handleBankReconciliationApply(request, response) {
     try {
       const body = await readJsonBody(request);
-      const report = buildBankReconciliationReport(body);
+      const sourceCache = JSON.parse(JSON.stringify(loadCache()));
+      const hasStoredPending = pendingBankMovements(sourceCache, body.bank || "ICBC").length > 0;
+      const report = buildBankReconciliationReport(
+        hasStoredPending ? { ...body, csvText: "" } : body,
+        sourceCache
+      );
       const result = applyBankReconciliationReport(report);
       sendJson(response, 200, { ok: true, result });
     } catch (error) {
@@ -129,6 +153,7 @@ function createBankReconciliationService(dependencies) {
             idCobro: selectedChecks[0].id_cobro
           }
         }, bank, depositId, depositPayload);
+        removePendingBankMovements(cache, bank, [movement?.movementKey].filter(Boolean));
       }
   
       cache.generatedAt = timestamp;
@@ -139,37 +164,30 @@ function createBankReconciliationService(dependencies) {
     }
   }
   
-  function buildBankReconciliationReport(body = {}) {
+  function buildBankReconciliationReport(body = {}, sourceCache = JSON.parse(JSON.stringify(loadCache()))) {
     const bank = String(body.bank || "ICBC").trim() || "ICBC";
     const csvText = String(body.csvText || "");
-    if (!csvText.trim()) throw new Error("Falta cargar el archivo CSV del banco.");
-  
-    const cache = JSON.parse(JSON.stringify(loadCache()));
+    const cache = JSON.parse(JSON.stringify(sourceCache));
     if (!cache.tables) cache.tables = {};
     ensureBackendTable(cache.tables, "datos_bancarios");
     seedDefaultBankDetails(cache);
     normalizeBackendBankDetails(cache);
     const tables = cache.tables || {};
-    const movements = parseBankMovements(csvText);
-    if (!movements.length) throw new Error("No se encontraron movimientos bancarios en el CSV.");
+    const incomingMovements = csvText.trim() ? parseBankMovements(csvText) : [];
+    const storedMovements = pendingBankMovements(sourceCache, bank);
   
     const paymentCandidates = backendBankPaymentCandidates(tables, bank);
     const collectionCandidates = backendBankCollectionCandidates(tables, bank);
     const payableCandidates = backendBankPayableCandidates(tables);
     const creditPayableCandidates = backendBankCreditPayableCandidates(tables);
     const sourceCandidates = backendBankSourceCandidates(tables);
-    const persistedMovementCounts = backendPersistedBankMovementCounts(tables, bank);
     const identityIndex = backendBankIdentityIndex(tables);
     const receivedChecksByNumber = backendReceivedChecksByNumber(tables);
     const issuedChecksByNumber = backendIssuedChecksByNumber(tables);
     const receivedCheckDepositGroups = backendReceivedCheckDepositGroups(tables, bank);
-    const movementOccurrences = new Map();
-    const analyzedMovements = movements.map((movement) => {
-      const baseKey = bankMovementFingerprint(movement, bank);
-      const occurrence = (movementOccurrences.get(baseKey) || 0) + 1;
-      movementOccurrences.set(baseKey, occurrence);
-      return analyzeBankMovement(
-        { ...movement, movementKey: `${baseKey}:${occurrence}` },
+    const analyzeMovements = (movements, persistedMovementCounts) => movements.map((movement) => (
+      analyzeBankMovement(
+        movement,
         paymentCandidates,
         collectionCandidates,
         payableCandidates,
@@ -181,12 +199,27 @@ function createBankReconciliationService(dependencies) {
         issuedChecksByNumber,
         receivedCheckDepositGroups,
         bank
-      );
-    });
+      )
+    ));
+    const storedAnalyzed = analyzeMovements(storedMovements, new Map());
+    const reconciledMovementKeys = new Set(
+      (tables.movimientos_bancarios?.rows || [])
+        .filter((row) => backendNormalizeText(row.banco) === backendNormalizeText(bank))
+        .map((row) => cleanBackendText(row._bankMovementKey))
+        .filter(Boolean)
+    );
+    const incomingWithKeys = assignBankMovementKeys(incomingMovements, bank);
+    const incomingAnalyzed = analyzeMovements(
+      incomingWithKeys.filter((movement) => !reconciledMovementKeys.has(cleanBackendText(movement.movementKey))),
+      backendPersistedBankMovementCounts(tables, bank, { legacyOnly: true })
+    ).filter((movement) => movement.status !== "conciliado");
+    const mergedMovements = new Map(storedAnalyzed.map((movement) => [movement.movementKey, movement]));
+    incomingAnalyzed.forEach((movement) => mergedMovements.set(movement.movementKey, movement));
+    const analyzedMovements = [...mergedMovements.values()];
   
     const reconciled = analyzedMovements.filter((movement) => movement.status === "conciliado");
     const ready = analyzedMovements.filter((movement) => movement.status === "listo");
-    const pending = analyzedMovements.filter((movement) => !["conciliado", "listo"].includes(movement.status));
+    const pending = analyzedMovements.filter((movement) => movement.status !== "conciliado");
     const lastBalance = normalizeMoney(
       analyzedMovements.find((movement) => Number.isFinite(movement.balance))?.balance || 0
     );
@@ -202,16 +235,18 @@ function createBankReconciliationService(dependencies) {
     return {
       bank,
       source: "backend",
-      rowsRead: movements.length,
+      rowsRead: incomingMovements.length,
       summary: {
         realBalance: lastBalance,
         reconciledCount: reconciled.length,
         readyCount: ready.length,
         pendingCount: pending.length,
+        totalPendingCount: analyzedMovements.length,
         pendingDebits,
         pendingCredits,
         netPending: fromCents(pendingCreditCents - pendingDebitCents)
       },
+      reconciliation: bankReconciliationDateSummary(sourceCache, bank),
       applyMode: body.applyMode || "all",
       movementKeys: Array.isArray(body.movementKeys) ? body.movementKeys.map(String) : [],
       reviewRows: body.reviewRows && typeof body.reviewRows === "object" ? body.reviewRows : {},
@@ -229,10 +264,148 @@ function createBankReconciliationService(dependencies) {
       ...(rows || []).map((row) => cleanBackendText(row[column]))
     ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es"));
   }
+
+  function bankReconciliationState(cache) {
+    const current = cache.bankReconciliation;
+    if (current && !Array.isArray(current) && Array.isArray(current.pendingMovements)) return current;
+    return { version: 1, pendingMovements: [], updatedAt: "" };
+  }
+
+  function pendingBankMovements(cache, bank) {
+    const normalizedBank = backendNormalizeText(bank);
+    return bankReconciliationState(cache).pendingMovements
+      .filter((movement) => backendNormalizeText(movement.bank) === normalizedBank)
+      .map((movement) => ({ ...movement }));
+  }
+
+  function storePendingBankMovements(cache, bank, movements) {
+    const state = bankReconciliationState(cache);
+    const normalizedBank = backendNormalizeText(bank);
+    const otherBanks = state.pendingMovements.filter((movement) => (
+      backendNormalizeText(movement.bank) !== normalizedBank
+    ));
+    cache.bankReconciliation = {
+      version: 1,
+      pendingMovements: [
+        ...otherBanks,
+        ...movements.map((movement) => persistedPendingBankMovement(movement, bank))
+      ],
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  function removePendingBankMovements(cache, bank, movementKeys) {
+    const state = bankReconciliationState(cache);
+    const normalizedBank = backendNormalizeText(bank);
+    const selected = new Set((movementKeys || []).map(String));
+    const remaining = state.pendingMovements.filter((movement) => (
+      backendNormalizeText(movement.bank) !== normalizedBank
+      || !selected.has(String(movement.movementKey || ""))
+    ));
+    if (remaining.length === state.pendingMovements.length) return false;
+    cache.bankReconciliation = {
+      version: 1,
+      pendingMovements: remaining,
+      updatedAt: new Date().toISOString()
+    };
+    return true;
+  }
+
+  function persistedPendingBankMovement(movement, bank) {
+    const fields = [
+      "movementKey", "rowNumber", "date", "code", "concept", "bankConcept", "detail",
+      "counterpartyName", "cuit", "checkNumber", "cbuAlias", "docType", "amount",
+      "debit", "credit", "balance", "channel"
+    ];
+    return fields.reduce((stored, field) => {
+      if (movement[field] !== undefined) stored[field] = movement[field];
+      return stored;
+    }, { bank });
+  }
+
+  function assignBankMovementKeys(movements, bank) {
+    const occurrences = new Map();
+    return (movements || []).map((movement) => {
+      const fingerprint = bankMovementFingerprint(movement, bank);
+      const occurrence = (occurrences.get(fingerprint) || 0) + 1;
+      occurrences.set(fingerprint, occurrence);
+      return { ...movement, movementKey: `${fingerprint}:${occurrence}` };
+    });
+  }
+
+  function bankReconciliationDateSummary(cache, bank = "") {
+    const normalizedBank = backendNormalizeText(bank);
+    const rows = (cache.tables?.movimientos_bancarios?.rows || [])
+      .map((row) => ({
+        bank: cleanBackendText(row.banco) || "Banco sin identificar",
+        date: normalizedBankDate(row.fecha)
+      }))
+      .filter((row) => row.date && (!normalizedBank || backendNormalizeText(row.bank) === normalizedBank));
+    const byBank = new Map();
+    rows.forEach((row) => {
+      const key = backendNormalizeText(row.bank);
+      const current = byBank.get(key);
+      if (!current || row.date > current.date) byBank.set(key, row);
+    });
+    const details = [...byBank.values()]
+      .sort((left, right) => right.date.localeCompare(left.date))
+      .map((row) => ({
+        bank: row.bank,
+        account: "",
+        latestDate: row.date,
+        daysElapsed: bankCalendarDaysSince(row.date, now())
+      }));
+    const latest = details[0] || null;
+    return {
+      bank: normalizedBank ? bank : (latest?.bank || ""),
+      account: "",
+      latestDate: latest?.latestDate || "",
+      daysElapsed: latest?.daysElapsed ?? null,
+      reconciledCount: rows.length,
+      details
+    };
+  }
+
+  function normalizedBankDate(value) {
+    const text = cleanBackendText(value);
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return validCalendarDate(isoMatch[1], isoMatch[2], isoMatch[3]);
+    const localMatch = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+    if (!localMatch) return "";
+    return validCalendarDate(localMatch[3], localMatch[2], localMatch[1]);
+  }
+
+  function validCalendarDate(yearText, monthText, dayText) {
+    const year = Number(yearText);
+    const month = Number(monthText);
+    const day = Number(dayText);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() !== year
+      || date.getUTCMonth() !== month - 1
+      || date.getUTCDate() !== day
+    ) return "";
+    return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  function bankCalendarDaysSince(dateIso, now = new Date()) {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Argentina/Buenos_Aires",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(now);
+    const today = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+    const todayUtc = Date.UTC(Number(today.year), Number(today.month) - 1, Number(today.day));
+    const [year, month, day] = dateIso.split("-").map(Number);
+    const movementUtc = Date.UTC(year, month - 1, day);
+    return Math.max(0, Math.floor((todayUtc - movementUtc) / 86400000));
+  }
   
   function applyBankReconciliationReport(report) {
     const cache = JSON.parse(JSON.stringify(loadCache()));
-    const tables = cache.tables || {};
+    if (!cache.tables) cache.tables = {};
+    const tables = cache.tables;
     ensureBackendTable(tables, "acreedores");
     ensureBackendTable(tables, "otros_gastos");
     ensureBackendTable(tables, "egresos");
@@ -252,10 +425,18 @@ function createBankReconciliationService(dependencies) {
       skipped: 0
     };
     const notes = [];
+    const reconciledMovementKeys = new Set();
     const selectedKeys = new Set(report.movementKeys || []);
     const selectedMovements = (report.movements || []).filter((movement) => (
       !selectedKeys.size || selectedKeys.has(String(movement.movementKey || ""))
     ));
+    if (!selectedMovements.length) {
+      return {
+        ...counters,
+        notes,
+        reconciliation: bankReconciliationDateSummary(cache, report.bank)
+      };
+    }
   
     selectedMovements.forEach((movement) => {
       const operationKey = `${report.applyMode}:${bankMovementFingerprint(movement, report.bank)}:${movement.movementKey || ""}`;
@@ -269,6 +450,9 @@ function createBankReconciliationService(dependencies) {
       if (existingOperation) {
         assertSameOperation(existingOperation._bankOperationPayload, operationPayload);
         assertBankOperationRelations(tables, report.applyMode, operationKey);
+        if (report.applyMode === "reconcile") {
+          reconciledMovementKeys.add(String(movement.movementKey || ""));
+        }
         return skipBankMovement(counters);
       }
       if (report.applyMode === "createExpenses") {
@@ -321,6 +505,7 @@ function createBankReconciliationService(dependencies) {
           if (updated) counters.checksUpdated += 1;
         }
         persistBankMovement(tables, movement, report.bank, operationKey, operationPayload);
+        reconciledMovementKeys.add(String(movement.movementKey || ""));
         counters.movementsReconciled += 1;
         return;
       }
@@ -328,13 +513,43 @@ function createBankReconciliationService(dependencies) {
       counters.skipped += 1;
     });
   
+    if (report.applyMode === "reconcile" && reconciledMovementKeys.size) {
+      removePendingBankMovements(cache, report.bank, [...reconciledMovementKeys]);
+    }
     cache.generatedAt = new Date().toISOString();
+    failureInjector("before-bank-reconciliation-save");
     saveBackendCache(cache);
-    return { ...counters, notes };
+    return {
+      ...counters,
+      notes,
+      reconciliation: bankReconciliationDateSummary(cache, report.bank)
+    };
   }
   
   function skipBankMovement(counters) {
     counters.skipped += 1;
+  }
+
+  async function handleBankReconciliationState(request, response) {
+    try {
+      const url = new URL(request.url || "/api/bank-reconciliation/state", "http://127.0.0.1");
+      const bank = cleanBackendText(url.searchParams.get("bank")) || "ICBC";
+      const report = buildBankReconciliationReport({ bank }, JSON.parse(JSON.stringify(loadCache())));
+      sendJson(response, 200, { ok: true, report });
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, { ok: false, error: error.message });
+    }
+  }
+
+  async function handleBankReconciliationSummary(_request, response) {
+    try {
+      sendJson(response, 200, {
+        ok: true,
+        summary: bankReconciliationDateSummary(loadCache())
+      });
+    } catch (error) {
+      sendJson(response, error.statusCode || 400, { ok: false, error: error.message });
+    }
   }
 
   function bankOperationRow(tables, operationKey) {
@@ -382,7 +597,13 @@ function createBankReconciliationService(dependencies) {
     return JSON.stringify(value ?? null);
   }
 
-  return { handleBankReconciliationAnalyze, handleBankReconciliationApply, handleBankReconciliationDepositChecks };
+  return {
+    handleBankReconciliationAnalyze,
+    handleBankReconciliationApply,
+    handleBankReconciliationDepositChecks,
+    handleBankReconciliationState,
+    handleBankReconciliationSummary
+  };
 }
 
 module.exports = { createBankReconciliationService };

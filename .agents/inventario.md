@@ -97,6 +97,8 @@ La lectura/edición genérica usa `GET|POST /api/backend/tables/:tabla`; no reem
 
 La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida. Si el metadato falta, es antiguo o no corresponde al inventario más nuevo, la lectura reconstruye en memoria la evaluación desde el tramo final de la última fecha persistida, sin escribir el cache. El contrato distingue `no_inventory`, `insufficient_dependencies`, `valid_no_alerts` y `valid_with_alerts`.
 
+`inventoryPurchaseConfig.barsPerDay` conserva como metadato superior el único volumen diario usado por esa regla. El valor inicial compatible es 30100 y el rango autorizado es 1..1000000. Cambiarlo recalcula el snapshot completo y guarda ambos metadatos atómicamente, sin tocar inventarios ni compras.
+
 ## Dependencias
 
 - **Compras:** costos históricos desde compras/recepciones y navegación desde alertas.

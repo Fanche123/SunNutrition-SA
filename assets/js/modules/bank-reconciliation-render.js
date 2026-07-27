@@ -36,10 +36,12 @@ function collectBankReconciliationReviewRows(status) {
 
 function renderBankReconciliation() {
   const summary = bankReconciliationReport?.summary || {};
+  const reconciliation = bankReconciliationReport?.reconciliation || {};
   if (els["bank-reconciliation-real-balance"]) els["bank-reconciliation-real-balance"].textContent = formatBankMoney(summary.realBalance || 0);
-  if (els["bank-reconciliation-reconciled"]) els["bank-reconciliation-reconciled"].textContent = String(summary.reconciledCount || 0);
-  if (els["bank-reconciliation-pending"]) els["bank-reconciliation-pending"].textContent = String(summary.pendingCount || 0);
+  if (els["bank-reconciliation-reconciled"]) els["bank-reconciliation-reconciled"].textContent = String(reconciliation.reconciledCount || 0);
+  if (els["bank-reconciliation-pending"]) els["bank-reconciliation-pending"].textContent = String(summary.totalPendingCount || 0);
   if (els["bank-reconciliation-net-pending"]) els["bank-reconciliation-net-pending"].textContent = formatBankMoney(summary.netPending || 0);
+  renderBankReconciliationLatestDate(reconciliation);
 
   const movements = bankReconciliationReport?.movements || [];
   const visibleMovements = movements
@@ -50,17 +52,37 @@ function renderBankReconciliation() {
   renderBankReconciliationStages();
   renderBankCheckDepositReview();
   if (!movements.length) {
-    if (els["bank-reconciliation-body"]) els["bank-reconciliation-body"].innerHTML = emptyRow(11, "Todavia no hay extracto analizado.");
+    const emptyMessage = bankReconciliationReport
+      ? "No hay movimientos bancarios pendientes guardados."
+      : "Cargando movimientos bancarios pendientes.";
+    if (els["bank-reconciliation-body"]) els["bank-reconciliation-body"].innerHTML = emptyRow(11, emptyMessage);
+    if (bankReconciliationReport) setBankReconciliationStatus(emptyMessage, "ok");
     return;
   }
 
   setBankReconciliationStatus(
-    `${visibleMovements.length} movimiento(s) pendientes de este extracto. ${readyMovements.length} listo(s) para conciliar.`,
+    bankReconciliationReport?.merge
+      ? `${bankReconciliationReport.merge.newCount || 0} nuevo(s), ${bankReconciliationReport.merge.duplicateCount || 0} repetido(s). ${visibleMovements.length} pendiente(s) guardado(s).`
+      : `${visibleMovements.length} movimiento(s) pendiente(s) guardado(s). ${readyMovements.length} listo(s) para conciliar.`,
     visibleMovements.length ? "ok" : ""
   );
   els["bank-reconciliation-body"].innerHTML = visibleMovements.length
     ? visibleMovements.map(({ movement, index }) => bankReconciliationRow(movement, index)).join("")
     : emptyRow(11, "Todos los movimientos de este extracto ya estan conciliados.");
+}
+
+function renderBankReconciliationLatestDate(reconciliation) {
+  const date = reconciliation?.latestDate || "";
+  if (els["bank-reconciliation-last-date"]) {
+    els["bank-reconciliation-last-date"].textContent = date
+      ? `Último movimiento conciliado: ${formatDate(date)}`
+      : "Sin conciliaciones registradas";
+  }
+  if (els["bank-reconciliation-last-days"]) {
+    els["bank-reconciliation-last-days"].textContent = date
+      ? `Hace ${Number(reconciliation.daysElapsed) || 0} ${Number(reconciliation.daysElapsed) === 1 ? "día" : "días"}`
+      : "";
+  }
 }
 
 function renderBankReconciliationStages() {

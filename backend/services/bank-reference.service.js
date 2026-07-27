@@ -1,5 +1,5 @@
 function createBankReferenceService(dependencies) {
-  const { DEFAULT_BANK_DETAIL_RULES, EXPECTED_BACKEND_COLUMNS, backendCreditorDisplayName, backendId, backendNextNumericId, cleanBackendText, ensureBackendTable, normalizeLookupText } = dependencies;
+  const { DEFAULT_BANK_DETAIL_RULES, EXPECTED_BACKEND_COLUMNS, backendCreditorDisplayName, backendId, backendNextNumericId, backendNormalizeText, cleanBackendText, ensureBackendTable, normalizeLookupText } = dependencies;
 
 function ensureBackendCreditorByName(tables, name, originType = "historico") {
   const cleanName = cleanBackendText(name);

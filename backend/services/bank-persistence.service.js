@@ -43,10 +43,11 @@ function createBankPersistenceService(dependencies) {
     return toCents(backendNumber(value));
   }
   
-  function backendPersistedBankMovementCounts(tables, bank) {
+  function backendPersistedBankMovementCounts(tables, bank, { legacyOnly = false } = {}) {
     const counts = new Map();
     (tables.movimientos_bancarios?.rows || []).forEach((row) => {
       if (!backendBankMatches(row.banco, bank)) return;
+      if (legacyOnly && cleanBackendText(row._bankMovementKey)) return;
       const key = bankMovementFingerprint(row, row.banco || bank);
       if (!counts.has(key)) counts.set(key, []);
       counts.get(key).push({
@@ -89,6 +90,7 @@ function createBankPersistenceService(dependencies) {
       id_cobro: match.type === "cobro" ? match.id : (movement.checkMatch?.idCobro || ""),
       _bankOperationKey: operationKey,
       _bankOperationPayload: operationPayload,
+      _bankMovementKey: cleanBackendText(movement.movementKey),
       _editedLocallyAt: timestamp
     });
     table.rowCount = table.rows.length;

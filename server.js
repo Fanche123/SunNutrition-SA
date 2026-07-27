@@ -93,7 +93,7 @@ const {
   normalizePartnerName
 } = require("./backend/utils/runtime");
 const {
-  backendBankMatches,
+  backendBankMatches: matchBackendBank,
   bankDateDistance,
   bankTextOverlapScore,
   compactBankText,
@@ -144,6 +144,7 @@ const {
   backendTurnRank,
   normalizeBackendNumberText
 } = incomeCalculations;
+const backendBankMatches = (value, bank) => matchBackendBank(value, bank, backendNormalizeText);
 const { backendInventoryItemCostMap, valueBackendInventories } = createInventoryValuationService({
   backendGroupRowsById,
   backendId,
@@ -190,6 +191,7 @@ const { normalizeBackendBankDetails, seedDefaultBankDetails } = createBankRefere
   backendCreditorDisplayName,
   backendId,
   backendNextNumericId,
+  backendNormalizeText,
   cleanBackendText,
   ensureBackendTable,
   normalizeLookupText
@@ -431,7 +433,8 @@ const {
   buildInventoryPurchaseSnapshot,
   clearInventoryPurchaseSnapshot,
   readInventoryPurchaseSnapshot,
-  storeInventoryPurchaseSnapshot
+  storeInventoryPurchaseSnapshot,
+  updateInventoryPurchaseConfig
 } = createInventoryPurchaseSnapshotService({
   backendId,
   backendIsoDate,
@@ -444,6 +447,7 @@ const {
   handleInventoryDetailTemplate,
   handleInventoryFullEntry,
   handleInventoryLatestDate,
+  handleInventoryPurchaseProductionRate,
   handleInventoryPurchaseSnapshot
 } = createInventoryEntryService({
   backendId,
@@ -465,12 +469,15 @@ const {
   storeInventoryPurchaseSnapshot,
   buildInventoryPurchaseSnapshot,
   clearInventoryPurchaseSnapshot,
+  updateInventoryPurchaseConfig,
   valueBackendInventories
 });
 const {
   handleBankReconciliationAnalyze,
   handleBankReconciliationApply,
-  handleBankReconciliationDepositChecks
+  handleBankReconciliationDepositChecks,
+  handleBankReconciliationState,
+  handleBankReconciliationSummary
 } = createBankReconciliationService({
   analyzeBankMovement,
   backendBankCollectionCandidates,
@@ -540,7 +547,10 @@ const { handlePaymentFullEntry } = createPaymentEntryService({
   saveBackendCache,
   sendJson
 });
-const { handleReceivedChecksEndorse } = createReceivedChecksService({
+const {
+  handlePendingEndorsementPaymentsList,
+  handleReceivedChecksEndorse
+} = createReceivedChecksService({
   backendId,
   ensureBackendTable,
   loadCache,
@@ -701,6 +711,8 @@ const server = http.createServer(createRequestHandler({
     handleBankReconciliationAnalyze,
     handleBankReconciliationApply,
     handleBankReconciliationDepositChecks,
+    handleBankReconciliationState,
+    handleBankReconciliationSummary,
     handleCashflowReport,
     handleCollectionFullEntry,
     handleCreditorCreate,
@@ -724,6 +736,7 @@ const server = http.createServer(createRequestHandler({
     handleInventoryDetailTemplate,
     handleInventoryFullEntry,
     handleInventoryLatestDate,
+    handleInventoryPurchaseProductionRate,
     handleInventoryPurchaseSnapshot,
     handleOtherExpenseFullEntry,
     handlePayrollScaleRead,
@@ -737,6 +750,7 @@ const server = http.createServer(createRequestHandler({
     handlePaymentPlanUpdate,
     handlePaymentPlansList,
     handlePaymentFullEntry,
+    handlePendingEndorsementPaymentsList,
     handleReceivedChecksEndorse,
     handlePurchaseFullEntry,
     handleReceptionFullEntry,

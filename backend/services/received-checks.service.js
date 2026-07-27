@@ -1,3 +1,4 @@
+const { fromCents, toCents } = require("../../shared/money");
 const { validateReceivedCheckEndorsementOperation } = require("../utils/received-check-endorsement");
 
 function createReceivedChecksService({
@@ -9,6 +10,18 @@ function createReceivedChecksService({
   sendJson,
   failureInjector = () => {}
 }) {
+  function handlePendingEndorsementPaymentsList(_request, response) {
+    try {
+      const payments = buildPendingEndorsementPayments(loadCache(), backendId);
+      return sendJson(response, 200, { ok: true, payments });
+    } catch (error) {
+      return sendJson(response, 400, {
+        ok: false,
+        error: `No se pudieron cargar los pagos de endoso pendientes: ${error.message}`
+      });
+    }
+  }
+
   async function handleReceivedChecksEndorse(request, response) {
     try {
       const body = await readJsonBody(request);
@@ -138,7 +151,162 @@ function createReceivedChecksService({
     return JSON.stringify(value ?? null);
   }
 
-  return { handleReceivedChecksEndorse };
+  return { handlePendingEndorsementPaymentsList, handleReceivedChecksEndorse };
+}
+
+function buildPendingEndorsementPayments(cache, backendId) {
+  const payments = cache.tables?.pagos?.rows || [];
+  const paymentDetails = cache.tables?.detalle_pagos?.rows || [];
+  const checks = cache.tables?.cheques_recibidos?.rows || [];
+  const currentPayments = payments
+    .map((payment) => ({
+      payment,
+      creation: currentPaymentCreation(payment, paymentDetails, backendId)
+    }))
+    .filter((item) => item.creation);
+  const currentPaymentIds = new Set(
+    currentPayments.map((item) => backendId(item.payment.id_pago))
+  );
+  const assignedByPayment = new Map();
+  const checksById = new Map();
+
+  checks.forEach((check) => {
+    const checkId = backendId(check.id_cheque_recibido);
+    if (!checkId) return;
+    const rows = checksById.get(checkId) || [];
+    rows.push(check);
+    checksById.set(checkId, rows);
+  });
+
+  checksById.forEach((rows) => {
+    if (rows.length !== 1) return;
+    const check = rows[0];
+    const paymentId = backendId(check.id_pago_endoso);
+    if (!validCurrentEndorsementCheck(check, paymentId, currentPaymentIds)) return;
+    const checkCents = safeCents(check.monto);
+    if (checkCents === null) return;
+    assignedByPayment.set(paymentId, (assignedByPayment.get(paymentId) || 0) + checkCents);
+  });
+
+  return currentPayments
+    .map(({ payment, creation }) => {
+      const paymentId = backendId(payment.id_pago);
+      const assignedCents = assignedByPayment.get(paymentId) || 0;
+      const differenceCents = creation.paymentCents - assignedCents;
+      return {
+        payment: {
+          id_pago: payment.id_pago,
+          fecha_pago: payment.fecha_pago,
+          referencia: payment.referencia || "",
+          monto: fromCents(creation.paymentCents)
+        },
+        paymentCents: creation.paymentCents,
+        assignedCents,
+        differenceCents
+      };
+    })
+    .filter((item) => item.differenceCents !== 0);
+}
+
+function currentPaymentCreation(payment, paymentDetails, backendId) {
+  if (
+    !backendId(payment.id_pago)
+    || clean(payment.metodo) !== "Endoso"
+    || !clean(payment.fecha_pago)
+  ) return null;
+
+  const preserved = clean(payment._paymentCreationOperationId)
+    && clean(payment._paymentCreationOperationPayload)
+    ? {
+      operationId: clean(payment._paymentCreationOperationId),
+      payload: clean(payment._paymentCreationOperationPayload)
+    }
+    : null;
+  const creation = preserved || (
+    clean(payment._operationId) && clean(payment._operationPayload)
+      ? {
+        operationId: clean(payment._operationId),
+        payload: clean(payment._operationPayload)
+      }
+      : null
+  );
+  if (!creation) return null;
+
+  let payload;
+  try {
+    payload = JSON.parse(creation.payload);
+  } catch (_error) {
+    return null;
+  }
+  if (
+    !payload
+    || typeof payload !== "object"
+    || !payload.payment
+    || clean(payload.payment.metodo) !== "Endoso"
+    || clean(payload.payment.fecha) !== clean(payment.fecha_pago)
+    || !Array.isArray(payload.details)
+    || !payload.details.length
+  ) return null;
+
+  const paymentId = backendId(payment.id_pago);
+  const savedDetails = paymentDetails.filter((detail) => (
+    backendId(detail.id_pago) === paymentId
+    && clean(detail._operationId) === creation.operationId
+  ));
+  if (savedDetails.length !== payload.details.length) return null;
+
+  const requestedDetails = detailSignatures(
+    payload.details,
+    (detail) => backendId(detail.idEgreso),
+    (detail) => detail.monto
+  );
+  const persistedDetails = detailSignatures(
+    savedDetails,
+    (detail) => backendId(detail.id_egreso),
+    (detail) => detail.monto_cancelado
+  );
+  if (!requestedDetails || !persistedDetails) return null;
+  if (requestedDetails.join("|") !== persistedDetails.join("|")) return null;
+
+  const paymentCents = safeCents(payment.monto);
+  const detailTotalCents = savedDetails.reduce((total, detail) => {
+    const cents = safeCents(detail.monto_cancelado);
+    return cents === null ? Number.NaN : total + cents;
+  }, 0);
+  if (paymentCents === null || !Number.isSafeInteger(detailTotalCents) || paymentCents !== detailTotalCents) {
+    return null;
+  }
+  return { operationId: creation.operationId, paymentCents };
+}
+
+function detailSignatures(details, idFor, amountFor) {
+  const signatures = [];
+  for (const detail of details) {
+    const id = idFor(detail);
+    const cents = safeCents(amountFor(detail));
+    if (!id || cents === null || cents === 0) return null;
+    signatures.push(`${id}:${cents}`);
+  }
+  return signatures.sort();
+}
+
+function validCurrentEndorsementCheck(check, paymentId, currentPaymentIds) {
+  return Boolean(
+    paymentId
+    && currentPaymentIds.has(paymentId)
+    && clean(check.estado) === "Endosado"
+    && isIsoDate(clean(check.fecha_endoso))
+    && !clean(check.id_deposito)
+    && !clean(check.fecha_deposito)
+  );
+}
+
+function safeCents(value) {
+  try {
+    return toCents(value);
+  } catch (_error) {
+    return null;
+  }
 }
 
 function endorsementStatus(code) {
@@ -172,4 +340,4 @@ function httpError(statusCode, message) {
   return error;
 }
 
-module.exports = { createReceivedChecksService };
+module.exports = { buildPendingEndorsementPayments, createReceivedChecksService };

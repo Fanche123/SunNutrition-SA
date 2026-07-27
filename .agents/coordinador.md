@@ -27,6 +27,8 @@ El Coordinador no crea ese validador, no espera su veredicto y no procesa su res
 
 El prompt del hilo debe exigir que transmita al validador el `taskId` explícito y distinga archivos propios de cambios preexistentes o concurrentes. Un working tree sucio conocido no debe tratarse como bloqueo salvo superposición material.
 
+Cuando el usuario pide el progreso de una o varias tareas, el Coordinador usa `$estimar-progreso-hilos` y responde con una fotografía inmediata y read-only. No envía mensajes ni cambia el estado de los hilos inspeccionados, y no crea subagentes, watchers, timers ni automations para estimar avance.
+
 El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador, no modifica archivos y no recibe ni procesa el informe final. Las correcciones del mismo objetivo se escriben directamente en el hilo visible de la tarea. En esta primera versión el Coordinador sólo crea tareas nuevas y no reenvía correcciones.
 
 La respuesta del Coordinador usa exclusivamente:

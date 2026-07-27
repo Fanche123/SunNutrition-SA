@@ -70,6 +70,7 @@ let dashboardWidgetData = {
   pendingPurchases: [],
   pendingOrders: [],
   pendingReceivedChecks: [],
+  bankReconciliationSummary: null,
   inventoryPurchaseSnapshot: {
     inventoryDate: "",
     inventoryIds: [],
@@ -100,6 +101,9 @@ let salaryExpenseEntryData = createSalaryExpenseEntryData();
 let salaryEntryEmployees = [];
 let salaryEntryScale = { categories: {}, sourceName: "" };
 let salaryLaborCostUi = {};
+const deferredViewInitializations = new Map();
+const activeViewLoads = new Map();
+const queuedViewLoads = new Map();
 const DEFAULT_COOPERATIVE_EMPLOYEE_COST = 259506.74;
 const DEFAULT_EMPLOYEE_CONTRIBUTION_RATE = 17;
 // Referencia inicial tomada del F.931 06/2026 de SunNutrition: contribuciones + ART/LRT + SCVO.
@@ -282,13 +286,6 @@ document.addEventListener("DOMContentLoaded", () => {
   fillSettingsForm();
   reconcilePurchaseDetailSuppliers();
   render();
-  loadDashboardWidgets();
-  initializeInventoryEntryDefaults();
-  initializeOperationalEntryDefaults();
-  initializeSalaryEntry();
-  loadOperationalEntryOptions();
-  loadPurchaseBackendOptions();
-  refreshInventoryDefaultDateFromBackend();
   syncStateFromServer();
 });
 
@@ -331,6 +328,10 @@ function cacheElements() {
     "dashboard-inventory-purchases-count",
     "dashboard-inventory-purchases-summary",
     "dashboard-inventory-purchases-list",
+    "dashboard-bank-reconciliation-widget",
+    "dashboard-bank-reconciliation-days",
+    "dashboard-bank-reconciliation-summary",
+    "dashboard-bank-reconciliation-list",
     "dashboard-checks-widget",
     "dashboard-checks-count",
     "dashboard-next-check",
@@ -371,6 +372,8 @@ function cacheElements() {
     "bank-reconciliation-file-clear",
     "bank-reconciliation-analyze",
     "bank-reconciliation-apply",
+    "bank-reconciliation-last-date",
+    "bank-reconciliation-last-days",
     "bank-create-expenses",
     "bank-create-egresses",
     "bank-create-payments",
@@ -497,6 +500,10 @@ function cacheElements() {
     "purchase-inventory-suggestions-count",
     "purchase-inventory-suggestions-status",
     "purchase-inventory-suggestions-list",
+    "inventory-production-rate-form",
+    "inventory-production-rate",
+    "inventory-production-rate-submit",
+    "inventory-production-rate-status",
     "purchase-item-id",
     "purchase-item-name",
     "purchase-provider",
@@ -887,8 +894,6 @@ async function syncStateFromServer() {
           fillSettingsForm();
       reconcilePurchaseDetailSuppliers();
       render();
-      initializeInventoryEntryDefaults();
-      refreshInventoryDefaultDateFromBackend();
     } else if (hasMeaningfulAppState(state)) {
       scheduleRemoteStateSave(compactStateForStorage(state), 0);
     }
@@ -1098,6 +1103,8 @@ function bindEvents() {
   els["dashboard-received-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "receivedChecks"));
   els["dashboard-inventory-purchases-widget"]?.addEventListener("click", () => toggleDashboardWidget("inventoryPurchases"));
   els["dashboard-inventory-purchases-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "inventoryPurchases"));
+  els["dashboard-bank-reconciliation-widget"]?.addEventListener("click", () => toggleDashboardWidget("bankReconciliation"));
+  els["dashboard-bank-reconciliation-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "bankReconciliation"));
   els["dashboard-checks-widget"]?.addEventListener("click", () => toggleDashboardWidget("checks"));
   els["dashboard-checks-widget"]?.addEventListener("keydown", (event) => activateDashboardWidgetFromKeyboard(event, "checks"));
   els["dashboard-inventory-widget"]?.addEventListener("click", () => toggleDashboardWidget("inventory"));
@@ -1141,6 +1148,7 @@ function bindEvents() {
   setupBankReconciliationFileDropZone();
   els["bank-reconciliation-file"]?.addEventListener("change", () => readBankReconciliationFile());
   els["bank-reconciliation-file-clear"]?.addEventListener("click", () => clearBankReconciliationFile());
+  els["bank-reconciliation-bank"]?.addEventListener("change", () => refreshBankReconciliationFromBackend());
   els["bank-reconciliation-analyze"]?.addEventListener("click", () => analyzeBankReconciliation());
   els["bank-reconciliation-apply"]?.addEventListener("click", () => applyBankReconciliation("reconcile"));
   els["bank-create-expenses"]?.addEventListener("click", () => applyBankReconciliation("createExpenses"));
@@ -1277,6 +1285,7 @@ function bindEvents() {
     openPurchaseEntryForItem(button.dataset.purchaseItem, button.dataset.purchaseItemId);
   });
   els["inventory-detail-form"].addEventListener("submit", submitInventoryDetail);
+  els["inventory-production-rate-form"]?.addEventListener("submit", submitInventoryProductionRate);
   els["purchase-provider"]?.addEventListener("change", () => {
     syncSelectedPurchaseSupplier();
     updatePurchaseExpectedDate();
@@ -1676,6 +1685,99 @@ function renderPaymentPlans() {
   return window.PaymentPlansModule.renderPaymentPlans();
 }
 
+function initializeViewOnce(key, initializer, onError = showDeferredViewError) {
+  const current = deferredViewInitializations.get(key);
+  if (current?.status === "ready") return Promise.resolve(true);
+  if (current?.promise) return current.promise;
+
+  const promise = Promise.resolve()
+    .then(initializer)
+    .then(() => {
+      deferredViewInitializations.set(key, { status: "ready", promise: null });
+      return true;
+    })
+    .catch((error) => {
+      deferredViewInitializations.delete(key);
+      onError(key, error);
+      return false;
+    });
+
+  deferredViewInitializations.set(key, { status: "loading", promise });
+  return promise;
+}
+
+function runViewLoad(key, loader, onError = showDeferredViewError) {
+  const current = activeViewLoads.get(key);
+  if (current) return current;
+
+  const promise = Promise.resolve()
+    .then(loader)
+    .catch((error) => {
+      onError(key, error);
+      return false;
+    })
+    .finally(() => {
+      if (activeViewLoads.get(key) === promise) activeViewLoads.delete(key);
+    });
+
+  activeViewLoads.set(key, promise);
+  return promise;
+}
+
+function runLatestViewLoad(key, loader, onError = showDeferredViewError) {
+  if (activeViewLoads.has(key)) {
+    queuedViewLoads.set(key, { loader, onError });
+    return activeViewLoads.get(key);
+  }
+
+  return runViewLoad(key, loader, onError).finally(() => {
+    const queued = queuedViewLoads.get(key);
+    if (!queued) return;
+    queuedViewLoads.delete(key);
+    runLatestViewLoad(key, queued.loader, queued.onError);
+  });
+}
+
+function showDeferredViewError(view, error) {
+  const statusIds = {
+    "data-entry": "inventory-detail-status",
+    "purchase-entry": "purchase-status",
+    "reception-entry": "reception-status",
+    "salary-entry": "salary-entry-status",
+    results: "warnings",
+    cashflow: "cashflow-timeline"
+  };
+  const status = els[statusIds[view]];
+  const message = error?.message || "Error inesperado.";
+  if (status) {
+    status.textContent = `No se pudo inicializar esta vista: ${message} Volvé a abrirla para reintentar.`;
+    status.dataset.status = "error";
+  }
+  console.error(`No se pudo inicializar la vista ${view}.`, error);
+}
+
+async function initializeInventoryView() {
+  initializeInventoryEntryDefaults();
+  await refreshInventoryDefaultDateFromBackend();
+}
+
+async function initializeReportView(view) {
+  const report = buildReport(state.selectedYear, state.selectedMonth);
+  if (view === "results") {
+    const comparisonReport = buildComparisonReport();
+    renderStatement(report, comparisonReport);
+    renderWarnings(report);
+    renderTables(report);
+    renderFinancialStatement();
+    const loaded = await loadBackendStatementReport();
+    if (loaded === false) throw new Error("No se pudo cargar el Estado de Resultados.");
+    return;
+  }
+  renderCashflow();
+  const loaded = await loadBackendCashflowReport();
+  if (loaded === false) throw new Error("No se pudo cargar el cashflow.");
+}
+
 function switchView(view) {
   if (view === "imports") view = "data-editor";
   if (!document.getElementById(`view-${view}`)) view = "dashboard";
@@ -1806,19 +1908,27 @@ function switchView(view) {
   if (view === "creditor-entry") loadCreditorEntryForm();
   if (view === "data-map") loadDataMap();
   if (view === "sql") loadSqlSchema();
-  if (view === "dashboard") loadDashboardWidgets();
-  if (view === "purchase-entry") loadPurchaseBackendOptions();
-  if (["orders-entry", "logistics-entry", "sales-entry", "collections-entry", "commissions-entry", "received-check-entry"].includes(view)) loadCommercialEntryData(true);
+  if (view === "dashboard") runViewLoad(view, loadDashboardWidgets);
+  if (view === "results" || view === "cashflow") {
+    initializeViewOnce(view, () => initializeReportView(view));
+  }
+  if (view === "data-entry") initializeViewOnce(view, initializeInventoryView);
+  if (view === "purchase-entry") initializeViewOnce(view, loadPurchaseBackendOptions);
+  if (["orders-entry", "logistics-entry", "sales-entry", "collections-entry", "commissions-entry", "received-check-entry"].includes(view)) {
+    runViewLoad("commercial-entry-data", loadCommercialEntryData);
+  }
   if (view === "deposited-checks-entry") openBankCheckDepositReview();
   if (view === "expense-entry") loadExpenseDebtView();
   if (view === "payments-entry") loadPaymentEntryView();
   if (view === "other-expenses-entry") loadOtherExpenseEntryOptions();
   if (view === "partner-contributions-entry") loadPartnerContributions();
   if (view === "payment-plans") renderPaymentPlans();
-  if (view === "salary-entry") initializeSalaryEntry();
+  if (view === "salary-entry") initializeViewOnce(view, initializeSalaryEntry);
   if (view === "reception-entry") {
-    initializeOperationalEntryDefaults();
-    loadOperationalEntryOptions();
+    initializeViewOnce(view, async () => {
+      initializeOperationalEntryDefaults();
+      await loadOperationalEntryOptions();
+    });
   }
   if (view === "issued-check-entry") {
     initializeOperationalEntryDefaults();
@@ -1834,19 +1944,14 @@ function switchView(view) {
   ignoran y quedan registradas para revisiÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€žĂ„ÄľĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ˘â‚¬Ä…Ä‚ËĂ˘â€šÂ¬Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬Ă„â€¦Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚ÂĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€ąĂ˘â‚¬Ë‡Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬Ă‚Â¦Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ˘â‚¬ĹľÄ‚â€žĂ„ÄľĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€ąĂ˘â‚¬Ë‡Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€žĂ˘â‚¬Â¦Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬Ă„â€¦Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚ÂĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ˘â‚¬Ä…Ä‚ËĂ˘â€šÂ¬Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€šĂ‚Â¦Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€žĂ˘â‚¬Â¦Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬Ä…Ä‚ËĂ˘â€šÂ¬Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€ąĂ˘â‚¬Ë‡Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ˘â‚¬ĹľÄ‚â€žĂ„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€žĂ„ÄľĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¦Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ä‚â€žĂ„â€¦Ä‚â€ąĂ˘â‚¬Ë‡Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€žĂ˘â‚¬Â¦Ä‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬Ă„â€¦Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚ÂĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬Ä…Ä‚â€šĂ‚ÂÄ‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚â€žĂ˘â‚¬Â¦Ă„â€šĂ˘â‚¬Ä…Ä‚ËĂ˘â€šÂ¬Ă‹â€ˇĂ„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă‹â€ˇÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ˘â‚¬ĹˇÄ‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ă„Ä…Ă„ÄľÄ‚â€žĂ˘â‚¬ĹˇÄ‚ËĂ˘â€šÂ¬ÄąÄľĂ„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€šĂ‚Â¦Ă„â€šĂ˘â‚¬ĹľÄ‚ËĂ˘â€šÂ¬ÄąË‡Ă„â€šĂ‹ÂÄ‚ËĂ˘â‚¬ĹˇĂ‚Â¬Ä‚â€žĂ˘â‚¬Â¦Ä‚â€žĂ˘â‚¬ĹˇÄ‚â€ąĂ‚ÂĂ„â€šĂ‹ÂÄ‚ËĂ˘â€šÂ¬ÄąË‡Ä‚â€šĂ‚Â¬Ă„â€šĂ˘â‚¬Ä…Ä‚ËĂ˘â€šÂ¬Ă‹â€ˇn.
 */
 function render() {
-  const report = buildReport(state.selectedYear, state.selectedMonth);
-  const comparisonReport = buildComparisonReport();
-  renderStatement(report, comparisonReport);
-  renderWarnings(report);
-  renderTables(report);
-  renderFinancialStatement();
-  renderCashflow();
+  const activeView = document.querySelector(".view.active")?.id?.replace(/^view-/, "");
+  if (activeView === "results" || activeView === "cashflow") {
+    runLatestViewLoad(`report-${activeView}`, () => initializeReportView(activeView));
+  }
   renderCreditors();
   updatePurchaseProviderOptions();
   updateInventoryPurchaseAlerts();
   renderCounts();
-  loadBackendStatementReport();
-  loadBackendCashflowReport();
 }
 
 function renderCreditors() {

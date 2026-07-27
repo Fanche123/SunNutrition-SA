@@ -1,3 +1,5 @@
+let commercialEntryLoadPromise = null;
+
 function initializeOperationalEntryDefaults() {
   const today = toIsoDate(new Date());
   if (els["reception-date"] && !els["reception-date"].value) els["reception-date"].value = today;
@@ -25,12 +27,13 @@ async function nextBackendPrimaryIdOrOne(tableName, primaryColumn) {
 }
 
 async function loadCommercialEntryData(force = false) {
+  if (commercialEntryLoadPromise) return commercialEntryLoadPromise;
   if (commercialEntryData.loaded && !force) {
-    renderCommercialEntryViews();
-    return;
+    renderActiveCommercialEntryView();
+    return commercialEntryData;
   }
 
-  try {
+  commercialEntryLoadPromise = (async () => {
     const [
       clientes,
       productos,
@@ -49,22 +52,22 @@ async function loadCommercialEntryData(force = false) {
       comisiones,
       etiquetas
     ] = await Promise.all([
-      backendTableRowsForEntry("clientes").catch(() => []),
-      backendTableRowsForEntry("productos").catch(() => []),
-      backendTableRowsForEntry("pedidos").catch(() => []),
-      backendTableRowsForEntry("detalle_pedidos").catch(() => []),
-      backendTableRowsForEntry("entregas").catch(() => []),
-      backendTableRowsForEntry("entregas_detalle").catch(() => []),
-      backendTableRowsForEntry("ventas").catch(() => []),
-      backendTableRowsForEntry("cobros").catch(() => []),
-      backendTableRowsForEntry("cobros_detalle").catch(() => []),
-      backendTableRowsForEntry("cheques_recibidos").catch(() => []),
-      backendTableRowsForEntry("fletes").catch(() => []),
-      backendTableRowsForEntry("canales").catch(() => []),
-      backendTableRowsForEntry("acreedores").catch(() => []),
-      backendTableRowsForEntry("acreedores_etiquetas").catch(() => []),
-      backendTableRowsForEntry("comisiones").catch(() => []),
-      backendTableRowsForEntry("etiquetas").catch(() => [])
+      backendTableRowsForEntry("clientes"),
+      backendTableRowsForEntry("productos"),
+      backendTableRowsForEntry("pedidos"),
+      backendTableRowsForEntry("detalle_pedidos"),
+      backendTableRowsForEntry("entregas"),
+      backendTableRowsForEntry("entregas_detalle"),
+      backendTableRowsForEntry("ventas"),
+      backendTableRowsForEntry("cobros"),
+      backendTableRowsForEntry("cobros_detalle"),
+      backendTableRowsForEntry("cheques_recibidos"),
+      backendTableRowsForEntry("fletes"),
+      backendTableRowsForEntry("canales"),
+      backendTableRowsForEntry("acreedores"),
+      backendTableRowsForEntry("acreedores_etiquetas"),
+      backendTableRowsForEntry("comisiones"),
+      backendTableRowsForEntry("etiquetas")
     ]);
 
     commercialEntryData = {
@@ -86,17 +89,40 @@ async function loadCommercialEntryData(force = false) {
       comisiones,
       etiquetas
     };
-    renderCommercialEntryViews();
+    renderActiveCommercialEntryView();
+    return commercialEntryData;
+  })();
+
+  try {
+    return await commercialEntryLoadPromise;
   } catch (error) {
-    setCommercialStatus("orders-status", `No se pudieron cargar los datos comerciales: ${error.message}`, "error");
+    const statusId = {
+      "orders-entry": "orders-status",
+      "logistics-entry": "logistics-status",
+      "sales-entry": "sales-status",
+      "collections-entry": "collections-status",
+      "commissions-entry": "commissions-status",
+      "received-check-entry": "received-check-status"
+    }[activeCommercialEntryView()] || "orders-status";
+    setCommercialStatus(statusId, `No se pudieron cargar los datos comerciales: ${error.message}. Volvé a abrir la vista para reintentar.`, "error");
+    throw error;
+  } finally {
+    commercialEntryLoadPromise = null;
   }
 }
 
-function renderCommercialEntryViews() {
-  renderOrderEntry();
-  renderLogisticsEntry();
-  renderSalesEntry();
-  renderCollectionsEntry();
-  renderCommissionsEntry();
-  renderReceivedCheckEntry();
+function activeCommercialEntryView() {
+  return document.querySelector(".view.active")?.id?.replace(/^view-/, "") || "";
+}
+
+function renderActiveCommercialEntryView() {
+  const renderers = {
+    "orders-entry": renderOrderEntry,
+    "logistics-entry": renderLogisticsEntry,
+    "sales-entry": renderSalesEntry,
+    "collections-entry": renderCollectionsEntry,
+    "commissions-entry": renderCommissionsEntry,
+    "received-check-entry": renderReceivedCheckEntry
+  };
+  renderers[activeCommercialEntryView()]?.();
 }

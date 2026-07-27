@@ -253,8 +253,16 @@ No producir explicaciones extensas cuando la tarea sea pequeña.
 
 ## 15. Flujo directo predeterminado
 
-Los pedidos nuevos se envían directamente al chat especialista correspondiente. Ese chat inspecciona el contexto relevante, implementa lo solicitado, valida proporcionalmente y entrega el resumen final sin crear `taskId`, handoffs, revisiones paralelas ni aprobaciones intermedias.
+Los pedidos nuevos se envían al Coordinador. Este crea `taskId`, elige título, dominio, modelo, esfuerzo y modo, resuelve el proyecto ERP y crea mediante `create_thread` un hilo principal visible con la consigna completa. Siempre asigna un título específico con `set_thread_title` y responde de inmediato, sin esperar el resultado.
 
-Pedir confirmación adicional solo cuando exista una decisión contable, destructiva, de datos, contrato o seguridad realmente bloqueante. Si el cambio pertenece a otro dominio, indicar verbalmente el chat correcto sin crear transferencias ni estado intermedio.
+El hilo principal creado inspecciona el contexto relevante, implementa lo solicitado, valida proporcionalmente y entrega el resultado. El Coordinador no crea subagentes, no ejecuta trabajo técnico y no recibe el informe. Las correcciones del mismo objetivo continúan en el hilo visible original.
 
-La infraestructura de coordinación anterior permanece disponible únicamente como legado manual opcional. No usarla salvo pedido explícito del usuario y no alterar sus tareas o estado existentes por defecto.
+Pedir confirmación adicional solo cuando exista una decisión contable, destructiva, de datos, contrato o seguridad realmente bloqueante. La infraestructura de coordinación anterior permanece disponible únicamente como legado manual opcional; no usarla salvo pedido explícito ni alterar sus tareas o estado existentes por defecto.
+
+---
+
+## 16. Consulta de progreso bajo demanda
+
+El progreso de los hilos se consulta únicamente cuando el usuario lo solicita mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía inmediata y read-only basada en estado, turnos, timestamps y evidencia de fases; no envía mensajes ni altera los hilos analizados.
+
+Las tareas y correcciones futuras no crean `monitor_progreso`, watchers, timers ni automations para estimar avance. Este cambio no modifica la obligación de crear exactamente un `validador_tarea` read-only al final de cada iteración técnica.

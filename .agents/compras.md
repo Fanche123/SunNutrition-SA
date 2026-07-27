@@ -102,7 +102,7 @@ La UI de Compra, Recepción y Otros gastos usa los endpoints integrales especial
 
 ## Dependencias
 
-- **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. Si falta el metadato nuevo, el backend reconstruye la misma salida desde el último lote persistido. La lista superior de Compras lee ese contrato sin recalcularlo, distingue ausencia/dependencias/resultado válido y no filtra ni limita el selector de insumos.
+- **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. Si falta el snapshot, el backend reconstruye la misma salida desde el último lote persistido. La lista superior de Compras lee ese contrato sin recalcularlo y no filtra ni limita el selector de insumos; su editor de “Barritas producidas por día” valida un entero de 1 a 1.000.000, usa `POST /api/inventory/purchase-snapshot/production-rate` y recibe la fotografía transversal recalculada. El valor único persiste como `inventoryPurchaseConfig.barsPerDay` en el caché backend, no en tablas operativas.
 - **Tesorería:** acreedores, etiquetas, `egresos`, pagos y conciliación; no cambiar su cancelación desde Compras.
 - **Reportes:** clasificación de egresos y costo de mercadería.
 - **RRHH:** empleados de recepción y rama salarial del servicio compartido de adjuntos.

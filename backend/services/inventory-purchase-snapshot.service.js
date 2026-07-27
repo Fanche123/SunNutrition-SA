@@ -1,7 +1,9 @@
 const InventoryPurchaseEvaluation = require("../../shared/inventory-purchase-evaluation");
 
 const SNAPSHOT_KEY = "inventoryPurchaseSnapshot";
-const SNAPSHOT_VERSION = 2;
+const CONFIG_KEY = "inventoryPurchaseConfig";
+const CONFIG_VERSION = 1;
+const SNAPSHOT_VERSION = 3;
 const SNAPSHOT_STATES = Object.freeze({
   NO_INVENTORY: "no_inventory",
   INSUFFICIENT_DEPENDENCIES: "insufficient_dependencies",
@@ -25,6 +27,7 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   }
 
   function evaluateInventoryPurchaseSnapshot(cache, input, options = {}) {
+    const config = readInventoryPurchaseConfig(cache);
     const date = backendIsoDate(input.date);
     const inventoryIds = Object.values(input.inventoryIds || {}).map(backendId).filter(Boolean);
     const selectedShifts = Array.isArray(input.selectedShifts) ? input.selectedShifts : [];
@@ -63,7 +66,8 @@ function createInventoryPurchaseSnapshotService(dependencies) {
         unit: item.unit,
         provider: provider.name,
         leadDays: provider.leadDays,
-        businessDays
+        businessDays,
+        barsPerDay: config.barsPerDay
       });
       if (!metrics.dailyConsumption) return null;
       if (!metrics.canEvaluate) {
@@ -83,6 +87,7 @@ function createInventoryPurchaseSnapshotService(dependencies) {
 
     return {
       version: SNAPSHOT_VERSION,
+      ...snapshotProductionConfig(config.barsPerDay),
       inventoryDate: date,
       inventoryIds,
       state,
@@ -98,10 +103,12 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   }
 
   function readInventoryPurchaseSnapshot(cache) {
+    const config = readInventoryPurchaseConfig(cache);
     const snapshot = cache?.[SNAPSHOT_KEY];
     if (
       snapshot
       && Number(snapshot.version) === SNAPSHOT_VERSION
+      && Number(snapshot.barsPerDay) === config.barsPerDay
       && validSnapshotState(snapshot.state)
       && snapshotMatchesLatestInventory(cache, snapshot)
     ) {
@@ -111,11 +118,13 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   }
 
   function rebuildInventoryPurchaseSnapshot(cache) {
+    const config = readInventoryPurchaseConfig(cache);
     const batch = latestInventoryBatch(cache);
     const latestDate = latestInventoryDate(cache);
-    if (!latestDate) return emptySnapshot();
+    if (!latestDate) return emptySnapshot(config.barsPerDay);
     if (!batch.length) {
       return emptySnapshot(
+        config.barsPerDay,
         SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES,
         latestDate,
         [],
@@ -158,6 +167,7 @@ function createInventoryPurchaseSnapshotService(dependencies) {
       }
     });
     if (!rowsByItem.size) return emptySnapshot(
+      config.barsPerDay,
       SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES,
       date,
       Object.values(inventoryIds),
@@ -179,8 +189,10 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   }
 
   function clearInventoryPurchaseSnapshot(cache, inventoryDate = "", inventoryIds = []) {
+    const config = readInventoryPurchaseConfig(cache);
     return storeInventoryPurchaseSnapshot(cache, {
       version: 0,
+      ...snapshotProductionConfig(config.barsPerDay),
       inventoryDate: backendIsoDate(inventoryDate),
       inventoryIds: inventoryIds.map(backendId).filter(Boolean),
       state: "pending",
@@ -188,6 +200,34 @@ function createInventoryPurchaseSnapshotService(dependencies) {
       items: [],
       unavailableItems: []
     });
+  }
+
+  function readInventoryPurchaseConfig(cache) {
+    const configuredValue = cache?.[CONFIG_KEY]?.barsPerDay;
+    const barsPerDay = InventoryPurchaseEvaluation.normalizeBarsPerDay(configuredValue);
+    return {
+      version: CONFIG_VERSION,
+      barsPerDay: Number.isFinite(barsPerDay)
+        ? barsPerDay
+        : InventoryPurchaseEvaluation.DEFAULT_BARS_PER_DAY
+    };
+  }
+
+  function updateInventoryPurchaseConfig(cache, value) {
+    const barsPerDay = typeof value === "number"
+      ? InventoryPurchaseEvaluation.normalizeBarsPerDay(value, NaN)
+      : Number.NaN;
+    if (!Number.isFinite(barsPerDay)) {
+      const error = new Error(
+        `La producción diaria debe ser un entero entre ${InventoryPurchaseEvaluation.MIN_BARS_PER_DAY} y ${InventoryPurchaseEvaluation.MAX_BARS_PER_DAY}.`
+      );
+      error.code = "INVALID_BARS_PER_DAY";
+      throw error;
+    }
+    cache[CONFIG_KEY] = { version: CONFIG_VERSION, barsPerDay };
+    const snapshot = rebuildInventoryPurchaseSnapshot(cache);
+    storeInventoryPurchaseSnapshot(cache, snapshot);
+    return { config: readInventoryPurchaseConfig(cache), snapshot };
   }
 
   function latestInventoryBatch(cache) {
@@ -359,9 +399,11 @@ function createInventoryPurchaseSnapshotService(dependencies) {
     buildInventoryPurchaseSnapshot,
     clearInventoryPurchaseSnapshot,
     latestInventoryBatch,
+    readInventoryPurchaseConfig,
     readInventoryPurchaseSnapshot,
     rebuildInventoryPurchaseSnapshot,
-    storeInventoryPurchaseSnapshot
+    storeInventoryPurchaseSnapshot,
+    updateInventoryPurchaseConfig
   };
 }
 
@@ -441,6 +483,7 @@ function normalizeSnapshot(snapshot, source = "") {
     }));
   return {
     version: SNAPSHOT_VERSION,
+    ...snapshotProductionConfig(InventoryPurchaseEvaluation.normalizeBarsPerDay(snapshot.barsPerDay)),
     inventoryDate: String(snapshot.inventoryDate || "").trim(),
     inventoryIds: (snapshot.inventoryIds || []).map((value) => String(value ?? "").trim()).filter(Boolean),
     state: validSnapshotState(snapshot.state)
@@ -461,6 +504,7 @@ function validSnapshotState(value) {
 }
 
 function emptySnapshot(
+  barsPerDay = InventoryPurchaseEvaluation.DEFAULT_BARS_PER_DAY,
   state = SNAPSHOT_STATES.NO_INVENTORY,
   inventoryDate = "",
   inventoryIds = [],
@@ -468,12 +512,21 @@ function emptySnapshot(
 ) {
   return {
     version: SNAPSHOT_VERSION,
+    ...snapshotProductionConfig(barsPerDay),
     inventoryDate,
     inventoryIds,
     state,
     source: "reconstructed",
     items: [],
     unavailableItems
+  };
+}
+
+function snapshotProductionConfig(barsPerDay) {
+  return {
+    barsPerDay,
+    minBarsPerDay: InventoryPurchaseEvaluation.MIN_BARS_PER_DAY,
+    maxBarsPerDay: InventoryPurchaseEvaluation.MAX_BARS_PER_DAY
   };
 }
 
@@ -515,6 +568,8 @@ function normalizeCategory(value) {
 }
 
 module.exports = {
+  CONFIG_KEY,
+  CONFIG_VERSION,
   SNAPSHOT_KEY,
   SNAPSHOT_STATES,
   SNAPSHOT_VERSION,

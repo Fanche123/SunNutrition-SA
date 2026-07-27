@@ -9,8 +9,20 @@ const { createCollectionEntryService } = require("../backend/services/collection
 const { createPaymentEntryService } = require("../backend/services/payment-entry.service");
 const { createPartnerContributionsService } = require("../backend/services/partner-contributions.service");
 const { createBankReconciliationService } = require("../backend/services/bank-reconciliation.service");
+const { createBankParserService } = require("../backend/services/bank-parser.service");
+const { createBankReferenceService } = require("../backend/services/bank-reference.service");
 const { createCashflowService } = require("../backend/services/cashflow.service");
-const { ensureBackendTable, backendNextNumericId, normalizePartnerName } = require("../backend/utils/runtime");
+const { createIncomeCalculationService } = require("../backend/services/income-calculation.service");
+const { backendGroupRowsById, backendRowsById } = require("../backend/utils/ids");
+const {
+  backendBankMatches,
+  compactBankText,
+  extractBankCheckNumber,
+  extractBankCuit,
+  normalizeBankCheckNumber,
+  normalizeBankCuit
+} = require("../backend/utils/bank");
+const { ensureBackendTable, backendNextNumericId, normalizeLookupText, normalizePartnerName } = require("../backend/utils/runtime");
 
 const backendId = (value) => String(value ?? "").trim();
 const backendNumber = (value) => Number(value) || 0;
@@ -18,9 +30,13 @@ const cleanBackendText = (value) => String(value ?? "").trim();
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
 async function invoke(handler, body) {
+  return invokeRequest(handler, { body });
+}
+
+async function invokeRequest(handler, request = {}) {
   let result;
   await handler(
-    { body },
+    request,
     { json(status, payload) { result = { status, payload }; } }
   );
   return result;
@@ -190,7 +206,8 @@ function bankDependencies(store, overrides = {}) {
       tables.movimientos_bancarios.rows.push({
         id_movimiento_bancario: backendNextNumericId(tables.movimientos_bancarios.rows, "id_movimiento_bancario"),
         banco: bank, fecha: movement.date, importe: movement.amount,
-        _bankOperationKey: operationKey, _bankOperationPayload: operationPayload
+        _bankOperationKey: operationKey, _bankOperationPayload: operationPayload,
+        _bankMovementKey: movement.movementKey
       });
       tables.movimientos_bancarios.rowCount = tables.movimientos_bancarios.rows.length;
     },
@@ -207,18 +224,332 @@ function bankDependencies(store, overrides = {}) {
   };
 }
 
+function bankParserFixture() {
+  const calculations = createIncomeCalculationService({
+    backendGroupRowsById,
+    backendId,
+    backendInventoryQuantity: () => 0,
+    backendRowsById
+  });
+  const parser = createBankParserService({
+    backendIsoDate: calculations.backendIsoDate,
+    backendNormalizeText: calculations.backendNormalizeText,
+    backendNumber: calculations.backendNumber,
+    compactBankText,
+    extractBankCheckNumber,
+    extractBankCuit,
+    normalizeBankCheckNumber,
+    normalizeBankCuit
+  });
+  return {
+    backendNormalizeText: calculations.backendNormalizeText,
+    parseBankMovements: parser.parseBankMovements
+  };
+}
+
+function testBankReferenceNormalizerInjection() {
+  const { backendNormalizeText } = bankParserFixture();
+  const cache = {
+    tables: {
+      acreedores: { headers: ["id_acreedor"], rows: [], rowCount: 0 },
+      datos_bancarios: { headers: ["id_dato_bancario"], rows: [], rowCount: 0 },
+      etiquetas: { headers: ["id_etiqueta"], rows: [], rowCount: 0 }
+    }
+  };
+  const { seedDefaultBankDetails } = createBankReferenceService({
+    DEFAULT_BANK_DETAIL_RULES: [{
+      detail: "COMISI\u00d3N BANCARIA",
+      creditor: "ICBC",
+      expenseType: "Gastos bancarios"
+    }],
+    EXPECTED_BACKEND_COLUMNS: {
+      acreedores: ["id_acreedor"],
+      datos_bancarios: ["id_dato_bancario", "detalle", "id_acreedor", "id_etiqueta", "tipo_factura"],
+      etiquetas: ["id_etiqueta", "etiqueta", "categoria_pnl"]
+    },
+    backendCreditorDisplayName: (creditor) => creditor.acuerdo_de_pago || "",
+    backendId,
+    backendNextNumericId,
+    backendNormalizeText,
+    cleanBackendText,
+    ensureBackendTable,
+    normalizeLookupText
+  });
+
+  assert.strictEqual(seedDefaultBankDetails(cache), 1);
+  assert.strictEqual(seedDefaultBankDetails(cache), 0);
+  assert.strictEqual(cache.tables.datos_bancarios.rows.length, 1);
+  assert.strictEqual(cache.tables.datos_bancarios.rows[0].detalle, "COMISI\u00d3N BANCARIA");
+}
+
+async function testIcBcAnalyzeFixtures() {
+  const store = memoryStore(baseTables());
+  const { backendNormalizeText, parseBankMovements } = bankParserFixture();
+  const realFormatCsv = [
+    "Movimientos de CC $ 0920/02105179/95,,,",
+    "Fecha contable;Cod de Concepto;Concepto;Debito en $;Credito en $;Saldo en $;Informacion Complementaria;Nro de cheque;Sucursal Origen;Canal;Banco;CBU/Alias;Tipo trf;Referencia;Nombre;Tipo doc;Nro doc,,,",
+    "20/07/2026;260;IMP S/CRED CT;-100766,46;;14216090,79;2;;0920;PROCESO BATCH,",
+    "17/07/2026;232;DEPOS. ECHEQ. NRO. : 40610385;;836647,00;6990798,34;0000000281;040610385;0920;BUSSINESS SERVER,"
+  ].join("\n");
+  const validCsv = [
+    "Fecha;Concepto;Informacion complementaria;Debito;Credito;Saldo;Nro de cheque;CUIT;Nombre",
+    "20/07/2026;TRANSFERENCIA;  CAF\u00c9 DEL SUR  ;1.234,56;;98.765,44;00001234;30-12345678-9;  \u00c1RBOL S.A.  ",
+    "21/07/2026;ACREDITACI\u00d3N;;;2.500,00;101.265,44;;;;"
+  ].join("\n");
+  const emptyCsv = "Fecha;Concepto;Debito;Credito;Saldo";
+  const dependencies = bankDependencies(store, {
+    analyzeBankMovement: (movement) => ({ ...movement, status: "revisar" }),
+    backendBankPaymentCandidates: (_tables, bank) => {
+      assert.strictEqual(backendBankMatches(" \u00cdCBC ", bank, backendNormalizeText), true);
+      assert.strictEqual(backendBankMatches("", bank, backendNormalizeText), true);
+      return [];
+    },
+    parseBankMovements
+  });
+  const service = createBankReconciliationService(dependencies);
+  const before = store.value();
+  const realFormatMovements = parseBankMovements(realFormatCsv);
+  assert.strictEqual(realFormatMovements.length, 2);
+  assert.strictEqual(realFormatMovements[0].amount, -100766.46);
+  assert.strictEqual(realFormatMovements[0].balance, 14216090.79);
+  assert.strictEqual(realFormatMovements[1].amount, 836647);
+  assert.strictEqual(realFormatMovements[1].checkNumber, "40610385");
+
+  const first = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: validCsv });
+  const second = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: validCsv });
+  assert.strictEqual(first.status, 200);
+  assert.strictEqual(first.payload.report.merge.newCount, 2);
+  assert.strictEqual(second.payload.report.merge.newCount, 0);
+  assert.strictEqual(second.payload.report.merge.duplicateCount, 2);
+  assert.strictEqual(first.payload.report.rowsRead, 2);
+  assert.strictEqual(first.payload.report.movements.length, 2);
+  assert.strictEqual(first.payload.report.movements[0].date, "2026-07-20");
+  assert.strictEqual(first.payload.report.movements[0].amount, -1234.56);
+  assert.strictEqual(first.payload.report.movements[0].debit, 1234.56);
+  assert.strictEqual(first.payload.report.movements[0].credit, 0);
+  assert.strictEqual(first.payload.report.movements[0].balance, 98765.44);
+  assert.strictEqual(first.payload.report.movements[0].cuit, "30123456789");
+  assert.strictEqual(first.payload.report.movements[0].checkNumber, "1234");
+  assert.strictEqual(first.payload.report.movements[0].counterpartyName, "\u00c1RBOL S.A.");
+  assert.strictEqual(first.payload.report.movements[1].amount, 2500);
+  assert.strictEqual(first.payload.report.movements[1].balance, 101265.44);
+  assert.strictEqual(first.payload.report.summary.pendingDebits, 1234.56);
+  assert.strictEqual(first.payload.report.summary.pendingCredits, 2500);
+  assert.strictEqual(first.payload.report.summary.netPending, 1265.44);
+
+  const empty = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: emptyCsv });
+  assert.strictEqual(empty.status, 200);
+  assert.strictEqual(empty.payload.report.rowsRead, 0);
+  assert.strictEqual(empty.payload.report.movements.length, 2);
+  assert.deepStrictEqual(store.value().tables, before.tables);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 2);
+
+  const loggedErrors = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => loggedErrors.push(args);
+  try {
+    const malformed = await invoke(service.handleBankReconciliationAnalyze, {
+      bank: "ICBC",
+      csvText: "archivo;sin;encabezados\n1;2;3"
+    });
+    assert.strictEqual(malformed.status, 400);
+    assert.match(malformed.payload.error, /encabezados bancarios reconocibles/i);
+
+    const unexpectedService = createBankReconciliationService(bankDependencies(store, {
+      parseBankMovements: () => {
+        throw new ReferenceError("detalleInterno is not defined");
+      }
+    }));
+    const unexpected = await invoke(unexpectedService.handleBankReconciliationAnalyze, {
+      bank: "ICBC",
+      csvText: validCsv
+    });
+    assert.strictEqual(unexpected.status, 500);
+    assert.doesNotMatch(unexpected.payload.error, /detalleInterno|ReferenceError/i);
+  } finally {
+    console.error = originalConsoleError;
+  }
+  assert.ok(loggedErrors.some((args) => String(args[1]?.message || "").includes("detalleInterno")));
+}
+
+async function testPersistentPendingBankMovements() {
+  const store = memoryStore(baseTables());
+  const fixtureMovements = {
+    first: [
+      { date: "2026-07-23", amount: 100, credit: 100, debit: 0, balance: 100, detail: "A", cuit: "" },
+      { date: "2026-07-24", amount: -50, credit: 0, debit: 50, balance: 50, detail: "B", checkNumber: "" }
+    ],
+    overlap: [
+      { date: "2026-07-24", amount: -50, credit: 0, debit: 50, balance: 50, detail: "B", checkNumber: "" },
+      { date: "2026-07-25", amount: 25, credit: 25, debit: 0, balance: 75, detail: "C", cbuAlias: "" }
+    ],
+    twins: [
+      { date: "2026-07-26", amount: 10, credit: 10, debit: 0, balance: 85, detail: "Operacion repetida" },
+      { date: "2026-07-26", amount: 10, credit: 10, debit: 0, balance: 85, detail: "Operacion repetida" }
+    ]
+  };
+  const dependencies = bankDependencies(store, {
+    now: () => new Date("2026-07-27T15:00:00.000Z"),
+    parseBankMovements: (csvText) => clone(fixtureMovements[csvText] || [])
+  });
+  let service = createBankReconciliationService(dependencies);
+
+  const first = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "first" });
+  assert.strictEqual(first.status, 200);
+  assert.deepStrictEqual(first.payload.report.merge, { newCount: 2, duplicateCount: 0, totalPending: 2 });
+  const repeated = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "first" });
+  assert.deepStrictEqual(repeated.payload.report.merge, { newCount: 0, duplicateCount: 2, totalPending: 2 });
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 2);
+
+  service = createBankReconciliationService(dependencies);
+  const restored = await invokeRequest(service.handleBankReconciliationState, {
+    url: "/api/bank-reconciliation/state?bank=ICBC"
+  });
+  assert.strictEqual(restored.payload.report.movements.length, 2);
+
+  const overlapped = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "overlap" });
+  assert.deepStrictEqual(overlapped.payload.report.merge, { newCount: 1, duplicateCount: 1, totalPending: 3 });
+  const twins = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "twins" });
+  assert.strictEqual(twins.payload.report.merge.newCount, 2);
+  assert.strictEqual(twins.payload.report.movements.filter((movement) => movement.detail === "Operacion repetida").length, 2);
+  await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "twins" });
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 5);
+
+  const movementC = twins.payload.report.movements.find((movement) => movement.detail === "C");
+  const partialResult = await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [movementC.movementKey]
+  });
+  assert.strictEqual(partialResult.status, 200);
+  assert.strictEqual(partialResult.payload.result.movementsReconciled, 1);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 4);
+  assert.strictEqual(partialResult.payload.result.reconciliation.latestDate, "2026-07-25");
+  assert.strictEqual(partialResult.payload.result.reconciliation.daysElapsed, 2);
+
+  const afterPartial = await invokeRequest(service.handleBankReconciliationState, {
+    url: "/api/bank-reconciliation/state?bank=ICBC"
+  });
+  const movementA = afterPartial.payload.report.movements.find((movement) => movement.detail === "A");
+  await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [movementA.movementKey]
+  });
+  const summaryAfterOlder = await invokeRequest(service.handleBankReconciliationSummary);
+  assert.strictEqual(summaryAfterOlder.payload.summary.latestDate, "2026-07-25");
+  assert.strictEqual(summaryAfterOlder.payload.summary.daysElapsed, 2);
+
+  const beforeFailure = store.value();
+  service = createBankReconciliationService(bankDependencies(store, {
+    now: () => new Date("2026-07-27T15:00:00.000Z"),
+    parseBankMovements: (csvText) => clone(fixtureMovements[csvText] || []),
+    failureInjector: (point) => {
+      if (point === "before-bank-reconciliation-save") throw new Error("fallo atomico simulado");
+    }
+  }));
+  const pendingBeforeFailure = await invokeRequest(service.handleBankReconciliationState, {
+    url: "/api/bank-reconciliation/state?bank=ICBC"
+  });
+  const failedKey = pendingBeforeFailure.payload.report.movements[0].movementKey;
+  const failed = await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [failedKey]
+  });
+  assert.strictEqual(failed.status, 400);
+  assert.deepStrictEqual(store.value(), beforeFailure);
+
+  service = createBankReconciliationService(dependencies);
+  const remaining = await invokeRequest(service.handleBankReconciliationState, {
+    url: "/api/bank-reconciliation/state?bank=ICBC"
+  });
+  const total = await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: remaining.payload.report.movements.map((movement) => movement.movementKey)
+  });
+  assert.strictEqual(total.status, 200);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 0);
+  const fullyReconciled = store.value();
+  await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: remaining.payload.report.movements.map((movement) => movement.movementKey)
+  });
+  assert.deepStrictEqual(store.value(), fullyReconciled);
+
+  const emptyStore = memoryStore(baseTables());
+  const emptyService = createBankReconciliationService(bankDependencies(emptyStore, {
+    now: () => new Date("2026-07-27T15:00:00.000Z")
+  }));
+  const emptySummary = await invokeRequest(emptyService.handleBankReconciliationSummary);
+  assert.strictEqual(emptySummary.payload.summary.latestDate, "");
+  assert.strictEqual(emptySummary.payload.summary.daysElapsed, null);
+
+  const futureSeed = baseTables();
+  futureSeed.tables.movimientos_bancarios = {
+    headers: ["id_movimiento_bancario", "banco", "fecha"],
+    rows: [{ id_movimiento_bancario: 1, banco: "GAL", fecha: "2099-01-01" }],
+    rowCount: 1
+  };
+  const futureStore = memoryStore(futureSeed);
+  const futureService = createBankReconciliationService(bankDependencies(futureStore, {
+    now: () => new Date("2026-07-27T15:00:00.000Z")
+  }));
+  const futureSummary = await invokeRequest(futureService.handleBankReconciliationSummary);
+  assert.strictEqual(futureSummary.payload.summary.daysElapsed, 0);
+  assert.strictEqual(futureSummary.payload.summary.details[0].bank, "GAL");
+}
+
 async function testAnalyzeAndApply() {
   const store = memoryStore(baseTables());
   const service = createBankReconciliationService(bankDependencies(store));
-  const before = store.value();
+  const first = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "csv" });
+  assert.strictEqual(first.status, 200);
   assert.strictEqual((await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "csv" })).status, 200);
-  assert.strictEqual((await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "csv" })).status, 200);
-  assert.deepStrictEqual(store.value(), before);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 1);
 
-  const applyBody = { bank: "ICBC", csvText: "csv", applyMode: "reconcile" };
+  const applyBody = {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [first.payload.report.movements[0].movementKey]
+  };
   await invoke(service.handleBankReconciliationApply, applyBody);
   await invoke(service.handleBankReconciliationApply, applyBody);
   assert.strictEqual(store.value().tables.movimientos_bancarios.rows.length, 1);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 0);
+}
+
+async function testIdenticalReconciledOccurrenceDoesNotReappear() {
+  const store = memoryStore(baseTables());
+  const identicalMovements = [
+    { date: "2026-07-26", amount: 10, credit: 10, debit: 0, balance: 10, detail: "Operacion identica" },
+    { date: "2026-07-26", amount: 10, credit: 10, debit: 0, balance: 10, detail: "Operacion identica" }
+  ];
+  const dependencies = bankDependencies(store, {
+    parseBankMovements: () => clone(identicalMovements)
+  });
+  let service = createBankReconciliationService(dependencies);
+  const analyzed = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "twins" });
+  const secondOccurrence = analyzed.payload.report.movements.find((movement) => movement.movementKey.endsWith(":2"));
+  assert.ok(secondOccurrence);
+
+  const partial = await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [secondOccurrence.movementKey]
+  });
+  assert.strictEqual(partial.status, 200);
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 1);
+
+  service = createBankReconciliationService(dependencies);
+  const reanalyzed = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "twins" });
+  assert.deepStrictEqual(reanalyzed.payload.report.merge, { newCount: 0, duplicateCount: 2, totalPending: 1 });
+  assert.strictEqual(reanalyzed.payload.report.movements.length, 1);
+  assert.ok(reanalyzed.payload.report.movements[0].movementKey.endsWith(":1"));
+  assert.strictEqual(store.value().tables.movimientos_bancarios.rows.length, 1);
+  assert.ok(store.value().tables.movimientos_bancarios.rows[0]._bankMovementKey.endsWith(":2"));
 }
 
 async function testDepositRollbackAndRetry() {
@@ -444,27 +775,27 @@ async function testDurableContribution(filePath) {
 async function testDurableApply(filePath) {
   let store = diskStore(filePath, baseTables());
   let service = createBankReconciliationService(bankDependencies(store));
-  const beforeAnalyze = store.value();
-  await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "analyze-a" });
+  const analyzed = await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "analyze-a" });
+  assert.strictEqual(store.value().bankReconciliation.pendingMovements.length, 1);
   service = null;
   store = diskStore(filePath);
   service = createBankReconciliationService(bankDependencies(store));
-  await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "analyze-a" });
-  assert.deepStrictEqual(store.value(), beforeAnalyze);
-  const body = { bank: "ICBC", csvText: "apply-a", applyMode: "reconcile" };
+  const state = await invoke(service.handleBankReconciliationState, undefined);
+  assert.strictEqual(state.payload.report.movements.length, 1);
+  const body = {
+    bank: "ICBC",
+    applyMode: "reconcile",
+    movementKeys: [analyzed.payload.report.movements[0].movementKey]
+  };
   await invoke(service.handleBankReconciliationApply, body);
   const applied = store.value();
   service = null;
   store = diskStore(filePath);
   service = createBankReconciliationService(bankDependencies(store));
   await invoke(service.handleBankReconciliationApply, body);
-  assert.deepStrictEqual(store.value().tables.movimientos_bancarios.rows, applied.tables.movimientos_bancarios.rows);
-  const key = "ICBC|2026-07-23|100.25|apply-a:1";
-  const contradiction = { ...body, reviewRows: { [key]: { banco: "GAL" } } };
-  assert.strictEqual((await invoke(service.handleBankReconciliationApply, contradiction)).status, 409);
-  const legitimateNew = { ...body, csvText: "apply-b" };
-  assert.strictEqual((await invoke(service.handleBankReconciliationApply, legitimateNew)).status, 200);
-  assert.strictEqual(store.value().tables.movimientos_bancarios.rows.length, 2);
+  assert.deepStrictEqual(store.value(), applied);
+  assert.strictEqual(applied.bankReconciliation.pendingMovements.length, 0);
+
   const partial = clone(applied);
   const appliedOperation = partial.tables.movimientos_bancarios.rows[0];
   partial.tables.movimientos_bancarios.rows = [];
@@ -477,6 +808,9 @@ async function testDurableApply(filePath) {
     rowCount: 1,
     headers: []
   };
+  partial.bankReconciliation.pendingMovements = [
+    { bank: "ICBC", ...analyzed.payload.report.movements[0] }
+  ];
   store.replace(partial);
   assert.strictEqual((await invoke(service.handleBankReconciliationApply, body)).status, 409);
 }
@@ -526,7 +860,11 @@ async function main() {
   await testCollectionAtomicityAndIdempotency();
   await testPaymentAtomicityAndIdempotency();
   await testContributionAtomicityAndSigns();
+  testBankReferenceNormalizerInjection();
+  await testIcBcAnalyzeFixtures();
+  await testPersistentPendingBankMovements();
   await testAnalyzeAndApply();
+  await testIdenticalReconciledOccurrenceDoesNotReappear();
   await testDepositRollbackAndRetry();
   console.log("Treasury safety tests: OK");
 }

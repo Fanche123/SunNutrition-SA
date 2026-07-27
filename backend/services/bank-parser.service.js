@@ -7,7 +7,11 @@ function createBankParserService(dependencies) {
     const rows = parseFlexibleDelimitedRows(csvText);
     if (!rows.length) return [];
     const headerIndex = rows.findIndex((row) => bankHeaderScore(row) >= 3);
-    if (headerIndex < 0) return [];
+    if (headerIndex < 0) {
+      const error = new Error("El CSV no contiene encabezados bancarios reconocibles.");
+      error.statusCode = 400;
+      throw error;
+    }
   
     const headers = rows[headerIndex].map((header) => backendNormalizeText(header));
     const indexFor = (...names) => {

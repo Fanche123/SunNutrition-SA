@@ -12,8 +12,10 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - Las operaciones escriben mediante `saveBackendCache()` y servicios de dominio.
 - El alta canónica de pedidos usa `POST /api/sales/orders/full-entry`: valida referencias y contenido, genera IDs en backend y persiste encabezado y detalles con un único `saveBackendCache()`.
 - No existen endpoints de fuentes, refresh ni imports externos.
+- `inventoryPurchaseConfig.barsPerDay` es el único parámetro persistente de producción diaria. Vive como metadato superior del cache, no en una tabla, y se guarda atómicamente con el snapshot recalculado mediante `POST /api/inventory/purchase-snapshot/production-rate`.
 - Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
 - La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva. `GET /api/inventory/purchase-snapshot` conserva ese resultado si está vigente o lo reconstruye en memoria desde el último lote de `inventarios`/`detalle_inventarios` si falta o está obsoleto; Inventario, Dashboard y Compras leen el mismo contrato.
+- Conciliación bancaria guarda en `bankReconciliation.pendingMovements` los movimientos normalizados todavía pendientes, deduplicados por huella y ocurrencia, sin conservar el CSV ni agregar tabla. `GET /api/bank-reconciliation/state` los reanaliza por banco y `GET /api/bank-reconciliation/summary` entrega la última fecha efectiva desde `movimientos_bancarios` al Dashboard.
 - El OCR de adjuntos o fotos solo interpreta el archivo entregado por el usuario; no constituye una fuente de tablas.
 
 - `server.js`: composicion del servidor y dominios backend operativos aun no extraidos.

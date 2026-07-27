@@ -8,7 +8,7 @@ Leé también `.agents/_base-development.md`. Para cada pedido inspeccioná solo
 
 ## Alcance funcional confirmado
 
-- Dashboard de cuotas próximas de planes de pago, cheques a cubrir, días de inventario faltantes, insumos a comprar, compras pendientes y pedidos pendientes.
+- Dashboard de última conciliación bancaria, cuotas próximas de planes de pago, cheques a cubrir, días de inventario faltantes, insumos a comprar, compras pendientes y pedidos pendientes.
 - Estado de Resultados mensual y comparación; ventas, costo de ventas, gastos, inventarios, producción, horas y métricas.
 - Cashflow proyectado desde caja, deudas/cobranzas y cheques; agrupación semanal, búsqueda y overrides de fecha de UI.
 - Clasificación/agregación de egresos y advertencias por categorías no reconocidas.
@@ -45,6 +45,7 @@ Endpoints confirmados:
 - `GET /api/reports/income-statement?year=AAAA&month=0..11&comparison=none|previousMonth|previousYear` → `{ ok, report, comparisonReport }`. El mes es base cero.
 - `GET /api/reports/cashflow` → `{ ok, report }` con `cards`, `groups`, `visibleGroups` y cuatro `weeks`.
 - `GET /api/inventory/purchase-snapshot` → evaluación de solo lectura del último lote de inventario. Inventario la materializa al cargar y el backend la reconstruye determinísticamente desde tablas canónicas cuando falta o está obsoleta; Reportes presenta el contrato y no reconstruye la regla.
+- `GET /api/bank-reconciliation/summary` → resumen focalizado de última fecha conciliada global, días transcurridos y detalle por banco; Dashboard no carga la tabla bancaria completa.
 - `GET /api/backend/tables/:tabla?all=true` alimenta el dashboard.
 - `GET/POST /api/app-state` persiste filtros/overrides de presentación; no debe alterar movimientos operativos.
 - `saveState` admite omitir la sincronización remota para operaciones con persistencia explícita; Reportes conserva el comportamiento predeterminado con sincronización programada.
@@ -56,6 +57,7 @@ Endpoints confirmados:
 - Estado de Resultados: `income-statement.service.js`; fechas/números/inventario auxiliar en `income-calculation.service.js`; categorías en `expense-classification.service.js`.
 - Cashflow: `cashflow.service.js`; saldos = total menos aplicaciones; solo cheques con estado normalizado `pendiente`; eventos menores o iguales a 10 se omiten.
 - Dashboard: `dashboard.js`, helpers de deuda de `payment-entry.js` y `GET /api/treasury/payment-plans[/:id]` para cuotas próximas con estado de pago derivado por Tesorería.
+- El widget de última conciliación bancaria muestra fecha, días y banco en tamaño cerrado normal; al expandirse presenta el detalle por banco devuelto por Tesorería.
 - El widget de cheques recibidos sin cargar reutiliza `pendingReceivedCheckCollections` de Tesorería y cruza `cobros.id_cobro` con `cheques_recibidos.id_cobro`; presenta fecha, cliente resuelto solo por `id_cliente` y monto del cobro, y se oculta por completo con resultado cero o fuente fallida.
 - El widget `Insumos a comprar` se oculta si la evaluación válida no tiene alertas o no existe inventario; si hay alertas muestra cantidad, existencia/unidad, días de producción y fecha base. Una evaluación incompleta queda visible con `!` y mensaje de dependencias insuficientes. Su expansión usa el patrón común del Dashboard.
 - Si una cifra nace mal, ubicar primero al productor. Modificar Reportes solo si falla la agregación o presentación; coordinar con el dueño si cambia el significado del dato.

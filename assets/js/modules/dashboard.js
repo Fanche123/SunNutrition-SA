@@ -29,7 +29,8 @@ async function loadDashboardWidgets() {
       source("cobros", backendTableRowsForEntry("cobros")),
       source("cheques recibidos", backendTableRowsForEntry("cheques_recibidos")),
       source("cuotas de planes de pago", loadDashboardPaymentPlanQuotas()),
-      source("evaluacion de insumos a comprar", loadDashboardInventoryPurchaseSnapshot())
+      source("evaluacion de insumos a comprar", loadDashboardInventoryPurchaseSnapshot()),
+      source("ultima conciliacion bancaria", loadDashboardBankReconciliationSummary())
     ]);
     const [
       issuedChecks,
@@ -53,7 +54,8 @@ async function loadDashboardWidgets() {
       collections,
       receivedChecks,
       paymentPlanQuotas,
-      inventoryPurchaseSnapshot
+      inventoryPurchaseSnapshot,
+      bankReconciliationSummary
     ] = results.map((result) => result.rows);
     const errorFor = (indexes) => indexes
       .map((index) => results[index])
@@ -98,6 +100,7 @@ async function loadDashboardWidgets() {
       pendingReceivedChecks: pendingReceivedChecksCalculation.value,
       upcomingPaymentPlanQuotas: paymentPlansCalculation.value,
       inventoryPurchaseSnapshot,
+      bankReconciliationSummary,
       errors: {
         checks: combinedError(errorFor([0, 1, 17]), checksCalculation.error),
         inventory: combinedError(errorFor([2]), inventoryCalculation.error),
@@ -105,13 +108,21 @@ async function loadDashboardWidgets() {
         orders: combinedError(errorFor([11, 12, 13, 14, 15, 16]), ordersCalculation.error),
         pendingReceivedChecks: combinedError(errorFor([18, 19]), pendingReceivedChecksCalculation.error),
         paymentPlans: combinedError(errorFor([20]), paymentPlansCalculation.error),
-        inventoryPurchases: errorFor([21])
+        inventoryPurchases: errorFor([21]),
+        bankReconciliation: errorFor([22])
       }
     };
     renderDashboardWidgets();
   } catch (error) {
     renderDashboardError(error.message || "No se pudo leer el dashboard.");
   }
+}
+
+async function loadDashboardBankReconciliationSummary() {
+  const payload = await requestBackendApi("/api/bank-reconciliation/summary");
+  return payload?.summary && !Array.isArray(payload.summary)
+    ? payload.summary
+    : { latestDate: "", daysElapsed: null, bank: "", account: "", details: [] };
 }
 
 async function loadDashboardInventoryPurchaseSnapshot() {
@@ -291,6 +302,9 @@ function dashboardAddBusinessDaysIso(startIso, businessDays) {
 function renderDashboardLoading() {
   els["dashboard-received-checks-widget"].hidden = true;
   els["dashboard-inventory-purchases-widget"].hidden = true;
+  if (els["dashboard-bank-reconciliation-days"]) els["dashboard-bank-reconciliation-days"].textContent = "-";
+  if (els["dashboard-bank-reconciliation-summary"]) els["dashboard-bank-reconciliation-summary"].textContent = "Cargando ultima conciliacion...";
+  if (els["dashboard-bank-reconciliation-list"]) els["dashboard-bank-reconciliation-list"].innerHTML = "";
   els["dashboard-payment-plans-count"].textContent = "-";
   els["dashboard-payment-plans-summary"].textContent = "Cargando cuotas proximas...";
   els["dashboard-payment-plans-list"].innerHTML = "";
@@ -311,10 +325,11 @@ function renderDashboardLoading() {
 function renderDashboardError(message) {
   els["dashboard-received-checks-widget"].hidden = true;
   els["dashboard-inventory-purchases-widget"].hidden = true;
-  ["dashboard-payment-plans-widget", "dashboard-checks-widget", "dashboard-inventory-widget", "dashboard-purchases-widget", "dashboard-orders-widget"].forEach((id) => {
+  ["dashboard-bank-reconciliation-widget", "dashboard-payment-plans-widget", "dashboard-checks-widget", "dashboard-inventory-widget", "dashboard-purchases-widget", "dashboard-orders-widget"].forEach((id) => {
     els[id]?.classList.remove("is-warning", "is-danger");
   });
   els["dashboard-payment-plans-summary"].textContent = message;
+  if (els["dashboard-bank-reconciliation-summary"]) els["dashboard-bank-reconciliation-summary"].textContent = message;
   els["dashboard-next-check"].textContent = message;
   els["dashboard-inventory-summary"].textContent = message;
   els["dashboard-purchases-summary"].textContent = message;
@@ -486,6 +501,7 @@ function dashboardOrderUrgency(order) {
 }
 
 function renderDashboardWidgets() {
+  renderDashboardBankReconciliationWidget();
   renderDashboardPaymentPlansWidget();
   renderDashboardReceivedChecksWidget();
   renderDashboardInventoryPurchasesWidget();
@@ -493,6 +509,49 @@ function renderDashboardWidgets() {
   renderDashboardInventoryWidget();
   renderDashboardPurchasesWidget();
   renderDashboardOrdersWidget();
+}
+
+function renderDashboardBankReconciliationWidget() {
+  if (!els["dashboard-bank-reconciliation-widget"]) return;
+  const summary = dashboardWidgetData.bankReconciliationSummary || {};
+  const details = Array.isArray(summary.details) ? summary.details : [];
+  const loadError = dashboardWidgetData.errors?.bankReconciliation;
+  const isExpanded = dashboardExpandedWidget === "bankReconciliation";
+  const days = Number(summary.daysElapsed);
+  const hasDate = Boolean(summary.latestDate);
+  els["dashboard-bank-reconciliation-days"].textContent = loadError
+    ? "!"
+    : hasDate
+    ? String(Number.isFinite(days) ? Math.max(0, Math.trunc(days)) : 0)
+    : "-";
+  els["dashboard-bank-reconciliation-summary"].textContent = loadError
+    ? `No se pudo cargar: ${loadError}.`
+    : hasDate
+    ? `${formatDate(summary.latestDate)} · Hace ${Math.max(0, Math.trunc(days || 0))} ${Math.trunc(days || 0) === 1 ? "dia" : "dias"} · ${summary.bank || "Banco sin identificar"}`
+    : "Sin conciliaciones registradas.";
+  els["dashboard-bank-reconciliation-list"].innerHTML = loadError
+    ? dashboardLoadError(loadError)
+    : isExpanded
+    ? dashboardBankReconciliationDetails(details)
+    : "";
+  const widget = els["dashboard-bank-reconciliation-widget"];
+  widget.classList.toggle("is-expanded", isExpanded);
+  widget.setAttribute("aria-expanded", String(isExpanded));
+}
+
+function dashboardBankReconciliationDetails(details) {
+  if (!details.length) {
+    return `<div class="dashboard-plain-empty dashboard-expanded-empty">Sin conciliaciones registradas.</div>`;
+  }
+  return details.map((detail) => `
+    <div class="dashboard-plain-row">
+      <span>
+        <strong>${escapeHtml([detail.bank, detail.account].filter(Boolean).join(" · ") || "Banco sin identificar")}</strong>
+        <small>${formatDate(detail.latestDate)}</small>
+      </span>
+      <strong>Hace ${formatNumber(Math.max(0, Number(detail.daysElapsed) || 0))} d</strong>
+    </div>
+  `).join("");
 }
 
 function renderDashboardInventoryPurchasesWidget() {
@@ -556,7 +615,7 @@ function dashboardInventoryPurchasesTable(items) {
           <tr>
             <th>Insumo</th>
             <th class="num">Cantidad restante</th>
-            <th class="num">Dias de produccion</th>
+            <th class="num">D&iacute;as de producci&oacute;n</th>
           </tr>
         </thead>
         <tbody>
@@ -581,8 +640,9 @@ function dashboardInventoryQuantityLabel(stock, unit) {
 
 function dashboardProductionDaysLabel(daysRemaining) {
   const days = Number(daysRemaining);
-  const label = dashboardInventoryMeasurementLabel(days);
-  return label === "-" ? label : `${label} dias`;
+  if (!Number.isFinite(days)) return "-";
+  const roundedDays = Math.round(days);
+  return `${formatNumber(roundedDays)} ${roundedDays === 1 ? "d\u00eda" : "d\u00edas"}`;
 }
 
 function dashboardInventoryMeasurementLabel(value) {

@@ -18,13 +18,13 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/app.js` | Arquitectura | Todos frontend | Bootstrap/eventos globales y contrato `saveState({ scheduleRemote })`; core | Alto | `arquitectura.md` + afectados |
 | `assets/js/core/*.js`, `assets/js/dom-utils.js` | Arquitectura | Todos frontend | API, archivos, formatos y DOM; core | Medio | `arquitectura.md` + consumidores |
 | `shared/money.js`, `shared/money-columns.js`, `backend/utils/money-input.js`, `docs/money-contract.md`, `tests/money*.test.js` | Arquitectura | RRHH, Tesorería, Compras, Ventas, Inventario, Reportes, Contabilidad, Administración | Contrato monetario único frontend/backend, clasificación semántica y validación estricta de payloads | Alto | `arquitectura.md` + consumidores financieros |
-| `shared/inventory-purchase-evaluation.js` | Inventario | Compras, Reportes, Arquitectura | Regla única frontend/backend de consumo, umbral y días disponibles para alertas de compra | Alto | `inventario.md` + consumidores |
+| `shared/inventory-purchase-evaluation.js` | Inventario | Compras, Reportes, Arquitectura, UI/UX | Regla única frontend/backend de consumo, umbral y días disponibles; escala con el parámetro transversal `barsPerDay` sin redondear el cálculo | Alto | `inventario.md` + consumidores |
 | `index.html` | UI/UX | Todos frontend | Shell, vistas y contratos DOM; core | Alto | `ui-ux.md` + afectados |
 | `assets/css/*.css`, `assets/icons/*.svg` | UI/UX | Todos frontend | Apariencia, responsive e iconos; dominio UI | Medio | `ui-ux.md` |
 | `assets/js/modules/inventory-*.js` | Inventario | Compras, Reportes | Captura, OCR, teórico y detalle; dominio | Medio/alto | `inventario.md` |
 | `assets/js/modules/operational-data-coordinator.js` | Arquitectura | Inventario, Compras, Ventas, Tesorería | Coordinación de carga y render comercial entre dominios; core compartido | Medio | `arquitectura.md` + consumidores |
 | `assets/js/modules/operational-shared.js` | Arquitectura | Inventario, Compras, Tesorería | Helpers operativos; core compartido | Medio | `arquitectura.md` + consumidores |
-| `assets/js/modules/purchase-*.js`, `reception-*.js` | Compras | Inventario, Tesorería | Compras y recepciones; dominio | Alto | `compras.md` |
+| `assets/js/modules/purchase-*.js`, `reception-*.js` | Compras | Inventario, Tesorería, Reportes, UI/UX | Compras y recepciones; la lista superior conserva selección libre y edita el `barsPerDay` transversal mediante su endpoint específico | Alto | `compras.md` + consumidores |
 | `assets/js/modules/logistics-entry.js` | Ventas | Compras, Tesorería, Reportes | Entregas comerciales y rama compartida de egreso logístico; dominio | Alto | `ventas.md` + consumidores |
 | `assets/js/modules/commissions-entry.js` | Ventas | Tesorería, Reportes | Comisión comercial derivada de cobros; dominio | Alto | `ventas.md` + consumidores |
 | `assets/js/modules/other-expense-entry.js` | Compras | Tesorería, Reportes | Alta de otros gastos como fuente de egresos; dominio | Alto | `compras.md` + consumidores |
@@ -37,7 +37,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/config/payroll-calendars.js` | RRHH | Arquitectura, Compras, Inventario, Reportes | Calendarios laborales configurados por año; configuración de dominio compartida | Alto | `rrhh.md` + consumidores |
 | `assets/js/modules/dashboard.js`, `reports-*.js` | Reportes | Todos | Indicadores y presentación financiera; dominio | Alto | `reportes.md` |
 | `assets/js/modules/data-*.js`, `sql-console.js` | Administración | Base de datos, Arquitectura | Editor, mapa y SQL; dominio | Alto | `administracion.md` |
-| `backend/services/inventory-*.service.js`, `backend/utils/inventory-*.js` | Inventario | Compras, Reportes | Inventario/OCR; la carga integral coordina valuación previa a persistencia; dominio | Alto | `inventario.md` |
+| `backend/services/inventory-*.service.js`, `backend/utils/inventory-*.js` | Inventario | Compras, Reportes, Arquitectura | Inventario/OCR; la carga integral coordina valuación previa a persistencia y el snapshot conserva `inventoryPurchaseConfig.barsPerDay` en el caché, con actualización/recalculo atómico por endpoint específico | Alto | `inventario.md` + consumidores |
 | `backend/services/inventory-*.service.test.js` | Inventario | Arquitectura, Reportes | Regresión aislada de carga, evaluación fija y persistencia de Inventario | Alto | `inventario.md` |
 | `backend/services/purchase-*.service.js`, `reception-entry.service.js`, `other-expense-entry.service.js`, `creditor-*.service.js`, `attachments.service.js` | Compras | Inventario, Tesorería, Reportes, RRHH | Altas atómicas de compras/recepciones/otros gastos, acreedores y adjuntos; dominio | Alto | `compras.md` (+ RRHH si escala) |
 | `tests/purchase-integrity.test.js` | Compras | Arquitectura | Pruebas aisladas de integridad, compensación y reintentos del dominio | Medio | `compras.md` |
@@ -93,6 +93,8 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.
 
 El Coordinador recibe tareas nuevas y crea hilos principales visibles del proyecto ERP mediante `create_thread`. No crea Jefes anidados ni recibe informes. Cada hilo determina ownership y coordina sus propios subagentes. Las correcciones se escriben directamente en el hilo de tarea.
+
+El progreso de los hilos se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador obtiene una fotografía read-only sin crear subagentes ni adquirir ownership funcional sobre las tareas inspeccionadas.
 
 Cada hilo crea exactamente un `validador_tarea` read-only al final de cada iteración. Ese validador pertenece a Arquitectura como infraestructura de calidad y no adquiere ownership funcional ni modifica archivos.
 

@@ -584,6 +584,100 @@ test("Dashboard registra nodos, accesibilidad y eventos del widget de cuotas pr�
   );
 });
 
+test("Dashboard muestra y expande la ultima conciliacion bancaria sin agrandar la tarjeta cerrada", async () => {
+  const classes = new Set();
+  const widget = {
+    attributes: {},
+    classList: {
+      toggle(name, force) {
+        if (force) classes.add(name);
+        else classes.delete(name);
+      }
+    },
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
+  const requests = [];
+  const context = upcomingPaymentPlanDashboardContext({
+    requestBackendApi: async (requestPath) => {
+      requests.push(requestPath);
+      return {
+        summary: {
+          latestDate: "2026-07-25",
+          daysElapsed: 2,
+          bank: "ICBC",
+          details: [
+            { bank: "ICBC", account: "", latestDate: "2026-07-25", daysElapsed: 2 },
+            { bank: "GAL", account: "", latestDate: "2026-07-20", daysElapsed: 7 }
+          ]
+        }
+      };
+    },
+    dashboardExpandedWidget: "",
+    dashboardWidgetData: { bankReconciliationSummary: null, errors: {} },
+    formatDate: (value) => value.split("-").reverse().join("/"),
+    formatNumber: String,
+    escapeHtml: String,
+    els: {
+      "dashboard-bank-reconciliation-widget": widget,
+      "dashboard-bank-reconciliation-days": { textContent: "" },
+      "dashboard-bank-reconciliation-summary": { textContent: "" },
+      "dashboard-bank-reconciliation-list": { innerHTML: "" }
+    }
+  });
+
+  context.dashboardWidgetData.bankReconciliationSummary = await context.loadDashboardBankReconciliationSummary();
+  assert.deepEqual(requests, ["/api/bank-reconciliation/summary"]);
+  context.renderDashboardBankReconciliationWidget();
+  assert.equal(context.els["dashboard-bank-reconciliation-days"].textContent, "2");
+  assert.match(context.els["dashboard-bank-reconciliation-summary"].textContent, /25\/07\/2026 · Hace 2 dias · ICBC/);
+  assert.equal(context.els["dashboard-bank-reconciliation-list"].innerHTML, "");
+  assert.equal(classes.has("is-expanded"), false);
+
+  context.dashboardExpandedWidget = "bankReconciliation";
+  context.renderDashboardBankReconciliationWidget();
+  assert.equal(classes.has("is-expanded"), true);
+  assert.match(context.els["dashboard-bank-reconciliation-list"].innerHTML, /ICBC/);
+  assert.match(context.els["dashboard-bank-reconciliation-list"].innerHTML, /GAL/);
+  assert.equal(widget.attributes["aria-expanded"], "true");
+
+  context.dashboardExpandedWidget = "";
+  context.dashboardWidgetData.bankReconciliationSummary = {
+    latestDate: "",
+    daysElapsed: null,
+    bank: "",
+    details: []
+  };
+  context.renderDashboardBankReconciliationWidget();
+  assert.equal(context.els["dashboard-bank-reconciliation-days"].textContent, "-");
+  assert.match(context.els["dashboard-bank-reconciliation-summary"].textContent, /Sin conciliaciones registradas/);
+});
+
+test("Dashboard registra nodos, endpoint y eventos del widget de conciliacion bancaria", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const dashboardSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/dashboard.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  [
+    "dashboard-bank-reconciliation-widget",
+    "dashboard-bank-reconciliation-days",
+    "dashboard-bank-reconciliation-summary",
+    "dashboard-bank-reconciliation-list"
+  ].forEach((idValue) => {
+    assert.match(htmlSource, new RegExp(`id="${idValue}"`));
+    assert.match(appSource, new RegExp(`"${idValue}"`));
+  });
+  assert.match(dashboardSource, /\/api\/bank-reconciliation\/summary/);
+  assert.match(
+    htmlSource,
+    /id="dashboard-bank-reconciliation-widget" role="button" tabindex="0" aria-expanded="false"/
+  );
+  assert.match(
+    appSource,
+    /dashboard-bank-reconciliation-widget"\]\?\.addEventListener\("click", \(\) => toggleDashboardWidget\("bankReconciliation"\)\)/
+  );
+});
+
 test("Dashboard muestra la fotografia fija de insumos a comprar y oculta el estado vacio", () => {
   const classes = new Set();
   const widget = {
@@ -663,12 +757,14 @@ test("Dashboard muestra la fotografia fija de insumos a comprar y oculta el esta
   assert.equal(context.els["dashboard-inventory-purchases-count"].textContent, "3");
   assert.match(context.els["dashboard-inventory-purchases-summary"].textContent, /3 insumos a comprar/);
   assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /2,5 Kg/);
-  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0,0352 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 d\u00edas/);
   assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 Lt/);
-  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /0 d\u00edas/);
   assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /1\.234,75 Pack 25 Ud/);
-  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /12\.345,6789 dias/);
+  assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /12\.346 d\u00edas/);
   assert.match(context.els["dashboard-inventory-purchases-list"].innerHTML, /&lt;script&gt;/);
+  assert.equal(context.dashboardProductionDaysLabel(1.49), "1 d\u00eda");
+  assert.equal(context.dashboardProductionDaysLabel(1.5), "2 d\u00edas");
 
   context.dashboardWidgetData = {
     inventoryPurchaseSnapshot: {
@@ -757,9 +853,11 @@ test("Compras muestra la misma fotografia sin limitar el selector libre", () => 
   assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /20\/07\/2026/);
   assert.match(context.els["purchase-inventory-suggestions-status"].textContent, /selector de insumos permanece libre/i);
   assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /2,5 Kg/);
-  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0,0352 dias de produccion/);
+  assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0 d\u00edas de producci\u00f3n/);
   assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /0 Lt/);
   assert.match(context.els["purchase-inventory-suggestions-list"].innerHTML, /&lt;script&gt;/);
+  assert.equal(context.purchaseInventoryDaysLabel(1.49), "1 d\u00eda de producci\u00f3n");
+  assert.equal(context.purchaseInventoryDaysLabel(1.5), "2 d\u00edas de producci\u00f3n");
 
   context.renderPurchaseInventorySuggestions({
     inventoryDate: "2026-07-21",
@@ -793,17 +891,122 @@ test("Compras registra la lista superior y lee la fotografia canonica", () => {
   const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
   const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
   const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(__dirname, "../assets/css/styles.css"), "utf8");
   [
     "purchase-inventory-suggestions-count",
     "purchase-inventory-suggestions-status",
-    "purchase-inventory-suggestions-list"
+    "purchase-inventory-suggestions-list",
+    "inventory-production-rate-form",
+    "inventory-production-rate",
+    "inventory-production-rate-submit",
+    "inventory-production-rate-status"
   ].forEach((idValue) => {
     assert.match(htmlSource, new RegExp(`id="${idValue}"`));
     assert.match(appSource, new RegExp(`"${idValue}"`));
   });
   assert.match(purchaseSource, /requestBackendApi\("\/api\/inventory\/purchase-snapshot"\)/);
+  assert.match(purchaseSource, /\/api\/inventory\/purchase-snapshot\/production-rate/);
   assert.doesNotMatch(purchaseSource, /InventoryPurchaseEvaluation|DAILY_CONSUMPTION_BY_ITEM/);
   assert.match(purchaseSource, /inventoryPurchaseSnapshotItem/);
+  assert.match(appSource, /inventory-production-rate-form"\]\?\.addEventListener\("submit", submitInventoryProductionRate\)/);
+  assert.match(
+    stylesSource,
+    /@media \(max-width: 760px\)[\s\S]*?\.purchase-inventory-suggestions-header\s*\{\s*flex-direction: column;/
+  );
+  assert.match(
+    stylesSource,
+    /@media \(max-width: 760px\)[\s\S]*?\.inventory-production-rate-form > div\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) auto;/
+  );
+});
+
+test("Compras valida, aplica y revierte la produccion diaria sin usar localStorage", async () => {
+  const input = {
+    value: "20.000",
+    dataset: { minimum: "1", maximum: "1000000" },
+    attributes: {},
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+  };
+  const status = { textContent: "", dataset: {} };
+  const button = { disabled: false };
+  const requests = [];
+  const snapshotAtTwentyThousand = {
+    barsPerDay: 20000,
+    minBarsPerDay: 1,
+    maxBarsPerDay: 1000000,
+    inventoryDate: "2026-07-20",
+    state: "valid_with_alerts",
+    items: [{ itemName: "Aceite", stock: 150, unit: "Kg", daysRemaining: 2.443 }]
+  };
+  const context = {
+    inventoryPurchaseSnapshot: {
+      barsPerDay: 30100,
+      minBarsPerDay: 1,
+      maxBarsPerDay: 1000000,
+      inventoryDate: "2026-07-20",
+      state: "valid_with_alerts",
+      items: []
+    },
+    dashboardWidgetData: { inventoryPurchaseSnapshot: null },
+    document: { activeElement: null },
+    els: {
+      "inventory-production-rate": input,
+      "inventory-production-rate-submit": button,
+      "inventory-production-rate-status": status,
+      "purchase-inventory-suggestions-count": { textContent: "" },
+      "purchase-inventory-suggestions-status": { textContent: "" },
+      "purchase-inventory-suggestions-list": { innerHTML: "" }
+    },
+    requestBackendApi: async (requestPath, options) => {
+      requests.push({ requestPath, options });
+      return { ok: true, snapshot: snapshotAtTwentyThousand };
+    },
+    renderDashboardInventoryPurchasesWidget: () => {},
+    displayNameLabel: String,
+    displayUnitLabel: String,
+    escapeHtml: String,
+    formatDate: String,
+    formatNumber: (value) => new Intl.NumberFormat("es-AR").format(value),
+    Intl
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8"), context);
+
+  context.document.activeElement = input;
+  input.value = "40.000";
+  context.syncInventoryProductionRateInput(snapshotAtTwentyThousand);
+  assert.equal(input.value, "40.000");
+  assert.equal(input.dataset.minimum, "1");
+  assert.equal(input.dataset.maximum, "1000000");
+  context.document.activeElement = null;
+  input.value = "20.000";
+
+  assert.equal(context.parseInventoryProductionRate("20000"), 20000);
+  assert.equal(context.parseInventoryProductionRate("20.000"), 20000);
+  ["", "0", "-1", "20,5", "texto", "1.000.001"].forEach((value) => {
+    assert.equal(Number.isNaN(context.parseInventoryProductionRate(value)), true);
+  });
+
+  await context.submitInventoryProductionRate({ preventDefault() {} });
+  assert.equal(requests[0].requestPath, "/api/inventory/purchase-snapshot/production-rate");
+  assert.deepEqual(JSON.parse(requests[0].options.body), { barsPerDay: 20000 });
+  assert.equal(context.inventoryPurchaseSnapshot.barsPerDay, 20000);
+  assert.equal(context.dashboardWidgetData.inventoryPurchaseSnapshot.barsPerDay, 20000);
+  assert.equal(input.value, "20.000");
+  assert.equal(status.dataset.status, "success");
+
+  context.requestBackendApi = async () => {
+    throw new Error("Fallo simulado");
+  };
+  input.value = "40.000";
+  await context.submitInventoryProductionRate({ preventDefault() {} });
+  assert.equal(context.inventoryPurchaseSnapshot.barsPerDay, 20000);
+  assert.equal(input.value, "20.000");
+  assert.equal(status.dataset.status, "error");
+
+  const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
+  assert.doesNotMatch(purchaseSource, /localStorage/);
 });
 
 test("Inventario usa los mismos items de la fotografia sin recalcular umbrales", () => {
@@ -871,6 +1074,7 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
   assert.match(alert.title, /Stock: 2.5/);
   assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /20\/07\/2026/);
   assert.match(context.els["purchase-threshold-body"].innerHTML, /2,5 Kg/);
+  assert.match(context.els["purchase-threshold-body"].innerHTML, /0 d\u00edas de producci\u00f3n/);
   assert.match(context.els["purchase-threshold-body"].innerHTML, /Comprar/);
 
   context.inventoryPurchaseSnapshot = {
@@ -886,4 +1090,246 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
   const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
   assert.doesNotMatch(purchaseSource, /inventoryPurchaseAlert|inventoryPurchaseMetrics|DAILY_CONSUMPTION_BY_ITEM/);
   assert.match(purchaseSource, /renderPurchaseThresholdTable\(snapshotItems\)/);
+});
+
+test("Bootstrap carga solo Dashboard y difiere los modulos cerrados", () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const bootstrapSource = appSource.slice(
+    appSource.indexOf('document.addEventListener("DOMContentLoaded"'),
+    appSource.indexOf("function cacheElements()")
+  );
+
+  assert.match(bootstrapSource, /switchView\("dashboard"\)/);
+  assert.doesNotMatch(bootstrapSource, /loadDashboardWidgets\(\)/);
+  assert.doesNotMatch(bootstrapSource, /initializeInventoryEntryDefaults\(\)/);
+  assert.doesNotMatch(bootstrapSource, /initializeOperationalEntryDefaults\(\)/);
+  assert.doesNotMatch(bootstrapSource, /initializeSalaryEntry\(\)/);
+  assert.doesNotMatch(bootstrapSource, /loadOperationalEntryOptions\(\)/);
+  assert.doesNotMatch(bootstrapSource, /loadPurchaseBackendOptions\(\)/);
+  assert.doesNotMatch(bootstrapSource, /refreshInventoryDefaultDateFromBackend\(\)/);
+  assert.equal((bootstrapSource.match(/bindEvents\(\)/g) || []).length, 1);
+  assert.match(appSource, /if \(view === "dashboard"\) runViewLoad\(view, loadDashboardWidgets\)/);
+  assert.match(appSource, /if \(view === "data-entry"\) initializeViewOnce\(view, initializeInventoryView\)/);
+  assert.match(appSource, /if \(view === "salary-entry"\) initializeViewOnce\(view, initializeSalaryEntry\)/);
+  assert.match(appSource, /if \(view === "results" \|\| view === "cashflow"\)/);
+});
+
+test("Inicializacion diferida comparte clics concurrentes y permite reintento seguro", async () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const start = appSource.indexOf("function initializeViewOnce(");
+  const end = appSource.indexOf("function runViewLoad(", start);
+  const context = {
+    deferredViewInitializations: new Map(),
+    Promise
+  };
+  vm.createContext(context);
+  vm.runInContext(appSource.slice(start, end), context);
+
+  let initializationCalls = 0;
+  let finishInitialization;
+  const initializer = () => {
+    initializationCalls += 1;
+    return new Promise((resolve) => {
+      finishInitialization = resolve;
+    });
+  };
+  const first = context.initializeViewOnce("sample", initializer, () => {});
+  const concurrent = context.initializeViewOnce("sample", initializer, () => {});
+  assert.equal(first, concurrent);
+  assert.equal(initializationCalls, 0);
+  await Promise.resolve();
+  assert.equal(initializationCalls, 1);
+  finishInitialization();
+  assert.equal(await first, true);
+  assert.equal(await context.initializeViewOnce("sample", initializer, () => {}), true);
+  assert.equal(initializationCalls, 1);
+
+  let failedCalls = 0;
+  let visibleErrors = 0;
+  const failsOnce = () => {
+    failedCalls += 1;
+    return failedCalls === 1 ? Promise.reject(new Error("fallo simulado")) : Promise.resolve();
+  };
+  assert.equal(await context.initializeViewOnce("retry", failsOnce, () => { visibleErrors += 1; }), false);
+  assert.equal(await context.initializeViewOnce("retry", failsOnce, () => { visibleErrors += 1; }), true);
+  assert.equal(failedCalls, 2);
+  assert.equal(visibleErrors, 1);
+});
+
+test("Carga refrescable de Dashboard comparte la promesa activa sin bloquear reaperturas", async () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const start = appSource.indexOf("function runViewLoad(");
+  const end = appSource.indexOf("function showDeferredViewError(", start);
+  const context = {
+    activeViewLoads: new Map(),
+    Promise
+  };
+  vm.createContext(context);
+  vm.runInContext(appSource.slice(start, end), context);
+
+  let loadCalls = 0;
+  let finishLoad;
+  const loader = () => {
+    loadCalls += 1;
+    return new Promise((resolve) => {
+      finishLoad = resolve;
+    });
+  };
+  const first = context.runViewLoad("dashboard", loader, () => {});
+  const concurrent = context.runViewLoad("dashboard", loader, () => {});
+  assert.equal(first, concurrent);
+  await Promise.resolve();
+  assert.equal(loadCalls, 1);
+  finishLoad();
+  await first;
+
+  const reopened = context.runViewLoad("dashboard", () => {
+    loadCalls += 1;
+    return Promise.resolve();
+  }, () => {});
+  await reopened;
+  assert.equal(loadCalls, 2);
+});
+
+test("Reportes ejecuta la ultima actualizacion pedida durante una carga activa", async () => {
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const start = appSource.indexOf("function runViewLoad(");
+  const end = appSource.indexOf("function showDeferredViewError(", start);
+  const context = {
+    activeViewLoads: new Map(),
+    queuedViewLoads: new Map(),
+    Promise
+  };
+  vm.createContext(context);
+  vm.runInContext(appSource.slice(start, end), context);
+
+  const calls = [];
+  let finishFirst;
+  const first = context.runLatestViewLoad("report-results", () => {
+    calls.push("first");
+    return new Promise((resolve) => {
+      finishFirst = resolve;
+    });
+  }, () => {});
+  await Promise.resolve();
+  context.runLatestViewLoad("report-results", () => {
+    calls.push("latest");
+    return Promise.resolve();
+  }, () => {});
+  assert.deepEqual(calls, ["first"]);
+  finishFirst();
+  await first;
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.deepEqual(calls, ["first", "latest"]);
+});
+
+test("Compras comparte la inicializacion al abrir desde una sugerencia", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
+  const start = source.indexOf("async function openPurchaseEntryForItem(");
+  const end = source.indexOf("function findPurchaseSupply(", start);
+  const openSource = source.slice(start, end);
+
+  let loadCalls = 0;
+  let finishLoad;
+  const initializationPromises = new Map();
+  const context = {
+    loadPurchaseBackendOptions: () => {
+      loadCalls += 1;
+      return new Promise((resolve) => {
+        finishLoad = resolve;
+      });
+    },
+    initializeViewOnce: (key, loader) => {
+      if (initializationPromises.has(key)) return initializationPromises.get(key);
+      const promise = Promise.resolve()
+        .then(loader)
+        .then(() => false)
+        .finally(() => initializationPromises.delete(key));
+      initializationPromises.set(key, promise);
+      return promise;
+    },
+    Promise
+  };
+  context.switchView = () => {
+    context.initializeViewOnce("purchase-entry", context.loadPurchaseBackendOptions);
+  };
+  vm.createContext(context);
+  vm.runInContext(openSource, context);
+
+  const opening = context.openPurchaseEntryForItem("Aceite", "7");
+  await Promise.resolve();
+  assert.equal(loadCalls, 1);
+  finishLoad();
+  await opening;
+  assert.equal(loadCalls, 1);
+});
+
+test("Inventario y Recepciones propagan fallos para permitir reapertura", async () => {
+  const inventoryContext = {
+    els: { "inventory-date-input": { value: "" } },
+    API_BASE_URL: "",
+    fetch: async () => ({
+      ok: false,
+      json: async () => ({ error: "fallo de fecha" })
+    }),
+    Error
+  };
+  vm.createContext(inventoryContext);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "../assets/js/modules/inventory-entry-coordinator.js"), "utf8"),
+    inventoryContext
+  );
+  await assert.rejects(
+    inventoryContext.refreshInventoryDefaultDateFromBackend(),
+    /fallo de fecha/
+  );
+
+  const receptionContext = {
+    els: { "reception-purchase-id": { value: "" } },
+    backendTableRowsForEntry: async () => {
+      throw new Error("fallo de compras");
+    },
+    loadIssuedCheckPendingPayments: async () => {},
+    renderEntryDatalistOptions: () => {},
+    Error,
+    Map,
+    Set,
+    Promise
+  };
+  vm.createContext(receptionContext);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "../assets/js/modules/reception-options.js"), "utf8"),
+    receptionContext
+  );
+  await assert.rejects(
+    receptionContext.loadReceptionPurchaseOptions(),
+    /fallo de compras/
+  );
+  await assert.rejects(
+    receptionContext.loadOperationalEntryOptions(),
+    /fallo de compras/
+  );
+});
+
+test("Coordinador comercial comparte la carga y renderiza solo la vista activa", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../assets/js/modules/operational-data-coordinator.js"),
+    "utf8"
+  );
+
+  assert.match(source, /let commercialEntryLoadPromise = null/);
+  assert.match(source, /if \(commercialEntryLoadPromise\) return commercialEntryLoadPromise/);
+  assert.match(source, /renderActiveCommercialEntryView\(\)/);
+  assert.doesNotMatch(source, /function renderCommercialEntryViews\(/);
+  [
+    "renderOrderEntry",
+    "renderLogisticsEntry",
+    "renderSalesEntry",
+    "renderCollectionsEntry",
+    "renderCommissionsEntry",
+    "renderReceivedCheckEntry"
+  ].forEach((renderer) => {
+    assert.match(source, new RegExp(`"${renderer.replace(/^render/, "").replace(/Entry$/, "").toLowerCase()}|${renderer}`));
+  });
 });

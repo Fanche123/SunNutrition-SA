@@ -120,7 +120,7 @@ async function submitReceivedCheckEntry(event) {
 
 let receivedChecksUnifiedBound = false;
 let receivedChecksUnifiedLoading = false;
-let receivedChecksUnifiedData = { payments: [], paymentDetails: [] };
+let receivedChecksUnifiedData = { pendingEndorsementPayments: [] };
 let receivedChecksSelectedIds = new Set();
 let receivedChecksEndorsementOperationId = "";
 
@@ -129,11 +129,14 @@ async function loadReceivedChecksUnified() {
   receivedChecksUnifiedLoading = true;
   bindReceivedChecksUnified();
   try {
-    const [payments, paymentDetails] = await Promise.all([
-      backendTableRowsForEntry("pagos").catch(() => []),
-      backendTableRowsForEntry("detalle_pagos").catch(() => [])
-    ]);
-    receivedChecksUnifiedData = { payments, paymentDetails };
+    const response = await fetch(`${API_BASE_URL}/api/treasury/received-checks/pending-endorsement-payments`);
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudieron cargar los pagos de endoso pendientes.");
+    }
+    receivedChecksUnifiedData = {
+      pendingEndorsementPayments: Array.isArray(payload.payments) ? payload.payments : []
+    };
     const availableIds = new Set(receivedCheckAvailableRows().map((row) => backendId(row.id_cheque_recibido)));
     receivedChecksSelectedIds = new Set([...receivedChecksSelectedIds].filter((id) => availableIds.has(id)));
     renderReceivedChecksUnified();
@@ -370,20 +373,7 @@ async function confirmReceivedCheckEndorsement() {
 }
 
 function pendingEndorsementPayments() {
-  const assignedByPayment = new Map();
-  (commercialEntryData.cheques_recibidos || []).forEach((check) => {
-    const paymentId = backendId(check.id_pago_endoso);
-    if (!paymentId) return;
-    assignedByPayment.set(paymentId, (assignedByPayment.get(paymentId) || 0) + moneyToCents(check.monto));
-  });
-  return (receivedChecksUnifiedData.payments || [])
-    .filter((payment) => String(payment.metodo || "").trim() === "Endoso")
-    .map((payment) => {
-      const paymentCents = moneyToCents(payment.monto);
-      const assignedCents = assignedByPayment.get(backendId(payment.id_pago)) || 0;
-      return { payment, paymentCents, assignedCents, differenceCents: paymentCents - assignedCents };
-    })
-    .filter((item) => item.differenceCents !== 0);
+  return receivedChecksUnifiedData.pendingEndorsementPayments || [];
 }
 
 function renderReceivedCheckPendingPayments() {
@@ -404,8 +394,10 @@ function renderReceivedCheckPendingPayments() {
 
 function endorsementSelectionSummary(paymentId) {
   const selectedCents = selectedReceivedChecks().reduce((sum, row) => sum + moneyToCents(row.monto), 0);
-  const payment = receivedChecksUnifiedData.payments.find((row) => backendId(row.id_pago) === backendId(paymentId));
-  const paymentCents = payment ? moneyToCents(payment.monto) : 0;
+  const item = pendingEndorsementPayments().find((row) => (
+    backendId(row.payment?.id_pago) === backendId(paymentId)
+  ));
+  const paymentCents = item ? item.paymentCents : 0;
   return { selectedCents, paymentCents, differenceCents: paymentCents - selectedCents };
 }
 

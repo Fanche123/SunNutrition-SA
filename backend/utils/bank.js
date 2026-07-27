@@ -1,6 +1,9 @@
-function backendBankMatches(value, bank) {
-  const normalizedValue = backendNormalizeText(value);
-  const normalizedBank = backendNormalizeText(bank);
+function backendBankMatches(value, bank, normalizeText) {
+  if (typeof normalizeText !== "function") {
+    throw new TypeError("backendBankMatches requiere un normalizador de texto.");
+  }
+  const normalizedValue = normalizeText(value);
+  const normalizedBank = normalizeText(bank);
   return !normalizedValue || !normalizedBank || normalizedValue.includes(normalizedBank) || normalizedBank.includes(normalizedValue);
 }
 

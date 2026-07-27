@@ -573,10 +573,33 @@ textarea {
 
 .bank-reconciliation-controls {
   display: grid;
-  grid-template-columns: minmax(180px, 240px) minmax(360px, 1.2fr) minmax(260px, 0.9fr) 220px;
+  grid-template-columns: minmax(140px, 180px) minmax(210px, 260px) minmax(300px, 1.2fr) minmax(220px, 0.9fr) 190px;
   align-items: stretch;
   gap: 16px;
   padding: 16px 24px;
+}
+
+.bank-reconciliation-last {
+  display: grid;
+  align-content: center;
+  min-height: 64px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fbfd;
+}
+
+.bank-reconciliation-last strong {
+  color: #0d1f33;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.bank-reconciliation-last small {
+  margin-top: 3px;
+  color: #0f766e;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .bank-reconciliation-controls > label:not(.bank-file-drop-zone) {
@@ -979,6 +1002,7 @@ textarea {
   }
 
   .bank-reconciliation-controls > label:not(.bank-file-drop-zone) select,
+  .bank-reconciliation-last,
   .bank-file-drop-zone,
   .bank-file-chip,
   #bank-reconciliation-analyze {
@@ -3827,10 +3851,71 @@ button.danger {
   font-size: 18px;
 }
 
-.purchase-inventory-suggestions-header > strong {
+.purchase-inventory-suggestions-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: flex-end;
+}
+
+.purchase-inventory-suggestions-actions > strong {
   color: #b45309;
   font-size: 24px;
   line-height: 1;
+}
+
+.inventory-production-rate-form {
+  display: grid;
+  flex: 1 1 250px;
+  min-width: 0;
+  gap: 5px;
+  justify-items: end;
+}
+
+.inventory-production-rate-form > label {
+  color: #334155;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inventory-production-rate-form > div {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+}
+
+.inventory-production-rate-form input {
+  width: 128px;
+  height: 36px;
+  padding: 7px 10px;
+  text-align: right;
+  font-weight: 800;
+}
+
+.inventory-production-rate-form button {
+  min-height: 36px;
+  padding: 7px 13px;
+}
+
+.inventory-production-rate-form small {
+  min-height: 15px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.inventory-production-rate-form small[data-status="success"] {
+  color: #047857;
+}
+
+.inventory-production-rate-form small[data-status="error"] {
+  color: #b42318;
+}
+
+.inventory-production-rate-form input[aria-invalid="true"] {
+  border-color: #dc2626;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.12);
 }
 
 .purchase-inventory-suggestions > p {
@@ -5545,6 +5630,33 @@ button.danger {
   }
 
   .purchase-inventory-suggestion-row span {
+    text-align: left;
+  }
+
+  .purchase-inventory-suggestions-header {
+    flex-direction: column;
+  }
+
+  .purchase-inventory-suggestions-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .inventory-production-rate-form {
+    width: auto;
+    justify-items: stretch;
+  }
+
+  .inventory-production-rate-form > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .inventory-production-rate-form input {
+    width: 100%;
+  }
+
+  .inventory-production-rate-form small {
     text-align: left;
   }
 }

@@ -13,9 +13,11 @@ function createRequestHandler(dependencies) {
     ["POST", "/api/bank-reconciliation/analyze", handlers.handleBankReconciliationAnalyze],
     ["POST", "/api/bank-reconciliation/apply", handlers.handleBankReconciliationApply],
     ["POST", "/api/bank-reconciliation/deposit-checks", handlers.handleBankReconciliationDepositChecks],
+    ["GET", "/api/bank-reconciliation/summary", handlers.handleBankReconciliationSummary],
     ["POST", "/api/treasury/collections", handlers.handleCollectionFullEntry],
     ["POST", "/api/treasury/payments", handlers.handlePaymentFullEntry],
     ["POST", "/api/treasury/partner-contributions", handlers.handlePartnerContributionFullEntry],
+    ["GET", "/api/treasury/received-checks/pending-endorsement-payments", handlers.handlePendingEndorsementPaymentsList],
     ["POST", "/api/treasury/received-checks/endorse", handlers.handleReceivedChecksEndorse],
     ["GET", "/api/treasury/payment-plans", handlers.handlePaymentPlansList],
     ["POST", "/api/treasury/payment-plans", handlers.handlePaymentPlanCreate],
@@ -33,6 +35,7 @@ function createRequestHandler(dependencies) {
     ["GET", "/api/inventory/latest-date", handlers.handleInventoryLatestDate],
     ["POST", "/api/inventory/full-entry", handlers.handleInventoryFullEntry],
     ["GET", "/api/inventory/purchase-snapshot", handlers.handleInventoryPurchaseSnapshot],
+    ["POST", "/api/inventory/purchase-snapshot/production-rate", handlers.handleInventoryPurchaseProductionRate],
     ["GET", "/api/inventory-detail/template", handlers.handleInventoryDetailTemplate],
     ["POST", "/api/inventory-detail/append", handlers.handleInventoryDetailAppend],
     ["POST", "/api/inventory-detail/photo", handlers.handleInventoryDetailPhoto],
@@ -80,6 +83,13 @@ function createRequestHandler(dependencies) {
       }
       if (request.url.startsWith("/api/reports/cashflow") && request.method === "GET") {
         return await handlers.handleCashflowReport(request, response);
+      }
+      const bankReconciliationPath = new URL(
+        request.url,
+        `http://${request.headers.host || "127.0.0.1"}`
+      ).pathname;
+      if (bankReconciliationPath === "/api/bank-reconciliation/state" && request.method === "GET") {
+        return await handlers.handleBankReconciliationState(request, response);
       }
       const paymentPlanRoute = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`).pathname
         .match(/^\/api\/treasury\/payment-plans\/[^/]+(?:\/quotas(?:\/[^/]+(?:\/delete)?)?)?$/);

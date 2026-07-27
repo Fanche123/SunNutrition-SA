@@ -57,6 +57,8 @@ La idempotencia se registra en `_operationId` y `_operationPayload` de la fila p
 
 La navegación visible unifica cheques disponibles, depósito, carga desde cobros, pagos Endoso pendientes e historial en `Cheques recibidos`. Los estados históricos se muestran sin completar ni deducir relaciones.
 
+`GET /api/treasury/received-checks/pending-endorsement-payments` construye los pendientes exclusivamente desde pagos reconocibles por el contrato de alta actual: marcador y payload durable de creación, detalles persistidos con la misma operación y total exacto. Después de un endoso se usa el marcador de creación preservado. Los pagos históricos que solo declaran método `Endoso`, pero no tienen ese contrato completo, no se clasifican como pendientes. No se aplica ningún corte por fecha, ID o importe.
+
 ## Handoff a Tesorería
 
 La siguiente etapa debe crear el endpoint y la pantalla sin cambiar el esquema:

@@ -31,7 +31,6 @@ function updateBankReconciliationFileChip(file) {
 
 function clearBankReconciliationFile() {
   bankReconciliationFileText = "";
-  bankReconciliationReport = null;
   bankCheckDepositDraft = null;
   if (els["bank-reconciliation-file"]) els["bank-reconciliation-file"].value = "";
   els["bank-reconciliation-file-chip"]?.classList.add("is-empty");
@@ -41,13 +40,32 @@ function clearBankReconciliationFile() {
 }
 
 function refreshBankReconciliationFromBackend() {
-  if (!bankReconciliationFileText.trim() || bankReconciliationRefreshPromise) {
-    return bankReconciliationRefreshPromise;
-  }
+  if (bankReconciliationRefreshPromise) return bankReconciliationRefreshPromise;
 
-  bankReconciliationRefreshPromise = analyzeBankReconciliation({ preserveExcludedMovements: true })
+  const bank = els["bank-reconciliation-bank"]?.value || "ICBC";
+  bankReconciliationRefreshPromise = fetch(
+    `${API_BASE_URL}/api/bank-reconciliation/state?bank=${encodeURIComponent(bank)}`
+  )
+    .then(async (response) => {
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "No se pudieron cargar los movimientos pendientes.");
+      }
+      bankReconciliationReport = payload.report;
+      renderBankReconciliation();
+      void refreshBankReconciliationOpenDebtCreditors(bankReconciliationReport);
+      return bankReconciliationReport;
+    })
+    .catch((error) => {
+      console.error("No se pudieron cargar los movimientos bancarios pendientes.", error);
+      setBankReconciliationStatus(error.message, "warn");
+      return null;
+    })
     .finally(() => {
       bankReconciliationRefreshPromise = null;
+      if ((els["bank-reconciliation-bank"]?.value || "ICBC") !== bank) {
+        refreshBankReconciliationFromBackend();
+      }
     });
   return bankReconciliationRefreshPromise;
 }
@@ -81,6 +99,8 @@ async function analyzeBankReconciliation({ preserveExcludedMovements = false } =
     renderBankReconciliation();
     void refreshBankReconciliationOpenDebtCreditors(bankReconciliationReport);
   } catch (error) {
+    console.error("No se pudo analizar el extracto bancario.", error);
+    renderBankReconciliation();
     setBankReconciliationStatus(error.message, "warn");
   } finally {
     if (button) {
@@ -91,8 +111,8 @@ async function analyzeBankReconciliation({ preserveExcludedMovements = false } =
 }
 
 async function applyBankReconciliation(applyMode) {
-  if (!bankReconciliationFileText.trim() || !bankReconciliationReport?.movements?.length) {
-    setBankReconciliationStatus("Primero analiza el extracto antes de conciliar.", "warn");
+  if (!bankReconciliationReport?.movements?.length) {
+    setBankReconciliationStatus("No hay movimientos pendientes para procesar.", "warn");
     return;
   }
 
@@ -139,7 +159,6 @@ async function applyBankReconciliation(applyMode) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         bank: els["bank-reconciliation-bank"]?.value || "ICBC",
-        csvText: bankReconciliationFileText,
         applyMode,
         movementKeys: stageMovements.map((movement) => movement.movementKey),
         reviewRows: collectBankReconciliationReviewRows(stageConfig.status)
@@ -148,7 +167,7 @@ async function applyBankReconciliation(applyMode) {
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo conciliar el banco.");
     const result = payload.result || {};
-    await analyzeBankReconciliation();
+    await refreshBankReconciliationFromBackend();
     const stageMessage = {
       createExpenses: `${result.expensesCreated || 0} gasto(s) agregado(s)`,
       createEgresses: `${result.egressesCreated || 0} egreso(s) agregado(s)`,
@@ -170,4 +189,3 @@ async function applyBankReconciliation(applyMode) {
     }
   }
 }
-

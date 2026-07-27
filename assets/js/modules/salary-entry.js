@@ -1,13 +1,14 @@
-function initializeSalaryEntry() {
+async function initializeSalaryEntry() {
   if (!els["salary-period-select"]) return;
   resetSalaryLaborCostUi();
   salaryEntryScale = state.payrollEntry.scale || { categories: {}, sourceName: "" };
   renderSalaryPeriodOptions();
   if (els["salary-scale-period"]) els["salary-scale-period"].value = state.payrollEntry.selectedPeriod;
-  Promise.all([
+  await Promise.all([
     loadSalaryEmployees(),
     loadSalaryExpenseEntryData(true)
-  ]).then(renderSalaryEntry);
+  ]);
+  renderSalaryEntry();
 }
 
 function currentPayrollPeriodKey() {
@@ -49,8 +50,9 @@ async function loadSalaryEmployees() {
         contractType: normalizeEmployeeContractType(employee.contratacion, employee.nombre_empleado || employee.nombre)
       }))
       .filter((employee) => employee.id && employee.name);
-  } catch {
+  } catch (error) {
     salaryEntryEmployees = [];
+    throw error;
   }
 }
 

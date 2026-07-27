@@ -4,7 +4,7 @@ async function loadOperationalEntryOptions() {
   ];
 
   await Promise.all(optionRequests.map(async ([tableName, datalistId, valueColumn, labelColumns]) => {
-    const rows = await backendTableRowsForEntry(tableName).catch(() => []);
+    const rows = await backendTableRowsForEntry(tableName);
     renderEntryDatalistOptions(datalistId, rows, valueColumn, labelColumns);
   }));
   await Promise.all([
@@ -19,14 +19,14 @@ async function loadReceptionPurchaseOptions() {
 
   const currentValue = select.value;
   const [purchases, receptions, purchaseDetails, suppliers, supplies, providers, items, labels] = await Promise.all([
-    backendTableRowsForEntry("compras").catch(() => []),
-    backendTableRowsForEntry("recepciones").catch(() => []),
-    backendTableRowsForEntry("detalle_compras").catch(() => []),
-    backendTableRowsForEntry("insumos_proveedores").catch(() => []),
-    backendTableRowsForEntry("insumos").catch(() => []),
-    backendTableRowsForEntry("proveedores").catch(() => []),
-    backendTableRowsForEntry("items").catch(() => []),
-    backendTableRowsForEntry("etiquetas").catch(() => [])
+    backendTableRowsForEntry("compras"),
+    backendTableRowsForEntry("recepciones"),
+    backendTableRowsForEntry("detalle_compras"),
+    backendTableRowsForEntry("insumos_proveedores"),
+    backendTableRowsForEntry("insumos"),
+    backendTableRowsForEntry("proveedores"),
+    backendTableRowsForEntry("items"),
+    backendTableRowsForEntry("etiquetas")
   ]);
 
   const receivedPurchaseIds = new Set(receptions.map((row) => String(row.id_compra ?? "").trim()).filter(Boolean));
@@ -152,4 +152,3 @@ function toggleReceptionPurchaseSelection(purchaseId, checked) {
   renderReceptionPendingPurchases();
   fillReceptionFromSelectedPurchase();
 }
-

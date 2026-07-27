@@ -8,6 +8,7 @@ function createInventoryEntryService(dependencies) {
     inventoryItemNameMap,
     isIsoDate,
     loadCache,
+    logError = console.error,
     nextBusinessDayIso,
     normalizeInventoryDetailRows,
     normalizeSelectedInventoryShifts,
@@ -19,6 +20,7 @@ function createInventoryEntryService(dependencies) {
     storeInventoryPurchaseSnapshot,
     buildInventoryPurchaseSnapshot,
     clearInventoryPurchaseSnapshot,
+    updateInventoryPurchaseConfig,
     valueBackendInventories
   } = dependencies;
 
@@ -146,6 +148,29 @@ function createInventoryEntryService(dependencies) {
     });
   }
 
+  async function handleInventoryPurchaseProductionRate(request, response) {
+    const body = await readJsonBody(request);
+    const cache = loadCache();
+    try {
+      const result = updateInventoryPurchaseConfig(cache, body?.barsPerDay);
+      saveBackendCache(cache);
+      return sendJson(response, 200, {
+        ok: true,
+        config: result.config,
+        snapshot: result.snapshot
+      });
+    } catch (error) {
+      if (error?.code === "INVALID_BARS_PER_DAY") {
+        return sendJson(response, 400, { ok: false, error: error.message });
+      }
+      logError(error);
+      return sendJson(response, 500, {
+        ok: false,
+        error: "No se pudo guardar la producción diaria. Se conserva el último valor válido."
+      });
+    }
+  }
+
   async function handleInventoryDetailAppend(request, response) {
     const body = await readJsonBody(request);
     const inventoryId = Number(body.inventoryId);
@@ -203,6 +228,7 @@ function createInventoryEntryService(dependencies) {
     handleInventoryDetailTemplate,
     handleInventoryFullEntry,
     handleInventoryLatestDate,
+    handleInventoryPurchaseProductionRate,
     handleInventoryPurchaseSnapshot
   };
 }

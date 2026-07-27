@@ -90,6 +90,143 @@ const validBody = {
   checkIds: [2, 1]
 };
 
+function pendingPaymentsSeed() {
+  const paymentPayload = (date, details, method = "Endoso") => JSON.stringify({
+    details,
+    payment: { banco: "", fecha: date, metodo: method }
+  });
+  const currentPayments = [
+    {
+      id_pago: 101,
+      fecha_pago: "2026-07-25",
+      metodo: "Endoso",
+      monto: 200,
+      _operationId: "payment-create-101",
+      _operationPayload: paymentPayload("2026-07-25", [{ idEgreso: 501, monto: 200 }])
+    },
+    {
+      id_pago: 102,
+      fecha_pago: "2026-07-26",
+      metodo: "Endoso",
+      monto: 300,
+      _operationId: "endorsement-102",
+      _operationPayload: "{\"checkIds\":[1]}",
+      _paymentCreationOperationId: "payment-create-102",
+      _paymentCreationOperationPayload: paymentPayload("2026-07-26", [{ idEgreso: 502, monto: 300 }])
+    },
+    {
+      id_pago: 103,
+      fecha_pago: "2026-07-26",
+      metodo: "Endoso",
+      monto: 150,
+      _operationId: "payment-create-103",
+      _operationPayload: paymentPayload("2026-07-26", [{ idEgreso: 503, monto: 150 }])
+    },
+    {
+      id_pago: 104,
+      fecha_pago: "2026-07-26",
+      metodo: "Transferencia",
+      monto: 80,
+      _operationId: "payment-create-104",
+      _operationPayload: paymentPayload("2026-07-26", [{ idEgreso: 504, monto: 80 }], "Transferencia")
+    }
+  ];
+  return {
+    generatedAt: "",
+    tables: {
+      pagos: {
+        headers: [],
+        rows: [
+          { id_pago: 100, fecha_pago: "2026-03-01", metodo: "Endoso", monto: 900 },
+          ...currentPayments,
+          {
+            id_pago: 105,
+            fecha_pago: "",
+            metodo: "Endoso",
+            monto: 70,
+            _operationId: "payment-create-105",
+            _operationPayload: "{incompleto"
+          }
+        ],
+        rowCount: 6
+      },
+      detalle_pagos: {
+        headers: [],
+        rows: [
+          { id_detalle_pago: 1, id_pago: 100, id_egreso: 500, monto_cancelado: 900 },
+          { id_detalle_pago: 2, id_pago: 101, id_egreso: 501, monto_cancelado: 200, _operationId: "payment-create-101" },
+          { id_detalle_pago: 3, id_pago: 102, id_egreso: 502, monto_cancelado: 300, _operationId: "payment-create-102" },
+          { id_detalle_pago: 4, id_pago: 103, id_egreso: 503, monto_cancelado: 150, _operationId: "payment-create-103" },
+          { id_detalle_pago: 5, id_pago: 104, id_egreso: 504, monto_cancelado: 80, _operationId: "payment-create-104" }
+        ],
+        rowCount: 5
+      },
+      cheques_recibidos: {
+        headers: [],
+        rows: [
+          {
+            id_cheque_recibido: 1,
+            monto: 100,
+            estado: "Endosado",
+            id_pago_endoso: 102,
+            fecha_endoso: "2026-07-26"
+          },
+          {
+            id_cheque_recibido: 2,
+            monto: 150,
+            estado: "Endosado",
+            id_pago_endoso: 103,
+            fecha_endoso: "2026-07-26"
+          },
+          {
+            id_cheque_recibido: 9,
+            monto: 50,
+            estado: "Endosado",
+            id_pago_endoso: 101,
+            fecha_endoso: "2026-07-26"
+          },
+          {
+            id_cheque_recibido: 9,
+            monto: 50,
+            estado: "Endosado",
+            id_pago_endoso: 102,
+            fecha_endoso: "2026-07-26"
+          },
+          {
+            id_cheque_recibido: 10,
+            monto: 30,
+            estado: "Pendiente",
+            id_pago_endoso: 101,
+            fecha_endoso: ""
+          }
+        ],
+        rowCount: 5
+      }
+    }
+  };
+}
+
+test("lista solo pagos Endoso reconocidos por el flujo actual y calcula pendientes válidos", async () => {
+  const store = diskStore(pendingPaymentsSeed());
+  const before = store.value();
+  const result = await invoke(service(store).handlePendingEndorsementPaymentsList, {});
+
+  assert.strictEqual(result.status, 200);
+  assert.deepStrictEqual(
+    result.payload.payments.map((item) => ({
+      id: item.payment.id_pago,
+      total: item.paymentCents,
+      assigned: item.assignedCents,
+      difference: item.differenceCents
+    })),
+    [
+      { id: 101, total: 20000, assigned: 0, difference: 20000 },
+      { id: 102, total: 30000, assigned: 10000, difference: 20000 }
+    ]
+  );
+  assert.deepStrictEqual(store.value(), before);
+});
+
 test("endosa uno o varios cheques con una sola persistencia y sin tocar otras tablas", async () => {
   const store = diskStore(seed());
   const before = store.value();
@@ -164,9 +301,15 @@ test("un fallo después de actualizar el snapshot no persiste ninguna fila", asy
 
 test("la navegación visible queda unificada y Pagos ofrece Endoso", () => {
   const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const receivedCheckModule = fs.readFileSync(
+    path.join(__dirname, "..", "assets", "js", "modules", "received-check-entry.js"),
+    "utf8"
+  );
   assert.strictEqual((html.match(/data-view="received-check-entry"/g) || []).length, 1);
   assert.strictEqual((html.match(/data-view="deposited-checks-entry"/g) || []).length, 0);
   assert.match(html, /<option value="Endoso">Endoso<\/option>/);
   assert.match(html, /id="view-deposited-checks-entry"/);
   assert.match(html, /data-view="issued-check-entry"/);
+  assert.match(receivedCheckModule, /\/api\/treasury\/received-checks\/pending-endorsement-payments/);
+  assert.doesNotMatch(receivedCheckModule, /backendTableRowsForEntry\("pagos"\)/);
 });

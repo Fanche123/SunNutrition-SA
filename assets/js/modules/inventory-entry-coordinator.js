@@ -55,17 +55,15 @@ async function refreshInventoryDefaultDateFromBackend({ force = true } = {}) {
   if (!els["inventory-date-input"]) return false;
   if (!force && els["inventory-date-input"].value) return false;
 
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/inventory/latest-date`);
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.nextDate) return false;
-
-    const changed = els["inventory-date-input"].value !== payload.nextDate;
-    els["inventory-date-input"].value = payload.nextDate;
-    return changed;
-  } catch {
-    return false;
+  const response = await fetch(`${API_BASE_URL}/api/inventory/latest-date`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.nextDate) {
+    throw new Error(payload.error || "No se pudo obtener la proxima fecha de inventario.");
   }
+
+  const changed = els["inventory-date-input"].value !== payload.nextDate;
+  els["inventory-date-input"].value = payload.nextDate;
+  return changed;
 }
 
 function nextBusinessDayAfterLastInventory() {

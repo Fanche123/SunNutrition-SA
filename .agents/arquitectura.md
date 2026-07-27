@@ -45,6 +45,8 @@ Arquitectura no posee tablas operativas. Posee el diseño de despacho y los cont
 
 Tesorería expone además operaciones compuestas exactas bajo `/api/treasury/collections`, `/api/treasury/payments` y `/api/treasury/partner-contributions`. Sus servicios propietarios validan y persisten el cache completo una sola vez; `server.js` solo los compone y no ejecuta siembras financieras durante el arranque.
 
+Conciliación bancaria expone lectura focalizada bajo `/api/bank-reconciliation/state` y `/api/bank-reconciliation/summary`. El metadato superior `bankReconciliation.pendingMovements` conserva pendientes normalizados sin agregar tablas/columnas; las conciliaciones efectivas continúan en `movimientos_bancarios`.
+
 Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnóstico `/api/reports/income-statement/economic-comparison`. `router.js` solo despacha y `server.js` solo inyecta dependencias; no hay siembra, integración automática de productores ni cambio del resultado oficial.
 
 ## Dependencias y localización
@@ -56,6 +58,7 @@ Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnósti
 - API frontend: `assets/js/core/api.js` centraliza requests JSON. Las rutas `/api/...` son same-origin; ningún módulo debe fijar host, IP o puerto del backend.
 - Dinero: `shared/money.js` se carga antes de cualquier consumidor, opera con centavos enteros y es la única fuente de parsing/formato. `formatters.js` solo expone adaptadores históricos. Porcentajes, cantidades, horas e IDs no usan este contrato.
 - Alertas de compra: `inventory-purchase-snapshot.service.js` importa la regla compartida de Inventario; conserva la fotografía materializada por una carga nueva y, si falta o está obsoleta, reconstruye en memoria desde el último lote persistido. Inventario, Dashboard y la lista superior de Compras consumen únicamente ese contrato derivado.
+- Producción diaria: `inventoryPurchaseConfig.barsPerDay` es metadato superior del cache y el servicio de snapshot lo aplica a la regla compartida antes de entregar el mismo resultado a Inventario, Dashboard y Compras. No usar `app-state` ni `localStorage` como fuente de este valor.
 - Persistencia: `data-store.js`, repositorios, config y AGENT Base de datos.
 - Dominio: buscar el módulo/servicio dueño antes de tocar compartidos.
 - Documentación: `docs/architecture.md` y ownership.
@@ -79,6 +82,8 @@ El despliegue predeterminado es local sobre `127.0.0.1`. `backend/config/access.
 ## Trabajo con subagentes nativos
 
 El Coordinador recibe pedidos nuevos y crea un hilo principal visible con `create_thread`, nunca un Jefe anidado mediante `spawn_agent`. El nuevo hilo determina ownership y coordina sus subagentes. No se ejecutan dos escritores sobre la misma carpeta; el paralelismo de escritura requiere worktrees.
+
+El progreso de tareas Codex se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía read-only basada en estado, turnos y timestamps; no crea subagentes, watchers, timers ni automations para seguimiento. El único `validador_tarea` final permanece sin cambios.
 
 La coordinación v2 basada en archivos se conserva únicamente para recuperación manual y nunca se combina con el flujo nativo de una misma tarea.
 

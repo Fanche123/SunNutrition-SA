@@ -16,9 +16,11 @@ async function loadBackendStatementReport() {
     renderStatement(payload.report, payload.comparisonReport || null);
     renderWarnings(payload.report);
     renderTables(payload.report);
+    return true;
   } catch (error) {
     if (requestId !== backendStatementRequestId) return;
     renderStatementLoadError(error);
+    return false;
   }
 }
 
@@ -33,9 +35,11 @@ async function loadBackendCashflowReport() {
     if (requestId !== backendCashflowRequestId) return;
     backendCashflowReport = payload.report;
     renderCashflow();
+    return true;
   } catch (error) {
     if (requestId !== backendCashflowRequestId) return;
     renderCashflowLoadError(error, Boolean(backendCashflowReport));
+    return false;
   }
 }
 

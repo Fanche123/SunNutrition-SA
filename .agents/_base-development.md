@@ -58,6 +58,12 @@ El Coordinador no usa `spawn_agent` ni Jefes anidados, no hace trabajo técnico 
 
 Usar Local cuando se necesiten runtime principal, localhost o archivos locales. Usar Worktree para aislamiento o cuando otra tarea escritora ya esté activa. No ejecutar dos escritores simultáneos sobre la misma carpeta principal.
 
+## Consulta de progreso bajo demanda
+
+Las tareas y correcciones no crean monitores automáticos. Cuando el usuario pide estado, porcentaje, tiempo transcurrido o estimación restante de tareas Codex, el Coordinador usa la skill personal `$estimar-progreso-hilos` y responde con una fotografía inmediata basada en evidencia.
+
+La consulta es estrictamente read-only: descubre y lee hilos con las herramientas nativas, no espera su finalización, no les envía mensajes y no cambia archivos ni estado. El Coordinador no crea subagentes, watchers, timers, automations ni procesos residentes para estimar progreso.
+
 ## Validación independiente única
 
 Al finalizar cada pedido o corrección explícita, el hilo principal prepara una entrega preliminar y crea exactamente un `validador_tarea` read-only. Le entrega taskId explícito, intención, alcance, dominio, riesgo, impacto visual, archivos propios, resumen del diff relevante, pruebas, evidencias, riesgos, cambios preexistentes identificados y estado relevante del working tree.
