@@ -20,11 +20,11 @@ Contabilidad no posee `egresos`, `pagos`, productores operativos ni el Estado de
 - Compras produce recepciones y otros gastos.
 - RR. HH. produce sueldos y costos laborales.
 - Ventas produce comisiones y logística.
-- Tesorería produce refinanciaciones y planes de pago.
+- Tesorería produce refinanciaciones, planes de pago y rendimientos del fondo de inversión.
 - Reportes consume gastos confirmados y diagnósticos.
 - Tesorería consulta la conciliación económica de egresos.
 
-La primera etapa no conecta productores ni migra históricos. Las tablas nuevas comienzan vacías y Administración solo puede leerlas.
+La integración del fondo es una excepción explícita: cada rendimiento crea en el mismo guardado un gasto confirmado `fondo_inversion`, positivo en Tesorería y negativo únicamente en `gastos_economicos`.
 
 ## Reglas
 
@@ -35,6 +35,7 @@ La primera etapa no conecta productores ni migra históricos. Las tablas nuevas 
 - Las aplicaciones vigentes respetan tolerancia `0,01`; la conciliación es derivada.
 - Capital, intereses, aplicaciones y comparaciones usan el contrato único `shared/money.js` / `docs/money-contract.md`; la tolerancia `0,01` representa exactamente un centavo, no una comparación de punto flotante.
 - No generar automáticamente gastos por impuestos ni decidir políticas contables pendientes.
+- Reportes consume solo los confirmados con `origen_tipo = fondo_inversion` dentro del Estado de Resultados oficial; no los reconstruye desde banco ni los vuelve a sumar por otra fuente.
 - Toda escritura valida, clona el cache y ejecuta un único `saveBackendCache`.
 
 ## Validación y seguridad

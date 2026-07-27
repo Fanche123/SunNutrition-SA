@@ -1,31 +1,43 @@
 const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/money");
 
 function createBankReconciliationService(dependencies) {
-  const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendPersistedBankMovementCounts, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankMovementFingerprint, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
+  const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankMovementAssociation, bankMovementFingerprint, canonicalPendingBankMovements, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, importBankMovements, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
   const failureInjector = dependencies.failureInjector || (() => {});
   const now = dependencies.now || (() => new Date());
 
   async function handleBankReconciliationAnalyze(request, response) {
     try {
       const body = await readJsonBody(request);
+      const bank = cleanBackendText(body.bank) || "ICBC";
+      const csvText = String(body.csvText || "");
+      if (!csvText.trim()) {
+        const error = new Error("El archivo bancario esta vacio.");
+        error.statusCode = 400;
+        throw error;
+      }
+      const parsedMovements = parseBankMovements(csvText);
+      if (!parsedMovements.length) {
+        const error = new Error("El archivo no contiene movimientos bancarios validos.");
+        error.statusCode = 400;
+        throw error;
+      }
       const sourceCache = JSON.parse(JSON.stringify(loadCache()));
-      const existingKeys = new Set(pendingBankMovements(sourceCache, body.bank).map((movement) => movement.movementKey));
-      const report = buildBankReconciliationReport(body, sourceCache);
-      const resultingKeys = new Set(report.movements.map((movement) => movement.movementKey));
-      const newCount = [...resultingKeys].filter((key) => !existingKeys.has(key)).length;
+      if (!sourceCache.tables) sourceCache.tables = {};
+      const merge = importBankMovements(sourceCache.tables, parsedMovements, bank);
+      const report = buildBankReconciliationReport({ bank }, sourceCache);
+      report.rowsRead = parsedMovements.length;
       report.merge = {
-        newCount,
-        duplicateCount: Math.max(0, report.rowsRead - newCount),
+        newCount: merge.newCount,
+        duplicateCount: merge.duplicateCount,
         totalPending: report.movements.length
       };
-      storePendingBankMovements(sourceCache, report.bank, report.movements);
       sourceCache.generatedAt = new Date().toISOString();
       failureInjector("before-bank-reconciliation-save");
       saveBackendCache(sourceCache);
       sendJson(response, 200, { ok: true, report });
     } catch (error) {
-      console.error("No se pudo analizar el extracto bancario.", error);
       const statusCode = error.statusCode || 500;
+      if (statusCode >= 500) console.error("No se pudo analizar el extracto bancario.", error);
       const message = statusCode < 500
         ? error.message
         : "No se pudo analizar el extracto bancario. Revisa el archivo e intentalo nuevamente.";
@@ -37,11 +49,7 @@ function createBankReconciliationService(dependencies) {
     try {
       const body = await readJsonBody(request);
       const sourceCache = JSON.parse(JSON.stringify(loadCache()));
-      const hasStoredPending = pendingBankMovements(sourceCache, body.bank || "ICBC").length > 0;
-      const report = buildBankReconciliationReport(
-        hasStoredPending ? { ...body, csvText: "" } : body,
-        sourceCache
-      );
+      const report = buildBankReconciliationReport(body, sourceCache);
       const result = applyBankReconciliationReport(report);
       sendJson(response, 200, { ok: true, result });
     } catch (error) {
@@ -121,10 +129,11 @@ function createBankReconciliationService(dependencies) {
         });
       }
       if (!manualDeposit) {
-        const alreadyRegistered = (tables.movimientos_bancarios.rows || []).some((row) => (
-          bankMovementFingerprint(row, row.banco || bank) === depositKey
-        ));
-        if (alreadyRegistered) throw new Error("Este depósito ya fue conciliado en otra operación.");
+        const canonicalRow = findCanonicalBankMovementRow(tables, movement, bank);
+        if (!canonicalRow) throwConflict("El movimiento bancario pendiente ya no existe.");
+        if (backendId(canonicalRow.id_pago) || backendId(canonicalRow.id_cobro) || backendId(canonicalRow.id_movimiento_fondo)) {
+          throwConflict("Este depósito ya fue conciliado en otra operación.");
+        }
       }
       if (selectedChecks.some((row) => backendNormalizeText(row.estado).includes("deposit"))) {
         throw new Error("Uno de los cheques seleccionados ya fue depositado en otra operación.");
@@ -142,8 +151,12 @@ function createBankReconciliationService(dependencies) {
       });
       failureInjector("after-check-updates");
       if (!manualDeposit) {
+        const canonicalRow = findCanonicalBankMovementRow(tables, movement, bank);
         persistBankMovement(tables, {
           ...movement,
+          canonicalMovementId: backendId(canonicalRow?.id_movimiento_bancario),
+          movementKey: cleanBackendText(canonicalRow?._bankMovementKey)
+            || cleanBackendText(movement?.movementKey),
           debit: 0,
           credit: depositedAmount,
           amount: depositedAmount,
@@ -153,7 +166,6 @@ function createBankReconciliationService(dependencies) {
             idCobro: selectedChecks[0].id_cobro
           }
         }, bank, depositId, depositPayload);
-        removePendingBankMovements(cache, bank, [movement?.movementKey].filter(Boolean));
       }
   
       cache.generatedAt = timestamp;
@@ -166,15 +178,14 @@ function createBankReconciliationService(dependencies) {
   
   function buildBankReconciliationReport(body = {}, sourceCache = JSON.parse(JSON.stringify(loadCache()))) {
     const bank = String(body.bank || "ICBC").trim() || "ICBC";
-    const csvText = String(body.csvText || "");
     const cache = JSON.parse(JSON.stringify(sourceCache));
     if (!cache.tables) cache.tables = {};
     ensureBackendTable(cache.tables, "datos_bancarios");
+    ensureBackendTable(cache.tables, "movimientos_bancarios");
     seedDefaultBankDetails(cache);
     normalizeBackendBankDetails(cache);
     const tables = cache.tables || {};
-    const incomingMovements = csvText.trim() ? parseBankMovements(csvText) : [];
-    const storedMovements = pendingBankMovements(sourceCache, bank);
+    const storedMovements = canonicalPendingBankMovements(tables, bank);
   
     const paymentCandidates = backendBankPaymentCandidates(tables, bank);
     const collectionCandidates = backendBankCollectionCandidates(tables, bank);
@@ -185,43 +196,27 @@ function createBankReconciliationService(dependencies) {
     const receivedChecksByNumber = backendReceivedChecksByNumber(tables);
     const issuedChecksByNumber = backendIssuedChecksByNumber(tables);
     const receivedCheckDepositGroups = backendReceivedCheckDepositGroups(tables, bank);
-    const analyzeMovements = (movements, persistedMovementCounts) => movements.map((movement) => (
-      analyzeBankMovement(
+    const analyzedMovements = storedMovements.map((movement) => (
+      normalizePendingAnalysis(analyzeBankMovement(
         movement,
         paymentCandidates,
         collectionCandidates,
         payableCandidates,
         creditPayableCandidates,
         sourceCandidates,
-        persistedMovementCounts,
+        new Map(),
         identityIndex,
         receivedChecksByNumber,
         issuedChecksByNumber,
         receivedCheckDepositGroups,
         bank
-      )
+      ), tables)
     ));
-    const storedAnalyzed = analyzeMovements(storedMovements, new Map());
-    const reconciledMovementKeys = new Set(
-      (tables.movimientos_bancarios?.rows || [])
-        .filter((row) => backendNormalizeText(row.banco) === backendNormalizeText(bank))
-        .map((row) => cleanBackendText(row._bankMovementKey))
-        .filter(Boolean)
-    );
-    const incomingWithKeys = assignBankMovementKeys(incomingMovements, bank);
-    const incomingAnalyzed = analyzeMovements(
-      incomingWithKeys.filter((movement) => !reconciledMovementKeys.has(cleanBackendText(movement.movementKey))),
-      backendPersistedBankMovementCounts(tables, bank, { legacyOnly: true })
-    ).filter((movement) => movement.status !== "conciliado");
-    const mergedMovements = new Map(storedAnalyzed.map((movement) => [movement.movementKey, movement]));
-    incomingAnalyzed.forEach((movement) => mergedMovements.set(movement.movementKey, movement));
-    const analyzedMovements = [...mergedMovements.values()];
   
-    const reconciled = analyzedMovements.filter((movement) => movement.status === "conciliado");
     const ready = analyzedMovements.filter((movement) => movement.status === "listo");
-    const pending = analyzedMovements.filter((movement) => movement.status !== "conciliado");
+    const pending = analyzedMovements;
     const lastBalance = normalizeMoney(
-      analyzedMovements.find((movement) => Number.isFinite(movement.balance))?.balance || 0
+      [...analyzedMovements].reverse().find((movement) => Number.isFinite(movement.balance))?.balance || 0
     );
     const pendingDebitCents = pending
       .filter((movement) => toCents(movement.amount) < 0)
@@ -235,10 +230,10 @@ function createBankReconciliationService(dependencies) {
     return {
       bank,
       source: "backend",
-      rowsRead: incomingMovements.length,
+      rowsRead: 0,
       summary: {
         realBalance: lastBalance,
-        reconciledCount: reconciled.length,
+        reconciledCount: 0,
         readyCount: ready.length,
         pendingCount: pending.length,
         totalPendingCount: analyzedMovements.length,
@@ -257,6 +252,19 @@ function createBankReconciliationService(dependencies) {
       movements: analyzedMovements
     };
   }
+
+  function normalizePendingAnalysis(movement, tables) {
+    if (movement.status !== "listo") return movement;
+    const { idPago, idCobro } = bankMovementAssociation(movement);
+    const validPayment = idPago && (tables.pagos?.rows || []).some((row) => backendId(row.id_pago) === idPago);
+    const validCollection = idCobro && (tables.cobros?.rows || []).some((row) => backendId(row.id_cobro) === idCobro);
+    if ((validPayment && !idCobro) || (validCollection && !idPago)) return movement;
+    return {
+      ...movement,
+      status: "revisar",
+      action: "Requiere asociar un pago o un cobro"
+    };
+  }
   
   function backendBankLookupValues(rows, column, defaults = []) {
     return [...new Set([
@@ -265,82 +273,15 @@ function createBankReconciliationService(dependencies) {
     ].filter(Boolean))].sort((left, right) => left.localeCompare(right, "es"));
   }
 
-  function bankReconciliationState(cache) {
-    const current = cache.bankReconciliation;
-    if (current && !Array.isArray(current) && Array.isArray(current.pendingMovements)) return current;
-    return { version: 1, pendingMovements: [], updatedAt: "" };
-  }
-
-  function pendingBankMovements(cache, bank) {
-    const normalizedBank = backendNormalizeText(bank);
-    return bankReconciliationState(cache).pendingMovements
-      .filter((movement) => backendNormalizeText(movement.bank) === normalizedBank)
-      .map((movement) => ({ ...movement }));
-  }
-
-  function storePendingBankMovements(cache, bank, movements) {
-    const state = bankReconciliationState(cache);
-    const normalizedBank = backendNormalizeText(bank);
-    const otherBanks = state.pendingMovements.filter((movement) => (
-      backendNormalizeText(movement.bank) !== normalizedBank
-    ));
-    cache.bankReconciliation = {
-      version: 1,
-      pendingMovements: [
-        ...otherBanks,
-        ...movements.map((movement) => persistedPendingBankMovement(movement, bank))
-      ],
-      updatedAt: new Date().toISOString()
-    };
-  }
-
-  function removePendingBankMovements(cache, bank, movementKeys) {
-    const state = bankReconciliationState(cache);
-    const normalizedBank = backendNormalizeText(bank);
-    const selected = new Set((movementKeys || []).map(String));
-    const remaining = state.pendingMovements.filter((movement) => (
-      backendNormalizeText(movement.bank) !== normalizedBank
-      || !selected.has(String(movement.movementKey || ""))
-    ));
-    if (remaining.length === state.pendingMovements.length) return false;
-    cache.bankReconciliation = {
-      version: 1,
-      pendingMovements: remaining,
-      updatedAt: new Date().toISOString()
-    };
-    return true;
-  }
-
-  function persistedPendingBankMovement(movement, bank) {
-    const fields = [
-      "movementKey", "rowNumber", "date", "code", "concept", "bankConcept", "detail",
-      "counterpartyName", "cuit", "checkNumber", "cbuAlias", "docType", "amount",
-      "debit", "credit", "balance", "channel"
-    ];
-    return fields.reduce((stored, field) => {
-      if (movement[field] !== undefined) stored[field] = movement[field];
-      return stored;
-    }, { bank });
-  }
-
-  function assignBankMovementKeys(movements, bank) {
-    const occurrences = new Map();
-    return (movements || []).map((movement) => {
-      const fingerprint = bankMovementFingerprint(movement, bank);
-      const occurrence = (occurrences.get(fingerprint) || 0) + 1;
-      occurrences.set(fingerprint, occurrence);
-      return { ...movement, movementKey: `${fingerprint}:${occurrence}` };
-    });
-  }
-
   function bankReconciliationDateSummary(cache, bank = "") {
     const normalizedBank = backendNormalizeText(bank);
-    const rows = (cache.tables?.movimientos_bancarios?.rows || [])
+    const bankMovements = cache.tables?.movimientos_bancarios?.rows || [];
+    const rows = bankMovements
       .map((row) => ({
         bank: cleanBackendText(row.banco) || "Banco sin identificar",
         date: normalizedBankDate(row.fecha)
       }))
-      .filter((row) => row.date && (!normalizedBank || backendNormalizeText(row.bank) === normalizedBank));
+      .filter((row) => row.date);
     const byBank = new Map();
     rows.forEach((row) => {
       const key = backendNormalizeText(row.bank);
@@ -357,11 +298,15 @@ function createBankReconciliationService(dependencies) {
       }));
     const latest = details[0] || null;
     return {
-      bank: normalizedBank ? bank : (latest?.bank || ""),
+      bank: latest?.bank || "",
       account: "",
       latestDate: latest?.latestDate || "",
       daysElapsed: latest?.daysElapsed ?? null,
-      reconciledCount: rows.length,
+      reconciledCount: bankMovements.filter((row) => (
+        (backendId(row.id_pago) || backendId(row.id_cobro) || backendId(row.id_movimiento_fondo))
+        && normalizedBankDate(row.fecha)
+        && (!normalizedBank || backendNormalizeText(row.banco) === normalizedBank)
+      )).length,
       details
     };
   }
@@ -425,7 +370,6 @@ function createBankReconciliationService(dependencies) {
       skipped: 0
     };
     const notes = [];
-    const reconciledMovementKeys = new Set();
     const selectedKeys = new Set(report.movementKeys || []);
     const selectedMovements = (report.movements || []).filter((movement) => (
       !selectedKeys.size || selectedKeys.has(String(movement.movementKey || ""))
@@ -450,9 +394,6 @@ function createBankReconciliationService(dependencies) {
       if (existingOperation) {
         assertSameOperation(existingOperation._bankOperationPayload, operationPayload);
         assertBankOperationRelations(tables, report.applyMode, operationKey);
-        if (report.applyMode === "reconcile") {
-          reconciledMovementKeys.add(String(movement.movementKey || ""));
-        }
         return skipBankMovement(counters);
       }
       if (report.applyMode === "createExpenses") {
@@ -505,7 +446,6 @@ function createBankReconciliationService(dependencies) {
           if (updated) counters.checksUpdated += 1;
         }
         persistBankMovement(tables, movement, report.bank, operationKey, operationPayload);
-        reconciledMovementKeys.add(String(movement.movementKey || ""));
         counters.movementsReconciled += 1;
         return;
       }
@@ -513,9 +453,6 @@ function createBankReconciliationService(dependencies) {
       counters.skipped += 1;
     });
   
-    if (report.applyMode === "reconcile" && reconciledMovementKeys.size) {
-      removePendingBankMovements(cache, report.bank, [...reconciledMovementKeys]);
-    }
     cache.generatedAt = new Date().toISOString();
     failureInjector("before-bank-reconciliation-save");
     saveBackendCache(cache);
@@ -595,6 +532,21 @@ function createBankReconciliationService(dependencies) {
       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`).join(",")}}`;
     }
     return JSON.stringify(value ?? null);
+  }
+
+  function findCanonicalBankMovementRow(tables, movement, bank) {
+    const movementId = backendId(movement?.canonicalMovementId);
+    const movementKey = cleanBackendText(movement?.movementKey);
+    const rows = tables.movimientos_bancarios?.rows || [];
+    return rows.find((row) => (
+      (movementId && backendId(row.id_movimiento_bancario) === movementId)
+      || (movementKey && cleanBackendText(row._bankMovementKey) === movementKey)
+    )) || rows.find((row) => (
+      backendNormalizeText(row.banco) === backendNormalizeText(bank)
+      && bankMovementFingerprint(row, row.banco || bank) === bankMovementFingerprint(movement, bank)
+      && !backendId(row.id_pago)
+      && !backendId(row.id_cobro)
+    ));
   }
 
   return {

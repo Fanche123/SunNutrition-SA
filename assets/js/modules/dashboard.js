@@ -30,7 +30,7 @@ async function loadDashboardWidgets() {
       source("cheques recibidos", backendTableRowsForEntry("cheques_recibidos")),
       source("cuotas de planes de pago", loadDashboardPaymentPlanQuotas()),
       source("evaluacion de insumos a comprar", loadDashboardInventoryPurchaseSnapshot()),
-      source("ultima conciliacion bancaria", loadDashboardBankReconciliationSummary())
+      source("ultima fecha bancaria", loadDashboardBankReconciliationSummary())
     ]);
     const [
       issuedChecks,
@@ -303,7 +303,7 @@ function renderDashboardLoading() {
   els["dashboard-received-checks-widget"].hidden = true;
   els["dashboard-inventory-purchases-widget"].hidden = true;
   if (els["dashboard-bank-reconciliation-days"]) els["dashboard-bank-reconciliation-days"].textContent = "-";
-  if (els["dashboard-bank-reconciliation-summary"]) els["dashboard-bank-reconciliation-summary"].textContent = "Cargando ultima conciliacion...";
+  if (els["dashboard-bank-reconciliation-summary"]) els["dashboard-bank-reconciliation-summary"].textContent = "Cargando ultima fecha bancaria...";
   if (els["dashboard-bank-reconciliation-list"]) els["dashboard-bank-reconciliation-list"].innerHTML = "";
   els["dashboard-payment-plans-count"].textContent = "-";
   els["dashboard-payment-plans-summary"].textContent = "Cargando cuotas proximas...";
@@ -528,7 +528,7 @@ function renderDashboardBankReconciliationWidget() {
     ? `No se pudo cargar: ${loadError}.`
     : hasDate
     ? `${formatDate(summary.latestDate)} · Hace ${Math.max(0, Math.trunc(days || 0))} ${Math.trunc(days || 0) === 1 ? "dia" : "dias"} · ${summary.bank || "Banco sin identificar"}`
-    : "Sin conciliaciones registradas.";
+    : "Sin movimientos bancarios registrados.";
   els["dashboard-bank-reconciliation-list"].innerHTML = loadError
     ? dashboardLoadError(loadError)
     : isExpanded
@@ -541,7 +541,7 @@ function renderDashboardBankReconciliationWidget() {
 
 function dashboardBankReconciliationDetails(details) {
   if (!details.length) {
-    return `<div class="dashboard-plain-empty dashboard-expanded-empty">Sin conciliaciones registradas.</div>`;
+    return `<div class="dashboard-plain-empty dashboard-expanded-empty">Sin movimientos bancarios registrados.</div>`;
   }
   return details.map((detail) => `
     <div class="dashboard-plain-row">

@@ -388,7 +388,7 @@
               </select>
             </label>
             <div class="bank-reconciliation-last" aria-live="polite">
-              <strong id="bank-reconciliation-last-date">Sin conciliaciones registradas</strong>
+              <strong id="bank-reconciliation-last-date">Sin movimientos bancarios registrados</strong>
               <small id="bank-reconciliation-last-days"></small>
             </div>
             <label class="bank-file-drop-zone" id="bank-reconciliation-drop-zone">
@@ -428,6 +428,85 @@
             <strong id="bank-reconciliation-net-pending">$ 0,00</strong>
           </div>
         </div>
+
+        <section class="panel investment-fund-panel" aria-labelledby="investment-fund-title">
+          <div class="panel-header investment-fund-heading">
+            <div>
+              <span class="investment-fund-eyebrow">Tesoreria · Fondo comun de inversion</span>
+              <h2 id="investment-fund-title">Fondo de inversion</h2>
+              <span id="investment-fund-status">Cargando movimientos del fondo...</span>
+            </div>
+            <div class="investment-fund-balance-card">
+              <span>Saldo actual del fondo</span>
+              <strong id="investment-fund-balance">$ 0,00</strong>
+              <small>Separado del saldo bancario</small>
+            </div>
+          </div>
+          <form id="investment-fund-form" class="investment-fund-form">
+            <label>
+              <span>Tipo *</span>
+              <select id="investment-fund-type" required>
+                <option value="deposito">Deposito</option>
+                <option value="rescate">Rescate</option>
+                <option value="rendimiento">Rendimiento</option>
+              </select>
+            </label>
+            <label>
+              <span>Fecha *</span>
+              <input id="investment-fund-date" type="date" required>
+            </label>
+            <label>
+              <span>Importe *</span>
+              <span class="unit-input money-input">
+                <input id="investment-fund-amount" type="text" inputmode="decimal" data-money-input required>
+                <span>$</span>
+              </span>
+            </label>
+            <label id="investment-fund-period-field" hidden>
+              <span>Mes del rendimiento *</span>
+              <input id="investment-fund-period" type="month">
+            </label>
+            <label id="investment-fund-tag-field" hidden>
+              <span>Etiqueta economica *</span>
+              <select id="investment-fund-tag"></select>
+            </label>
+            <label id="investment-fund-bank-field" class="investment-fund-bank-field">
+              <span>Movimiento bancario</span>
+              <select id="investment-fund-bank-movement">
+                <option value="">Sin asociacion bancaria</option>
+              </select>
+            </label>
+            <label>
+              <span>Referencia</span>
+              <input id="investment-fund-reference" type="text" maxlength="120" placeholder="Ej. ICBC FCI">
+            </label>
+            <label class="investment-fund-observation-field">
+              <span>Observacion</span>
+              <input id="investment-fund-observation" type="text" maxlength="240" placeholder="Detalle auditable del movimiento">
+            </label>
+            <div class="investment-fund-form-actions">
+              <p id="investment-fund-form-status" class="form-status" aria-live="polite"></p>
+              <button type="submit">Registrar movimiento</button>
+            </div>
+          </form>
+          <div class="table-wrap investment-fund-history-wrap">
+            <table class="investment-fund-history">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Tipo</th>
+                  <th class="num">Importe</th>
+                  <th>Referencia bancaria / mes</th>
+                  <th class="num">Saldo resultante</th>
+                  <th>Observacion</th>
+                </tr>
+              </thead>
+              <tbody id="investment-fund-history-body">
+                <tr><td class="empty" colspan="6">Cargando movimientos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
 
         <section class="panel">
           <div class="panel-header">
@@ -607,11 +686,11 @@
             <div class="dashboard-widget-header">
               <div>
                 <span>Tesoreria</span>
-                <h2>Ultima conciliacion bancaria</h2>
+                <h2>Ultimo movimiento bancario</h2>
               </div>
               <strong id="dashboard-bank-reconciliation-days">-</strong>
             </div>
-            <p id="dashboard-bank-reconciliation-summary">Cargando ultima conciliacion...</p>
+            <p id="dashboard-bank-reconciliation-summary">Cargando ultima fecha bancaria...</p>
             <div class="dashboard-widget-list" id="dashboard-bank-reconciliation-list"></div>
           </article>
 
@@ -2586,6 +2665,7 @@
 <script src="assets/js/modules/bank-reconciliation-render.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-checks.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-drafts.js?v=20260722-architecture-stage2"></script>
+<script src="assets/js/modules/investment-fund.js?v=20260727-investment-fund"></script>
 <script src="assets/js/modules/inventory-detail-template.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/inventory-detail-photo.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/inventory-theoretical-model.js?v=20260722-architecture-stage2"></script>

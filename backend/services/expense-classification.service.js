@@ -164,6 +164,21 @@ function createExpenseClassificationService(dependencies) {
       totalsInCents[expense.category] = (totalsInCents[expense.category] || 0)
         + toCents(expense.amount);
     });
+    const startPeriod = String(startIso || "").slice(0, 7);
+    const endPeriod = String(endIso || "").slice(0, 7);
+    const tagNameById = backendTagNameMap(tables);
+    (tables.gastos_economicos?.rows || [])
+      .filter((expense) => (
+        expense.estado === "confirmado"
+        && expense.origen_tipo === "fondo_inversion"
+        && expense.periodo_economico >= startPeriod
+        && expense.periodo_economico <= endPeriod
+      ))
+      .forEach((expense) => {
+        const category = backendTagNameForId(expense.id_etiqueta, tagNameById) || "Rendimiento Fondo";
+        totalsInCents[category] = (totalsInCents[category] || 0)
+          + toCents(backendNumber(expense.importe));
+      });
 
     return Object.fromEntries(Object.entries(totalsInCents).map(([category, cents]) => [
       category,

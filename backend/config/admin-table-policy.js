@@ -26,6 +26,14 @@ const ADMIN_TABLE_POLICY = {
   cuotas_planes_pagos: editable(),
   gastos_economicos: editable(),
   gastos_egresos: editable(),
+  fondos_inversion_movimientos: policy(
+    true,
+    false,
+    false,
+    false,
+    "operational-readonly",
+    "Los movimientos del fondo se administran desde Tesoreria para conservar saldos y relaciones."
+  ),
 
   movimientos_bancarios: editable(),
   pedidos: editable(),

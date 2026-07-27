@@ -43,11 +43,11 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 
 Arquitectura no posee tablas operativas. Posee el diseño de despacho y los contratos globales confirmados en `router.js`: health, schema, overview/map, tablas genéricas, app-state, SQL, reportes y rutas exactas de dominio. Cambiar método/path/JSON o el registro de tablas es alto riesgo y requiere coordinar dueño funcional y Base de datos.
 
-Tesorería expone además operaciones compuestas exactas bajo `/api/treasury/collections`, `/api/treasury/payments` y `/api/treasury/partner-contributions`. Sus servicios propietarios validan y persisten el cache completo una sola vez; `server.js` solo los compone y no ejecuta siembras financieras durante el arranque.
+Tesorería expone además operaciones compuestas exactas bajo `/api/treasury/collections`, `/api/treasury/payments`, `/api/treasury/partner-contributions` y `/api/treasury/investment-fund`. Sus servicios propietarios validan y persisten el cache completo una sola vez; `server.js` solo los compone y no ejecuta siembras financieras durante el arranque.
 
-Conciliación bancaria expone lectura focalizada bajo `/api/bank-reconciliation/state` y `/api/bank-reconciliation/summary`. El metadato superior `bankReconciliation.pendingMovements` conserva pendientes normalizados sin agregar tablas/columnas; las conciliaciones efectivas continúan en `movimientos_bancarios`.
+Conciliación bancaria expone lectura focalizada bajo `/api/bank-reconciliation/state` y `/api/bank-reconciliation/summary`. `movimientos_bancarios` es la única fuente de movimientos importados: las asociaciones vacías definen pendientes y `id_pago`, `id_cobro` o `id_movimiento_fondo` define conciliados. El metadato superior histórico `bankReconciliation.pendingMovements` queda ignorado, sin borrado ni migración automática.
 
-Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnóstico `/api/reports/income-statement/economic-comparison`. `router.js` solo despacha y `server.js` solo inyecta dependencias; no hay siembra, integración automática de productores ni cambio del resultado oficial.
+Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnóstico `/api/reports/income-statement/economic-comparison`. `router.js` solo despacha y `server.js` solo inyecta dependencias. La única integración automática confirmada es el rendimiento del fondo: Tesorería crea un gasto negativo en el mismo snapshot y Reportes consume solo ese origen en el resultado oficial.
 
 ## Dependencias y localización
 

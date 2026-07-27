@@ -16,6 +16,8 @@ function createRequestHandler(dependencies) {
     ["GET", "/api/bank-reconciliation/summary", handlers.handleBankReconciliationSummary],
     ["POST", "/api/treasury/collections", handlers.handleCollectionFullEntry],
     ["POST", "/api/treasury/payments", handlers.handlePaymentFullEntry],
+    ["GET", "/api/treasury/investment-fund", handlers.handleInvestmentFundList],
+    ["POST", "/api/treasury/investment-fund", handlers.handleInvestmentFundCreate],
     ["POST", "/api/treasury/partner-contributions", handlers.handlePartnerContributionFullEntry],
     ["GET", "/api/treasury/received-checks/pending-endorsement-payments", handlers.handlePendingEndorsementPaymentsList],
     ["POST", "/api/treasury/received-checks/endorse", handlers.handleReceivedChecksEndorse],

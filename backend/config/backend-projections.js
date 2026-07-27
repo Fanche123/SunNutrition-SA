@@ -120,7 +120,25 @@ const BACKEND_TABLE_PROJECTIONS = {
       importe: ["importe", "monto", "movimiento"],
       saldo: ["saldo", "saldo_en", "saldo_en_$"],
       id_pago: ["id_pago"],
-      id_cobro: ["id_cobro"]
+      id_cobro: ["id_cobro"],
+      id_movimiento_fondo: ["id_movimiento_fondo"]
+    }
+  },
+  fondos_inversion_movimientos: {
+    columns: EXPECTED_BACKEND_COLUMNS.fondos_inversion_movimientos,
+    aliases: {
+      id_movimiento_fondo: ["id_movimiento_fondo", "id"],
+      fecha: ["fecha"],
+      tipo: ["tipo"],
+      importe: ["importe", "monto"],
+      periodo_rendimiento: ["periodo_rendimiento", "periodo"],
+      id_movimiento_bancario: ["id_movimiento_bancario"],
+      id_gasto_economico: ["id_gasto_economico"],
+      referencia: ["referencia"],
+      observacion: ["observacion"],
+      clave_idempotencia: ["clave_idempotencia"],
+      hash_payload: ["hash_payload"],
+      creado_en: ["creado_en"]
     }
   },
   items: {

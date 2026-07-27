@@ -584,7 +584,7 @@ test("Dashboard registra nodos, accesibilidad y eventos del widget de cuotas prÃ
   );
 });
 
-test("Dashboard muestra y expande la ultima conciliacion bancaria sin agrandar la tarjeta cerrada", async () => {
+test("Dashboard muestra y expande el ultimo movimiento bancario sin agrandar la tarjeta cerrada", async () => {
   const classes = new Set();
   const widget = {
     attributes: {},
@@ -651,7 +651,15 @@ test("Dashboard muestra y expande la ultima conciliacion bancaria sin agrandar l
   };
   context.renderDashboardBankReconciliationWidget();
   assert.equal(context.els["dashboard-bank-reconciliation-days"].textContent, "-");
-  assert.match(context.els["dashboard-bank-reconciliation-summary"].textContent, /Sin conciliaciones registradas/);
+  assert.match(context.els["dashboard-bank-reconciliation-summary"].textContent, /Sin movimientos bancarios registrados/);
+
+  context.dashboardWidgetData.errors.bankReconciliation = "ultima fecha bancaria";
+  context.renderDashboardBankReconciliationWidget();
+  assert.equal(context.els["dashboard-bank-reconciliation-days"].textContent, "!");
+  assert.match(
+    context.els["dashboard-bank-reconciliation-summary"].textContent,
+    /No se pudo cargar: ultima fecha bancaria/
+  );
 });
 
 test("Dashboard registra nodos, endpoint y eventos del widget de conciliacion bancaria", () => {

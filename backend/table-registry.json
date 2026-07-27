@@ -14,6 +14,7 @@
     { "name": "fletes", "label": "Fletes", "module": "maestros", "workbook": "Backend", "sheet": "fletes", "primaryKey": "Id_Flete" },
     { "name": "datos_bancarios", "label": "Datos bancarios", "module": "tesoreria", "workbook": "Backend", "sheet": "datos_bancarios", "primaryKey": "Id_Dato_Bancario", "synthetic": true },
     { "name": "movimientos_bancarios", "label": "Movimientos bancarios", "module": "tesoreria", "workbook": "Backend", "sheet": "movimientos_bancarios", "primaryKey": "Id_Movimiento_Bancario", "synthetic": true },
+    { "name": "fondos_inversion_movimientos", "label": "Movimientos de fondo de inversion", "module": "tesoreria", "workbook": "Backend", "sheet": "fondos_inversion_movimientos", "primaryKey": "id_movimiento_fondo" },
 
     { "name": "items", "label": "Items", "module": "inventario", "workbook": "Backend", "sheet": "items", "primaryKey": "Id_Item" },
     { "name": "productos", "label": "Productos", "module": "inventario", "workbook": "Backend", "sheet": "productos", "primaryKey": "Id_Producto" },

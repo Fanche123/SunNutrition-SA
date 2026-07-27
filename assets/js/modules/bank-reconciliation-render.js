@@ -62,7 +62,7 @@ function renderBankReconciliation() {
 
   setBankReconciliationStatus(
     bankReconciliationReport?.merge
-      ? `${bankReconciliationReport.merge.newCount || 0} nuevo(s), ${bankReconciliationReport.merge.duplicateCount || 0} repetido(s). ${visibleMovements.length} pendiente(s) guardado(s).`
+      ? `${bankReconciliationReport.rowsRead || 0} leido(s), ${bankReconciliationReport.merge.newCount || 0} nuevo(s), ${bankReconciliationReport.merge.duplicateCount || 0} repetido(s). ${visibleMovements.length} pendiente(s) guardado(s).`
       : `${visibleMovements.length} movimiento(s) pendiente(s) guardado(s). ${readyMovements.length} listo(s) para conciliar.`,
     visibleMovements.length ? "ok" : ""
   );
@@ -75,8 +75,8 @@ function renderBankReconciliationLatestDate(reconciliation) {
   const date = reconciliation?.latestDate || "";
   if (els["bank-reconciliation-last-date"]) {
     els["bank-reconciliation-last-date"].textContent = date
-      ? `Último movimiento conciliado: ${formatDate(date)}`
-      : "Sin conciliaciones registradas";
+      ? `Último movimiento bancario: ${formatDate(date)}`
+      : "Sin movimientos bancarios registrados";
   }
   if (els["bank-reconciliation-last-days"]) {
     els["bank-reconciliation-last-days"].textContent = date

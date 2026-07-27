@@ -34,6 +34,7 @@ const { createPaymentPlansService } = require("./backend/services/payment-plans.
 const { createCollectionEntryService } = require("./backend/services/collection-entry.service");
 const { createPaymentEntryService } = require("./backend/services/payment-entry.service");
 const { createReceivedChecksService } = require("./backend/services/received-checks.service");
+const { createInvestmentFundService } = require("./backend/services/investment-fund.service");
 const { createSalesOrderEntryService } = require("./backend/services/sales-order-entry.service");
 const { createAttachmentsService } = require("./backend/services/attachments.service");
 const { createOtherExpenseEntryService } = require("./backend/services/other-expense-entry.service");
@@ -336,13 +337,16 @@ const bankPersistence = createBankPersistenceService({
 const {
   backendCreditorTagRelationId,
   backendPersistedBankMovementCounts,
+  bankMovementAssociation,
   bankMovementBackendCreditorId,
   bankMovementFingerprint,
   bankSourceDestinationForOriginType,
+  canonicalPendingBankMovements,
   consumePersistedBankMovement,
   createBankEgressForSource,
   createBankPaymentForExpense,
   createBankSourceExpense,
+  importBankMovements,
   persistBankMovement,
   updateIssuedCheckFromBankMovement,
   updateReceivedCheckFromBankMovement
@@ -490,15 +494,17 @@ const {
   backendIssuedChecksByNumber,
   backendNormalizeText,
   backendNumber,
-  backendPersistedBankMovementCounts,
   backendReceivedCheckDepositGroups,
   backendReceivedChecksByNumber,
+  bankMovementAssociation,
   bankMovementFingerprint,
+  canonicalPendingBankMovements,
   cleanBackendText,
   createBankEgressForSource,
   createBankPaymentForExpense,
   createBankSourceExpense,
   ensureBackendTable,
+  importBankMovements,
   loadCache,
   normalizeBackendBankDetails,
   parseBankMovements,
@@ -542,6 +548,18 @@ const { handlePaymentFullEntry } = createPaymentEntryService({
   backendNextNumericId,
   backendNumber,
   ensureBackendTable,
+  loadCache,
+  readJsonBody,
+  saveBackendCache,
+  sendJson
+});
+const {
+  handleCreate: handleInvestmentFundCreate,
+  handleList: handleInvestmentFundList
+} = createInvestmentFundService({
+  backendId,
+  backendNextNumericId,
+  expectedBackendColumns: EXPECTED_BACKEND_COLUMNS,
   loadCache,
   readJsonBody,
   saveBackendCache,
@@ -730,6 +748,8 @@ const server = http.createServer(createRequestHandler({
     handleEconomicExpenseReversal,
     handleEconomicExpensesList,
     handleIncomeStatementReport,
+    handleInvestmentFundCreate,
+    handleInvestmentFundList,
     handleInventoryAppend,
     handleInventoryDetailAppend,
     handleInventoryDetailPhoto,

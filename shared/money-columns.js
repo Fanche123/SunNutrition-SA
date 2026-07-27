@@ -13,6 +13,7 @@
 
   const columnsByTable = Object.freeze({
     movimientos_bancarios: ["monto", "importe", "debito", "credito", "debe", "haber", "saldo", "amount", "debit", "credit"],
+    fondos_inversion_movimientos: ["importe", "saldo_resultante"],
     proveedores: ["pedido_minimo"],
     productos: ["precio_base", "costo_base", "costo_ud_individual"],
     insumos_proveedores: ["precio"],

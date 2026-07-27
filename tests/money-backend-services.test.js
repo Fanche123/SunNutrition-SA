@@ -408,19 +408,21 @@ test("parser y persistencia bancaria normalizan importes a centavos", () => {
     backendNextNumericId,
     backendNormalizeText: (value) => String(value ?? "").toLowerCase(),
     backendNumber,
+    cleanBackendText: (value) => String(value ?? "").trim(),
     crypto,
+    ensureBackendTable,
     normalizeBankCheckNumber: (value) => String(value ?? ""),
     normalizeBankCuit: (value) => String(value ?? "")
   });
   assert.equal(persistence.bankMoneyKey(0.1 + 0.2), 30);
   const tables = { movimientos_bancarios: { rows: [], rowCount: 0 } };
-  persistence.persistBankMovement(tables, {
+  persistence.importBankMovements(tables, [{
     date: "2026-07-24",
     debit: 0,
     credit: 0.1 + 0.2,
     amount: 0.1 + 0.2,
     balance: 0.1 + 0.2
-  }, "ICBC");
+  }], "ICBC");
   assert.equal(tables.movimientos_bancarios.rows[0].importe, 0.3);
 });
 
@@ -435,13 +437,12 @@ test("deposito bancario exige coincidencia exacta en centavos", async () => {
       ensureBackendTable,
       loadCache: store.loadCache,
       persistBankMovement: (tables, movement, bank, operationKey, operationPayload) => {
-        tables.movimientos_bancarios.rows.push({
-          banco: bank,
-          fecha: movement.date,
-          importe: movement.amount,
-          _bankOperationKey: operationKey,
-          _bankOperationPayload: operationPayload
-        });
+        const row = tables.movimientos_bancarios.rows.find(
+          (candidate) => String(candidate.id_movimiento_bancario) === String(movement.canonicalMovementId)
+        );
+        row.id_cobro = "1";
+        row._bankOperationKey = operationKey;
+        row._bankOperationPayload = operationPayload;
       },
       readJsonBody,
       saveBackendCache: store.saveBackendCache,
@@ -453,11 +454,24 @@ test("deposito bancario exige coincidencia exacta en centavos", async () => {
     tables: {
       cheques_recibidos: {
         rows: [
-          { id_cheque_recibido: 1, estado: "Pendiente", monto: 0.1 },
-          { id_cheque_recibido: 2, estado: "Pendiente", monto: 0.2 }
+          { id_cheque_recibido: 1, id_cobro: 1, estado: "Pendiente", monto: 0.1 },
+          { id_cheque_recibido: 2, id_cobro: 1, estado: "Pendiente", monto: 0.2 }
         ]
       },
-      movimientos_bancarios: { rows: [] }
+      movimientos_bancarios: {
+        rows: [{
+          id_movimiento_bancario: 1,
+          banco: "ICBC",
+          fecha: "2026-07-24",
+          debito: 0,
+          credito: 0.3,
+          importe: 0.3,
+          saldo: 0.3,
+          id_pago: "",
+          id_cobro: "",
+          _bankMovementKey: "deposit-1"
+        }]
+      }
     }
   };
   const acceptedStore = memoryStore(seed);
@@ -467,7 +481,13 @@ test("deposito bancario exige coincidencia exacta en centavos", async () => {
       bank: "ICBC",
       depositDate: "2026-07-24",
       checkIds: [1, 2],
-      movement: { date: "2026-07-24", amount: 0.3, credit: 0.3 }
+      movement: {
+        canonicalMovementId: 1,
+        movementKey: "deposit-1",
+        date: "2026-07-24",
+        amount: 0.3,
+        credit: 0.3
+      }
     }
   );
   assert.equal(accepted.status, 200);
@@ -480,7 +500,13 @@ test("deposito bancario exige coincidencia exacta en centavos", async () => {
       bank: "ICBC",
       depositDate: "2026-07-24",
       checkIds: [1, 2],
-      movement: { date: "2026-07-24", amount: 0.31, credit: 0.31 }
+      movement: {
+        canonicalMovementId: 1,
+        movementKey: "deposit-1",
+        date: "2026-07-24",
+        amount: 0.31,
+        credit: 0.31
+      }
     }
   );
   assert.equal(rejected.status, 400);

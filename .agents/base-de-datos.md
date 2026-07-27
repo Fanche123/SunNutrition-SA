@@ -30,7 +30,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 
 - Persistencia: `backend/data-store.js`, `backend/repositories/app-state.repository.js`, `backend/config/paths.js`.
 - Modelo: `backend/table-registry.json`, `backend/config/backend-columns.js`, `backend/config/backend-projections.js`.
-- Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js`, aditiva, no automática y probada solo sobre copias aisladas.
+- Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js` y `backend/migrations/20260727-investment-fund.js`, aditivas, no automáticas y probadas sobre copias aisladas.
 - Acceso compartido: `backend/services/backend-table.service.js`, `backend-map.service.js`, `sql.service.js`, `backend/utils/runtime.js`, `backend/routes/router.js`.
 - Herramientas: `tools/audit-erp-data.js`, `tools/backend-sqlite-query.py`.
 - Evidencia histórica: `docs/AUDITORIA_DATOS_ERP_2026-07-18.json`, `docs/REPORTE_INTEGRAL_ERP_2026-07-18.md`. Describen una arquitectura anterior; el código actual manda.
@@ -40,7 +40,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 - `tmp/backend-data-cache.json` contiene las tablas canónicas; `loadCache()` lee y `saveBackendCache()` escribe a `.tmp` y renombra. No hay motor SQL persistente ni bloqueo de concurrencia confirmado.
 - El cache puede contener `inventoryPurchaseSnapshot` como metadato superior de Inventario. Se reemplaza en el mismo guardado atómico de `/api/inventory/full-entry`; no forma parte del registry ni agrega columnas a tablas. Si falta o está obsoleto, la lectura reconstruye el contrato en memoria desde `inventarios` y `detalle_inventarios`, sin backfill ni escritura.
 - El cache también puede contener `inventoryPurchaseConfig` con el entero `barsPerDay`. Su actualización guarda config y snapshot recalculado en un único `saveBackendCache()` y no modifica tablas, registry, esquema ni migraciones.
-- El cache puede contener `bankReconciliation` con versión, `pendingMovements` normalizados y `updatedAt`. Es metadato superior canónico, no una tabla ni un cambio de esquema; analizar combina/deduplica y conciliar retira claves en guardados atómicos. El historial efectivo permanece en `movimientos_bancarios`.
+- `movimientos_bancarios` es la fuente canónica de todos los movimientos importados. El análisis inserta solo ocurrencias nuevas en un guardado atómico; las filas con `id_pago` e `id_cobro` vacíos son pendientes y la conciliación completa una sola asociación en la misma fila. El cache puede conservar metadato histórico `bankReconciliation`, pero ya no se consulta ni se modifica como fuente de verdad.
 - `tmp/app-state.json` guarda preferencias/compatibilidad de UI mediante el repositorio; no reemplaza tablas operativas.
 - La consola crea SQLite en memoria desde una fotografía del cache, infiere `REAL`/`TEXT`, excluye `_rowNumber`, permite una sola consulta `SELECT`/`WITH` y limita a 5000 filas.
 - Contratos genéricos confirmados: `GET /api/backend/schema`, `GET /api/backend/tables`, `GET|POST /api/backend/tables/:tabla`, `GET /api/backend/map`, `POST /api/backend/sql`.
@@ -48,12 +48,12 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 
 ## Tablas y claves actuales
 
-La clave efectiva del editor se toma de la primera columna canónica de `backend-columns.js`. El registro tiene 47 definiciones (46 visibles y `sueldos_calculo` oculta):
+La clave efectiva del editor se toma de la primera columna canónica de `backend-columns.js`. El registro tiene 48 definiciones (47 visibles y `sueldos_calculo` oculta):
 
 - **Maestros:** `etiquetas(id_etiqueta)`, `acreedores(id_acreedor)`, `otros_acreedores(id_otro_acreedor)`, `acreedores_etiquetas(id_acreedor_etiqueta)`, `proveedores(id_proveedor)`, `clientes(id_cliente)`, `empleados(id_empleado)`, `canales(id_canal)`, `fletes(id_flete)`.
 - **Inventario:** `items(id_item)`, `productos(id_producto)`, `subproductos(id_subproducto)`, `insumos(id_insumo)`, `insumos_proveedores(id_insumos_proveedores)`, `recetas(id_receta)`, `inventarios(id_inventario)`, `detalle_inventarios(id_detalle_inventario)`.
 - **Ventas:** `pedidos(id_pedido)`, `detalle_pedidos(id_detalle_pedido)`, `entregas(id_entrega)`, `entregas_detalle(id_entregas_detalle)`, `ventas(id_venta)`, `cobros(id_cobro)`, `cobros_detalle(id_cobros_detalle)`, `retenciones_ganancias(id_retencion_ganancias)`, `retenciones_iibb(id_retencion_iibb)`, `cheques_recibidos(id_cheque_recibido)`.
-- **Tesorería:** `datos_bancarios(id_dato_bancario)`, `movimientos_bancarios(id_movimiento_bancario)`, `caja(cuenta)`, `cheques_entregados(id_cheque_entregado)`, `planes_pagos(id_plan_pago)`, `cuotas_planes_pagos(id_cuota_plan_pago)`.
+- **Tesorería:** `datos_bancarios(id_dato_bancario)`, `movimientos_bancarios(id_movimiento_bancario)`, `fondos_inversion_movimientos(id_movimiento_fondo)`, `caja(cuenta)`, `cheques_entregados(id_cheque_entregado)`, `planes_pagos(id_plan_pago)`, `cuotas_planes_pagos(id_cuota_plan_pago)`.
 - **Compras/RRHH:** `compras(id_compra)`, `detalle_compras(id_detalle_compra)`, `recepciones(id_recepcion)`, `detalle_recepciones(id_detalle_recepcion)`, `otros_gastos(id_otros_gastos)`, `aportes_socios(id_aporte_socio)`, `egresos(id_egreso)`, `pagos(id_pago)`, `detalle_pagos(id_detalle_pago)`, `comisiones(id_comision)`, `sueldos(id_sueldo)`, `sueldos_calculo(id_sueldo)`.
 - **Contabilidad:** `gastos_economicos(id_gasto_economico)`, `gastos_egresos(id_gasto_egreso)`, registradas sin siembra y administrables solo mediante servicios especializados.
 
@@ -64,6 +64,7 @@ Relaciones críticas a verificar en el servicio y `tools/audit-erp-data.js`: acr
 - `planes_pagos`, `cuotas_planes_pagos`, `gastos_economicos` y `gastos_egresos` están alineadas entre columnas canónicas y registry. Como toda tabla visible, admiten CRUD administrativo validado; sus flujos operativos siguen siendo la vía habitual.
 - Las claves públicas de `entregas_detalle`, `cobros_detalle`, `caja`, `cheques_entregados`, `cheques_recibidos`, `otros_gastos` y `detalle_pagos` ya coinciden en registry, columnas canónicas y runtime. Los aliases históricos se conservan en proyecciones.
 - `cheques_recibidos` define `id_pago_endoso` y `fecha_endoso` como columnas opcionales. La migración preparada agrega únicamente headers y conserva todas las filas históricas; no se ejecuta al iniciar ni se aplicó al cache real.
+- `movimientos_bancarios.id_movimiento_fondo` y `fondos_inversion_movimientos` forman la relación auditable del fondo. La migración valida backup, rollback e inicialización exacta; no aproxima importes ni ejecuta una siembra al iniciar.
 - Los estados históricos de cheques no se reinterpretan. Las invariantes estrictas `Pendiente`/`Depositado`/`Endosado` aplican a operaciones nuevas mediante `backend/utils/received-check-endorsement.js`.
 - La edición de planes/cuotas pertenece al servicio específico de Tesorería. No renombra columnas ni claves y conserva `cuotas_planes_pagos.id_egreso`; una cuota vinculada no puede eliminarse desde ese flujo.
 - Mientras el ERP sea exclusivamente local, la escritura atómica actual requiere como mínimo backups manuales verificables antes de cambios de esquema y validación sobre copias aisladas.

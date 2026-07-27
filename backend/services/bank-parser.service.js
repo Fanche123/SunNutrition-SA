@@ -34,8 +34,13 @@ function createBankParserService(dependencies) {
     const docNumberIndex = indexFor("nro_doc", "numero_doc", "documento", "cuit", "cuil");
     const checkIndex = indexFor("nro_de_cheque", "nro_cheque", "numero_cheque", "cheque");
   
+    if (dateIndex < 0 || [debitIndex, creditIndex, amountIndex].every((index) => index < 0)) {
+      throw bankCsvError("El CSV no contiene las columnas bancarias obligatorias de fecha e importe.");
+    }
+
     return rows.slice(headerIndex + 1)
       .map((cells, index) => {
+        const rowNumber = headerIndex + index + 2;
         const debitCents = debitIndex >= 0 ? Math.abs(toCents(backendNumber(cells[debitIndex]))) : 0;
         const creditCents = creditIndex >= 0 ? Math.abs(toCents(backendNumber(cells[creditIndex]))) : 0;
         const directAmountCents = amountIndex >= 0 ? toCents(backendNumber(cells[amountIndex])) : 0;
@@ -49,9 +54,14 @@ function createBankParserService(dependencies) {
         const cbuAlias = compactBankText(cells[cbuIndex] || "");
         const concept = compactBankText([detail, counterpartyName, cuit || cbuAlias].filter(Boolean).join(" · "));
         const checkNumber = normalizeBankCheckNumber(checkIndex >= 0 ? cells[checkIndex] : "") || extractBankCheckNumber(cells.join(" "));
-        if (!date || amountCents === 0) return null;
+        if (!isValidBankCalendarDate(date)) {
+          throw bankCsvError(`La fila ${rowNumber} contiene una fecha bancaria invalida.`);
+        }
+        if (amountCents === 0) {
+          throw bankCsvError(`La fila ${rowNumber} no contiene un importe bancario valido.`);
+        }
         return {
-          rowNumber: headerIndex + index + 2,
+          rowNumber,
           date,
           code: codeIndex >= 0 ? compactBankText(cells[codeIndex] || "") : "",
           concept,
@@ -69,8 +79,7 @@ function createBankParserService(dependencies) {
           channel: channelIndex >= 0 ? cells[channelIndex] || "" : "",
           raw: cells
         };
-      })
-      .filter(Boolean);
+      });
   }
   
   function parseFlexibleDelimitedRows(text) {
@@ -106,6 +115,9 @@ function createBankParserService(dependencies) {
       } else {
         cell += char;
       }
+    }
+    if (quoted) {
+      throw bankCsvError("El CSV contiene una fila con comillas sin cerrar.");
     }
     cells.push(cell.trim());
     return cells;
@@ -328,6 +340,26 @@ function createBankParserService(dependencies) {
   }
 
   return { analyzeBankMovement, parseBankMovements };
+}
+
+function bankCsvError(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  return error;
+}
+
+function isValidBankCalendarDate(value) {
+  const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
 }
 
 function absoluteMoney(value) {

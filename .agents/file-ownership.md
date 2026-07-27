@@ -32,6 +32,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `backend/services/sales-*.service.js`, `backend/services/sales-*.service.test.js` | Ventas | Inventario, Reportes, Arquitectura | Alta integral de pedidos y pruebas aisladas de integridad; dominio | Alto | `ventas.md` |
 | `assets/js/modules/collections-retentions.js` | Tesorería | Ventas, Reportes | Cobros/retenciones; dominio | Alto | `tesoreria.md` + `ventas.md` |
 | `assets/js/modules/bank-reconciliation-*.js` | Tesorería | Compras, Ventas | Conciliación; dominio | Alto | `tesoreria.md` |
+| `assets/js/modules/investment-fund.js`, `backend/services/investment-fund.service.js`, `docs/investment-fund.md`, `tests/investment-fund.test.js` | Tesorería | Contabilidad, Reportes, Base de datos, UI/UX | Libro mayor, asociaciones bancarias, rendimiento y UI del fondo de inversión | Alto | `tesoreria.md` + consumidores |
 | `assets/js/modules/*check*.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js` | Tesorería | Compras, Ventas, Reportes (`dashboard.js` consume Planes de pago en solo lectura) | Pagos, cheques, planes y aportes; dominio | Alto | `tesoreria.md` |
 | `assets/js/modules/salary-*.js` | RRHH | Compras, Reportes | Sueldos y egreso salarial; dominio | Alto | `rrhh.md` |
 | `assets/js/config/payroll-calendars.js` | RRHH | Arquitectura, Compras, Inventario, Reportes | Calendarios laborales configurados por año; configuración de dominio compartida | Alto | `rrhh.md` + consumidores |
@@ -47,6 +48,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `tests/payment-plans.test.js`, `docs/payment-plans.md` | Tesorería | Base de datos, Administración, UI/UX | Contrato y regresión aislada del módulo editable de planes; pruebas/documentación | Alto | `tesoreria.md` + consumidores |
 | `backend/utils/received-check-endorsement.js`, `docs/received-check-endorsement.md` | Tesorería | Base de datos, Administración | Invariantes y contrato futuro de endoso de cheques recibidos | Alto | `tesoreria.md` + `base-de-datos.md` |
 | `backend/migrations/20260724-received-check-endorsement.js`, `tests/received-check-endorsement-schema.test.js` | Base de datos | Tesorería, Administración | Migración aditiva aislada, backup/rollback y regresión del esquema de endoso | Alto | `base-de-datos.md` + consumidores |
+| `backend/migrations/20260727-investment-fund.js`, `tests/investment-fund-migration.test.js` | Base de datos | Tesorería, Contabilidad, Reportes | Migración, backup, rollback e inicialización idempotente del fondo | Alto | `base-de-datos.md` + consumidores |
 | `backend/services/payroll-*.service.js` | RRHH | Reportes | Normalización/resumen salarial; dominio | Alto | `rrhh.md` |
 | `tests/payroll-safety.test.js` | RRHH | Arquitectura, Reportes, Tesorería | Persistencia coordinada y reglas de seguridad salarial; pruebas | Alto | `rrhh.md` |
 | `backend/services/income-*.service.js`, `cashflow.service.js`, `expense-classification.service.js` | Reportes | Inventario, Compras, Ventas, Tesorería, RRHH | Cálculo/agregación; dominio consumidor | Alto | `reportes.md` + dueños de reglas alteradas |

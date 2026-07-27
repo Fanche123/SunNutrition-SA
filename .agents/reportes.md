@@ -34,7 +34,7 @@ Reportes consume Ventas, Compras, Inventario, Tesorería y RRHH. No debe escribi
 
 Reportes no posee tablas ni endpoints de escritura. Lee, agrupadas por flujo:
 
-- Estado de Resultados: `ventas`, `clientes`, `canales`, `pedidos`, `detalle_pedidos`, `productos`, `items`, `inventarios`, `detalle_inventarios`, `sueldos`; clasificación desde `etiquetas`, `acreedores_etiquetas`, `egresos`, `recepciones`, `compras`, `entregas`, `otros_gastos`, `comisiones`, empleados/proveedores/fletes/acreedores.
+- Estado de Resultados: `ventas`, `clientes`, `canales`, `pedidos`, `detalle_pedidos`, `productos`, `items`, `inventarios`, `detalle_inventarios`, `sueldos`; clasificación desde `etiquetas`, `acreedores_etiquetas`, `egresos`, `recepciones`, `compras`, `entregas`, `otros_gastos`, `comisiones`, empleados/proveedores/fletes/acreedores. Consume además `gastos_economicos` confirmados únicamente cuando `origen_tipo = fondo_inversion`.
 - Cashflow: `caja`, `egresos`, `detalle_pagos`, `ventas`, `cobros`, `cobros_detalle`, `cheques_recibidos`, `cheques_entregados`, `clientes`, `acreedores` y fuentes para resolver contraparte.
 - Dashboard: además lee compras/detalle/recepciones/insumos/proveedores, pedidos/detalle/entregas/productos, inventarios, cheques, tablas de deuda y el contrato de solo lectura de Planes de pago.
 
@@ -81,7 +81,7 @@ Endpoints confirmados:
 
 Las agregaciones monetarias de resultados, dashboard y cashflow usan `shared/money.js` / `docs/money-contract.md` y suman centavos. Unidades, horas, porcentajes e indicadores no monetarios no se fuerzan a dos decimales.
 
-- Contabilidad posee `gastos_economicos`, `gastos_egresos` y el diagnóstico paralelo. Reportes no crea gastos y el Estado de Resultados oficial conserva el cálculo legado durante esta etapa.
+- Contabilidad posee `gastos_economicos`, `gastos_egresos` y el diagnóstico paralelo. Reportes no crea gastos. El Estado de Resultados conserva el cálculo legado y agrega como excepción los rendimientos confirmados del fondo: un importe económico negativo reduce gastos no operativos y aumenta el resultado, sin ingreso comercial ni doble contabilización.
 
 - Los endpoints de Reportes deben permanecer de lectura. No escribir ni “corregir” datos fuente desde un reporte; usar cache temporal y no tocar `.env`, adjuntos ni datos reales.
 - Arrancar `server.js` puede mutar la cache por servicios de Tesorería; para pruebas integradas usar copia aislada, aunque el endpoint consultado sea GET.

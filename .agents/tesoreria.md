@@ -13,6 +13,7 @@ Leé también `.agents/_base-development.md`. Este inventario es un mapa: para c
 - Cobros aplicados a ventas, retenciones de Ganancias/IIBB, pagos aplicados a egresos y cheques recibidos/entregados.
 - Depósito manual o conciliado de cheques recibidos y actualización de estados de cheques.
 - Lectura de caja para flujo financiero; planes ARCA y aportes/retiros de socios existentes.
+- Libro mayor del fondo de inversión, depósitos, rescates, rendimientos y asociaciones bancarias explícitas.
 
 Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fuentes de egresos; RRHH conserva liquidaciones; Reportes conserva las agregaciones de cashflow. Coordinar cuando cambie uno de esos contratos. Fuera de alcance: fórmulas operativas ajenas, esquema/migraciones, SQL, UI global y reglas contables no confirmadas.
 
@@ -26,13 +27,14 @@ Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fu
 - `backend/services/bank-*.service.js`
 - `backend/services/payment-plans.service.js`
 - `backend/services/partner-contributions.service.js`
+- `backend/services/investment-fund.service.js`
 - `backend/utils/bank.js`
 - `backend/bank-rules.js`
 
 ## Inventario actual de archivos
 
-- Frontend propio: `bank-reconciliation-checks.js`, `bank-reconciliation-core.js`, `bank-reconciliation-drafts.js`, `bank-reconciliation-render.js`, `collections-retentions.js`, `issued-check-entry.js`, `issued-check-pending.js`, `received-check-entry.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js`, todos en `assets/js/modules/`.
-- Backend propio: `backend/bank-rules.js`; `backend/services/bank-matching.service.js`, `bank-parser.service.js`, `bank-persistence.service.js`, `bank-reconciliation.service.js`, `bank-reference.service.js`, `collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js`; `backend/utils/bank.js` y `backend/utils/received-check-endorsement.js`. Pruebas específicas: `tests/payment-plans.test.js` y `tests/received-check-endorsement-schema.test.js`; contratos: `docs/payment-plans.md` y `docs/received-check-endorsement.md`.
+- Frontend propio: `bank-reconciliation-checks.js`, `bank-reconciliation-core.js`, `bank-reconciliation-drafts.js`, `bank-reconciliation-render.js`, `investment-fund.js`, `collections-retentions.js`, `issued-check-entry.js`, `issued-check-pending.js`, `received-check-entry.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js`, todos en `assets/js/modules/`.
+- Backend propio: `backend/bank-rules.js`; `backend/services/bank-matching.service.js`, `bank-parser.service.js`, `bank-persistence.service.js`, `bank-reconciliation.service.js`, `bank-reference.service.js`, `investment-fund.service.js`, `collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js`; `backend/utils/bank.js` y `backend/utils/received-check-endorsement.js`. Pruebas específicas: `tests/payment-plans.test.js`, `tests/investment-fund.test.js` y `tests/received-check-endorsement-schema.test.js`; contratos: `docs/payment-plans.md`, `docs/investment-fund.md` y `docs/received-check-endorsement.md`.
 - Consumidores/dependencias directas: `backend/services/cashflow.service.js`, `backend/services/expense-classification.service.js`; `assets/js/modules/dashboard.js`, `reports-cashflow.js`, `sales-orders.js`, `operational-shared.js`.
 - Compartidos sensibles: `assets/js/core/api.js`, `assets/js/app.js`, `index.html`, `server.js`, `backend/routes/router.js`, `backend/services/backend-table.service.js`, `backend/services/creditor-entry.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`.
 
@@ -40,7 +42,7 @@ Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fu
 
 Las columnas completas están en `backend/config/backend-columns.js`; claves registradas, en `backend/table-registry.json`.
 
-- Propias: `datos_bancarios` (`id_dato_bancario`, detalle, acreedor, etiqueta, tipo de factura), `movimientos_bancarios` (`id_movimiento_bancario`, banco/fecha/detalle/importes/saldo, `id_pago`, `id_cobro`), `caja` (cuenta, monto) y `cheques_entregados` (`id_cheque_entregado`, pago, acreedor, número, fechas, monto, banco, estado).
+- Propias: `datos_bancarios` (`id_dato_bancario`, detalle, acreedor, etiqueta, tipo de factura), `movimientos_bancarios` (`id_movimiento_bancario`, banco/fecha/detalle/importes/saldo, `id_pago`, `id_cobro`, `id_movimiento_fondo`), `fondos_inversion_movimientos` (`id_movimiento_fondo`, fecha, tipo, importe, periodo, relaciones y trazabilidad), `caja` (cuenta, monto) y `cheques_entregados` (`id_cheque_entregado`, pago, acreedor, número, fechas, monto, banco, estado).
 - Integración con Ventas: `cobros`, `cobros_detalle`, `retenciones_ganancias`, `retenciones_iibb`, `cheques_recibidos`, `clientes`, `ventas`.
 - Endoso preparado: `cheques_recibidos.id_pago_endoso` referencia `pagos.id_pago` y `fecha_endoso` usa `AAAA-MM-DD`. El futuro endpoint debe crear el pago `Endoso` y vincular uno o más cheques completos en un único snapshot, reutilizando `_operationId`/`_operationPayload` persistidos en `pagos`.
 - Integración con Compras/RRHH: `egresos`, `pagos`, `detalle_pagos`, `acreedores`, `acreedores_etiquetas`, `etiquetas`, fuentes operativas y `sueldos`.
@@ -49,13 +51,14 @@ Las columnas completas están en `backend/config/backend-columns.js`; claves reg
 Endpoints confirmados en `backend/routes/router.js`:
 
 - `GET /api/backend/tables/:tabla?all=true` y `POST /api/backend/tables/:tabla`: lectura y upsert genérico (`rows`; opcional `deletedIds`).
-- `GET /api/bank-reconciliation/state?bank=...` → pendientes persistidos reanalizados y última fecha conciliada del banco seleccionado.
+- `GET /api/bank-reconciliation/state?bank=...` → filas de `movimientos_bancarios` sin `id_pago`, `id_cobro` ni `id_movimiento_fondo`, reanalizadas, y última fecha bancaria del banco seleccionado.
 - `GET /api/bank-reconciliation/summary` → última fecha global, días calendario en Buenos Aires y detalle por banco para Dashboard.
-- `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → combina y deduplica el archivo con pendientes canónicos, los persiste y devuelve `{ ok, report }`.
-- `POST /api/bank-reconciliation/apply`: `{ bank, applyMode, movementKeys, reviewRows }` → contadores/notas en `result`; una conciliación exitosa retira solo esas claves pendientes en el mismo guardado.
+- `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → valida todo el archivo, inserta atómicamente solo ocurrencias nuevas en `movimientos_bancarios` y devuelve `{ ok, report }` con todos los pendientes canónicos.
+- `POST /api/bank-reconciliation/apply`: `{ bank, applyMode, movementKeys, reviewRows }` → contadores/notas en `result`; una conciliación exitosa completa `id_pago` o `id_cobro` en la misma fila bancaria.
 - `POST /api/bank-reconciliation/deposit-checks`: banco, fecha, movimiento opcional, `manualDeposit` y `checkIds` → cantidad/monto depositado.
 - `POST /api/treasury/collections`: guarda cobro, detalles y retenciones en una única persistencia idempotente.
 - `POST /api/treasury/payments`: guarda pago y detalles en una única persistencia idempotente.
+- `GET|POST /api/treasury/investment-fund`: devuelve el libro mayor derivado o registra atómicamente depósitos, rescates y rendimientos con idempotencia durable.
 - `POST /api/treasury/partner-contributions`: guarda aporte/retiro y egreso relacionado en una única persistencia idempotente.
 - `GET|POST /api/treasury/payment-plans` y rutas específicas por plan/cuota: lectura y edición compuesta de planes sobre una copia del cache, con una única persistencia e idempotencia durable.
 - `POST /api/creditors/create`: alta integral usada por borradores bancarios; contrato implementado en `creditor-entry.service.js`.
@@ -68,7 +71,8 @@ Endpoints confirmados en `backend/routes/router.js`:
 - Parseo/matching: `bank-parser.service.js`, `bank-matching.service.js`, `backend/utils/bank.js`, `backend/bank-rules.js`.
 - Escritura e idempotencia: `bank-persistence.service.js`, `bank-reconciliation.service.js`, `collection-entry.service.js`, `payment-entry.service.js` y `partner-contributions.service.js`. Las operaciones compuestas trabajan sobre una copia del cache y realizan un único reemplazo atómico.
 - La idempotencia durable usa metadatos internos `_operationId`/`_operationPayload` o `_bankOperationKey`/`_bankOperationPayload` en la fila financiera propietaria. No usa memoria ni `app-state`, no altera columnas registradas y su ciclo de vida es el de la propia operación: al eliminar legítimamente la fila propietaria también desaparece su marcador. No existe un registro separado de crecimiento ilimitado.
-- `bankReconciliation.pendingMovements` es metadato superior del cache canónico: conserva por banco únicamente campos normalizados y `movementKey`, nunca el CSV completo. La clave usa la huella bancaria existente más ocurrencia; al conciliar, esa identidad exacta se conserva en `_bankMovementKey` dentro de `movimientos_bancarios`. Los registros históricos sin esa clave mantienen compatibilidad por conteo de huella.
+- `movimientos_bancarios` es la única fuente persistente para importados, pendientes e historial conciliado. Pendiente significa `id_pago`, `id_cobro` e `id_movimiento_fondo` vacíos; conciliado significa exactamente una asociación válida. La huella usa banco, fecha, concepto/detalle, CUIT, cheque, débito, crédito, importe y saldo, y la deduplicación compara multiplicidades. `_bankMovementKey` conserva la ocurrencia técnica sin cambiar la identidad económica. El metadato histórico `bankReconciliation.pendingMovements`, si existe, queda ignorado y no se borra automáticamente.
+- El fondo calcula en centavos `depósitos + rendimientos - rescates`. Un rendimiento conserva importe positivo en Tesorería y crea en el mismo snapshot un gasto económico confirmado negativo; depósitos y rescates vinculados no completan `id_pago` ni `id_cobro`.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
 - Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
 - El Dashboard consume los endpoints de Planes de pago en modo de solo lectura y conserva como autoridad el estado `Pagada` derivado por este servicio.
@@ -104,7 +108,7 @@ Pagos, cobros, cheques y planes dependen del contrato único `shared/money.js` /
 - Contabilidad posee el reconocimiento y la conciliación económica. Tesorería puede consultar esa conciliación, pero no decide períodos o etiquetas; pagos y planes no generan gastos automáticamente en la primera etapa.
 
 - No tocar `.env`, adjuntos ni `tmp/backend-data-cache.json`; no enviar POST financieros a una instancia con datos reales. `node server.js` puede escribir al arrancar: siembra planes/aportes y ajusta esquema bancario.
-- `analyze` normaliza y propone referencias sobre una copia de tablas, pero persiste atómicamente solo el snapshot canónico de pendientes; no escribe pagos, cobros, egresos ni movimientos conciliados.
+- `analyze` normaliza y propone referencias sobre una copia de tablas y persiste atómicamente las filas bancarias nuevas con asociaciones vacías; no crea pagos, cobros ni egresos. Conciliar actualiza esa misma fila después de validar la asociación.
 - No reconstruir desde Excel/CSV: el CSV bancario es solo entrada de interpretación; el backend sigue siendo fuente de verdad.
 - Gaps: la cobertura automatizada de Tesorería sigue siendo parcial (`tests/treasury-safety.test.js` y `tests/payment-plans.test.js`); `caja` usa `cuenta/monto`; aportes y el helper legacy de planes conservan datos históricos fijos. Las siembras históricas quedaron como funciones explícitas no invocadas por el arranque. La persistencia no tiene control multiusuario.
 - El endpoint/UI de endoso siguen pendientes. Al implementarlos, rechazar cheques no pendientes o ya usados, exigir suma exacta y reforzar ambos caminos de depósito para que no acepten cheques con `id_pago_endoso` ni estado `Endosado`. No reinterpretar los estados históricos ya persistidos.

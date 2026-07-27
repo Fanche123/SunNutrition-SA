@@ -11,7 +11,7 @@ function createBankPersistenceService(dependencies) {
     ensureBackendTable(cache.tables, "datos_bancarios");
     if (!hasInvoiceType) saveBackendCache(cache);
   }
-  
+
   function backendValueIsBlank(value) {
     return value === undefined || value === null || String(value).trim() === "";
   }
@@ -34,6 +34,7 @@ function createBankPersistenceService(dependencies) {
       normalizeBankCheckNumber(movement.nro_cheque || movement.checkNumber),
       bankMoneyKey(movement.debito ?? movement.debit),
       bankMoneyKey(movement.credito ?? movement.credit),
+      bankMoneyKey(movement.importe ?? movement.amount),
       bankMoneyKey(movement.saldo ?? movement.balance)
     ].join("|");
     return crypto.createHash("sha1").update(normalized).digest("hex");
@@ -65,36 +66,189 @@ function createBankPersistenceService(dependencies) {
     const candidates = persistedCounts.get(key) || [];
     return candidates.shift() || null;
   }
-  
-  function persistBankMovement(tables, movement, bank, operationKey = "", operationPayload = "") {
+
+  function canonicalPendingBankMovements(tables, bank) {
+    ensureBackendTable(tables, "movimientos_bancarios");
+    const occurrences = new Map();
+    return (tables.movimientos_bancarios.rows || [])
+      .filter((row) => backendBankMatches(row.banco, bank))
+      .map((row) => {
+        const fingerprint = bankMovementFingerprint(row, row.banco || bank);
+        const occurrence = (occurrences.get(fingerprint) || 0) + 1;
+        occurrences.set(fingerprint, occurrence);
+        return { row, fingerprint, occurrence };
+      })
+      .filter(({ row }) => (
+        backendValueIsBlank(row.id_pago)
+        && backendValueIsBlank(row.id_cobro)
+        && backendValueIsBlank(row.id_movimiento_fondo)
+      ))
+      .map(({ row, fingerprint, occurrence }) => {
+        const debit = normalizeMoney(Math.abs(backendNumber(row.debito)));
+        const credit = normalizeMoney(Math.abs(backendNumber(row.credito)));
+        const amount = backendValueIsBlank(row.importe)
+          ? normalizeMoney(credit - debit)
+          : normalizeMoney(backendNumber(row.importe));
+        return {
+          canonicalMovementId: backendId(row.id_movimiento_bancario),
+          movementKey: cleanBackendText(row._bankMovementKey) || `${fingerprint}:${occurrence}`,
+          rowNumber: row._rowNumber || "",
+          date: backendIsoDate(row.fecha),
+          code: cleanBackendText(row.cod_concepto),
+          concept: cleanBackendText(row.concepto),
+          bankConcept: cleanBackendText(row._bankConcept || row.concepto),
+          detail: cleanBackendText(row.detalle),
+          counterpartyName: cleanBackendText(row._bankCounterpartyName),
+          cuit: normalizeBankCuit(row.cuit),
+          checkNumber: normalizeBankCheckNumber(row.nro_cheque),
+          cbuAlias: cleanBackendText(row._bankCbuAlias),
+          docType: cleanBackendText(row._bankDocType),
+          amount,
+          debit,
+          credit,
+          balance: normalizeMoney(backendNumber(row.saldo)),
+          channel: cleanBackendText(row._bankChannel)
+        };
+      })
+      .sort((left, right) => (
+        String(left.date).localeCompare(String(right.date))
+        || numericIdForSort(left.canonicalMovementId) - numericIdForSort(right.canonicalMovementId)
+        || String(left.movementKey).localeCompare(String(right.movementKey))
+      ));
+  }
+
+  function importBankMovements(tables, movements, bank) {
+    ensureBackendTable(tables, "movimientos_bancarios");
     const table = tables.movimientos_bancarios;
-    const existing = operationKey && table.rows.find((row) => row._bankOperationKey === operationKey);
-    if (existing) return existing;
-    const match = movement.match || {};
-    const timestamp = new Date().toISOString();
-    table.rows.push({
-      _rowNumber: table.rows.length + 2,
-      id_movimiento_bancario: backendNextNumericId(table.rows, "id_movimiento_bancario"),
-      banco: bank,
-      fecha: movement.date,
-      cod_concepto: movement.code || "",
-      concepto: movement.concept || "",
-      detalle: movement.detail || "",
-      cuit: movement.cuit || "",
-      nro_cheque: movement.checkNumber || "",
-      debito: normalizeMoney(backendNumber(movement.debit || 0)),
-      credito: normalizeMoney(backendNumber(movement.credit || 0)),
-      importe: normalizeMoney(backendNumber(movement.amount || 0)),
-      saldo: normalizeMoney(backendNumber(movement.balance || 0)),
-      id_pago: match.type === "pago" ? match.id : (movement.checkMatch?.idPago || ""),
-      id_cobro: match.type === "cobro" ? match.id : (movement.checkMatch?.idCobro || ""),
-      _bankOperationKey: operationKey,
-      _bankOperationPayload: operationPayload,
-      _bankMovementKey: cleanBackendText(movement.movementKey),
-      _editedLocallyAt: timestamp
+    const existingCounts = new Map();
+    (table.rows || []).forEach((row) => {
+      if (!backendBankMatches(row.banco, bank)) return;
+      const fingerprint = bankMovementFingerprint(row, row.banco || bank);
+      existingCounts.set(fingerprint, (existingCounts.get(fingerprint) || 0) + 1);
+    });
+
+    const incomingCounts = new Map();
+    let newCount = 0;
+    (movements || []).forEach((movement) => {
+      const fingerprint = bankMovementFingerprint(movement, bank);
+      const occurrence = (incomingCounts.get(fingerprint) || 0) + 1;
+      incomingCounts.set(fingerprint, occurrence);
+      if (occurrence <= (existingCounts.get(fingerprint) || 0)) return;
+
+      const movementKey = `${fingerprint}:${occurrence}`;
+      table.rows.push(newBankMovementRow(table.rows, movement, bank, movementKey));
+      newCount += 1;
     });
     table.rowCount = table.rows.length;
-    return table.rows[table.rows.length - 1];
+    return {
+      rowsRead: (movements || []).length,
+      newCount,
+      duplicateCount: Math.max(0, (movements || []).length - newCount)
+    };
+  }
+
+  function newBankMovementRow(rows, movement, bank, movementKey) {
+    const timestamp = new Date().toISOString();
+    return {
+      _rowNumber: rows.length + 2,
+      id_movimiento_bancario: backendNextNumericId(rows, "id_movimiento_bancario"),
+      banco: bank,
+      fecha: backendIsoDate(movement.fecha || movement.date),
+      cod_concepto: cleanBackendText(movement.cod_concepto || movement.code),
+      concepto: cleanBackendText(movement.concepto || movement.concept),
+      detalle: cleanBackendText(movement.detalle || movement.detail),
+      cuit: normalizeBankCuit(movement.cuit),
+      nro_cheque: normalizeBankCheckNumber(movement.nro_cheque || movement.checkNumber),
+      debito: normalizeMoney(Math.abs(backendNumber(movement.debito ?? movement.debit))),
+      credito: normalizeMoney(Math.abs(backendNumber(movement.credito ?? movement.credit))),
+      importe: normalizeMoney(backendNumber(movement.importe ?? movement.amount)),
+      saldo: normalizeMoney(backendNumber(movement.saldo ?? movement.balance)),
+      id_pago: "",
+      id_cobro: "",
+      _bankConcept: cleanBackendText(movement.bankConcept),
+      _bankCounterpartyName: cleanBackendText(movement.counterpartyName),
+      _bankCbuAlias: cleanBackendText(movement.cbuAlias),
+      _bankDocType: cleanBackendText(movement.docType),
+      _bankChannel: cleanBackendText(movement.channel),
+      _bankMovementKey: movementKey,
+      _bankImportedAt: timestamp,
+      _editedLocallyAt: timestamp
+    };
+  }
+
+  function numericIdForSort(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : Number.MAX_SAFE_INTEGER;
+  }
+
+  function persistBankMovement(tables, movement, bank, operationKey = "", operationPayload = "") {
+    ensureBackendTable(tables, "movimientos_bancarios");
+    const table = tables.movimientos_bancarios;
+    const canonicalMovementId = backendId(movement.canonicalMovementId);
+    const existing = table.rows.find((row) => (
+      (canonicalMovementId && backendId(row.id_movimiento_bancario) === canonicalMovementId)
+      || (
+        cleanBackendText(movement.movementKey)
+        && cleanBackendText(row._bankMovementKey) === cleanBackendText(movement.movementKey)
+      )
+      || (operationKey && row._bankOperationKey === operationKey)
+    ));
+    if (!existing) {
+      const error = new Error("El movimiento bancario pendiente ya no existe.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const { idPago, idCobro } = bankMovementAssociation(movement);
+    if ((!idPago && !idCobro) || (idPago && idCobro)) {
+      const error = new Error("La conciliacion debe asociar exactamente un pago o un cobro.");
+      error.statusCode = 400;
+      throw error;
+    }
+    assertBankAssociationExists(tables, idPago, idCobro);
+
+    const existingPaymentId = backendId(existing.id_pago);
+    const existingCollectionId = backendId(existing.id_cobro);
+    if (existingPaymentId || existingCollectionId) {
+      if (existingPaymentId === idPago && existingCollectionId === idCobro) return existing;
+      const error = new Error("El movimiento bancario ya fue conciliado con otra asociacion.");
+      error.statusCode = 409;
+      throw error;
+    }
+
+    const timestamp = new Date().toISOString();
+    existing.id_pago = idPago;
+    existing.id_cobro = idCobro;
+    existing._bankOperationKey = operationKey;
+    existing._bankOperationPayload = operationPayload;
+    existing._bankMovementKey = cleanBackendText(existing._bankMovementKey)
+      || cleanBackendText(movement.movementKey);
+    existing._editedLocallyAt = timestamp;
+    return existing;
+  }
+
+  function bankMovementAssociation(movement) {
+    const match = movement?.match || {};
+    const idPago = backendId(
+      match.type === "pago" ? match.id : movement?.checkMatch?.idPago
+    );
+    const idCobro = backendId(
+      match.type === "cobro" ? match.id : movement?.checkMatch?.idCobro
+    );
+    return { idPago, idCobro };
+  }
+
+  function assertBankAssociationExists(tables, idPago, idCobro) {
+    if (idPago && !(tables.pagos?.rows || []).some((row) => backendId(row.id_pago) === idPago)) {
+      const error = new Error("El pago asociado ya no existe.");
+      error.statusCode = 409;
+      throw error;
+    }
+    if (idCobro && !(tables.cobros?.rows || []).some((row) => backendId(row.id_cobro) === idCobro)) {
+      const error = new Error("El cobro asociado ya no existe.");
+      error.statusCode = 409;
+      throw error;
+    }
   }
   
   function bankSourceDestinationForOriginType(value) {
@@ -270,7 +424,27 @@ function createBankPersistenceService(dependencies) {
     return "Movimiento bancario";
   }
 
-  return { backendCreditorTagRelationId, backendPersistedBankMovementCounts, backendValueIsBlank, bankMoneyKey, bankMovementBackendCreditorId, bankMovementFingerprint, bankPaymentMethodFromMovement, bankSourceDestinationForOriginType, consumePersistedBankMovement, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBankDetailsSchema, persistBankMovement, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement };
+  return {
+    backendCreditorTagRelationId,
+    backendPersistedBankMovementCounts,
+    backendValueIsBlank,
+    bankMoneyKey,
+    bankMovementAssociation,
+    bankMovementBackendCreditorId,
+    bankMovementFingerprint,
+    bankPaymentMethodFromMovement,
+    bankSourceDestinationForOriginType,
+    canonicalPendingBankMovements,
+    consumePersistedBankMovement,
+    createBankEgressForSource,
+    createBankPaymentForExpense,
+    createBankSourceExpense,
+    ensureBankDetailsSchema,
+    importBankMovements,
+    persistBankMovement,
+    updateIssuedCheckFromBankMovement,
+    updateReceivedCheckFromBankMovement
+  };
 }
 
 module.exports = { createBankPersistenceService };
