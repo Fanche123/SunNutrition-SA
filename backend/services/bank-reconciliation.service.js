@@ -198,8 +198,15 @@ function createBankReconciliationService(dependencies) {
     const receivedChecksByNumber = backendReceivedChecksByNumber(tables);
     const issuedChecksByNumber = backendIssuedChecksByNumber(tables);
     const receivedCheckDepositGroups = backendReceivedCheckDepositGroups(tables, bank);
-    const analyzedMovements = storedMovements.map((movement) => (
-      normalizePendingAnalysis(analyzeBankMovement(
+    const assignedPaymentIds = new Set(
+      (tables.movimientos_bancarios?.rows || [])
+        .map((row) => backendId(row.id_pago))
+        .filter(Boolean)
+    );
+    const analyzedByMovementKey = new Map([...storedMovements]
+      .sort((left, right) => String(left.movementKey || "").localeCompare(String(right.movementKey || "")))
+      .map((movement) => {
+        const analyzed = normalizePendingAnalysis(analyzeBankMovement(
         movement,
         paymentCandidates,
         collectionCandidates,
@@ -211,8 +218,13 @@ function createBankReconciliationService(dependencies) {
         receivedChecksByNumber,
         issuedChecksByNumber,
         receivedCheckDepositGroups,
-        bank
-      ), tables)
+        bank,
+        assignedPaymentIds
+        ), tables);
+        return [String(movement.movementKey || ""), analyzed];
+      }));
+    const analyzedMovements = storedMovements.map((movement) => (
+      analyzedByMovementKey.get(String(movement.movementKey || ""))
     ));
   
     const ready = analyzedMovements.filter((movement) => movement.status === "listo");
@@ -415,7 +427,6 @@ function createBankReconciliationService(dependencies) {
       });
       const existingOperation = bankOperationRow(tables, operationKey);
       if (existingOperation) {
-        assertSameOperation(existingOperation._bankOperationPayload, operationPayload);
         assertBankOperationRelations(tables, report.applyMode, operationKey);
         return skipBankMovement(counters);
       }
@@ -573,6 +584,7 @@ function createBankReconciliationService(dependencies) {
   }
 
   return {
+    buildBankReconciliationReport,
     handleBankReconciliationAnalyze,
     handleBankReconciliationApply,
     handleBankReconciliationDepositChecks,

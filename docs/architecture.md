@@ -15,7 +15,8 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `inventoryPurchaseConfig.barsPerDay` es el único parámetro persistente de producción diaria. Vive como metadato superior del cache, no en una tabla, y se guarda atómicamente con el snapshot recalculado mediante `POST /api/inventory/purchase-snapshot/production-rate`.
 - Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
 - La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva. `GET /api/inventory/purchase-snapshot` conserva ese resultado si está vigente o lo reconstruye en memoria desde el último lote de `inventarios`/`detalle_inventarios` si falta o está obsoleto; Inventario, Dashboard y Compras leen el mismo contrato.
-- Conciliación bancaria guarda en `bankReconciliation.pendingMovements` los movimientos normalizados todavía pendientes, deduplicados por huella y ocurrencia, sin conservar el CSV ni agregar tabla. `GET /api/bank-reconciliation/state` los reanaliza por banco y `GET /api/bank-reconciliation/summary` entrega la última fecha efectiva desde `movimientos_bancarios` al Dashboard.
+- `movimientos_bancarios` conserva importados, asociaciones y pendientes bancarios. `GET /api/bank-reconciliation/state` reanaliza las filas sin asociación y `GET /api/bank-reconciliation/summary` entrega la última fecha efectiva al Dashboard.
+- `cash-boxes.service.js` calcula Caja ICBC desde cobros/pagos ICBC por encabezado, depósitos efectivos de cheques recibidos y cheques emitidos debitados. El fondo vincula depósito/rescate con su pago mediante `fondos_inversion_movimientos.id_pago`; el rendimiento permanece exclusivamente económico.
 - El OCR de adjuntos o fotos solo interpreta el archivo entregado por el usuario; no constituye una fuente de tablas.
 
 - `server.js`: composicion del servidor y dominios backend operativos aun no extraidos.
@@ -60,6 +61,8 @@ Antes del despacho, `access-control.service.js` valida el origen y concentra el 
 - `bank-persistence.service.js`: movimientos conciliados, pagos, egresos y actualizacion de cheques.
 - `bank-parser.service.js`: lectura de CSV y clasificacion de cada movimiento.
 - `bank-matching.service.js`: candidatos, identidades y seleccion de coincidencias bancarias.
+- `cash-boxes.service.js`: saldo ICBC y pendientes ERP↔Banco con un corte bancario común.
+- `investment-fund.service.js`: libro del fondo, pagos ICBC de depósitos/rescates y rendimiento económico sin cobro.
 - `inventory-entry.service.js`: endpoints de carga, fecha mas reciente y plantilla de inventario.
 - `inventory-purchase-snapshot.service.js`: construccion, validacion y lectura estable de la evaluación asociada al último inventario integral.
 - `inventory-photo.service.js`: lectura OCR, revision y preparacion de rangos de inventario.

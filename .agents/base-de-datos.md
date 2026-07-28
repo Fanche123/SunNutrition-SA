@@ -30,7 +30,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 
 - Persistencia: `backend/data-store.js`, `backend/repositories/app-state.repository.js`, `backend/config/paths.js`.
 - Modelo: `backend/table-registry.json`, `backend/config/backend-columns.js`, `backend/config/backend-projections.js`.
-- Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js`, `backend/migrations/20260727-investment-fund.js` y `backend/migrations/20260727-economic-expenses-history.js`, no automáticas y probadas sobre copias aisladas.
+- Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js`, `backend/migrations/20260727-investment-fund.js`, `backend/migrations/20260727-economic-expenses-history.js`, `backend/migrations/20260728-icbc-cash-reconciliation.js` y las reparaciones puntuales `backend/migrations/20260728-icbc-duplicate-repair.js` y `backend/migrations/20260728-icbc-one-to-one-repair.js`, no automáticas y probadas sobre copias aisladas.
 - Acceso compartido: `backend/services/backend-table.service.js`, `backend-map.service.js`, `sql.service.js`, `backend/utils/runtime.js`, `backend/routes/router.js`.
 - Herramientas: `tools/audit-erp-data.js`, `tools/backend-sqlite-query.py`.
 - Evidencia histórica: `docs/AUDITORIA_DATOS_ERP_2026-07-18.json`, `docs/REPORTE_INTEGRAL_ERP_2026-07-18.md`. Describen una arquitectura anterior; el código actual manda.
@@ -65,7 +65,7 @@ Relaciones críticas a verificar en el servicio y `tools/audit-erp-data.js`: acr
 - `planes_pagos`, `cuotas_planes_pagos`, `gastos_economicos` y `gastos_egresos` están alineadas entre columnas canónicas y registry. Como toda tabla visible, admiten CRUD administrativo validado; sus flujos operativos siguen siendo la vía habitual.
 - Las claves públicas de `entregas_detalle`, `cobros_detalle`, `caja`, `cheques_entregados`, `cheques_recibidos`, `otros_gastos` y `detalle_pagos` ya coinciden en registry, columnas canónicas y runtime. Los aliases históricos se conservan en proyecciones.
 - `cheques_recibidos` define `id_pago_endoso` y `fecha_endoso` como columnas opcionales. La migración preparada agrega únicamente headers y conserva todas las filas históricas; no se ejecuta al iniciar ni se aplicó al cache real.
-- `movimientos_bancarios.id_movimiento_fondo` y `fondos_inversion_movimientos` forman la relación auditable del fondo. La migración valida backup, rollback e inicialización exacta; no aproxima importes ni ejecuta una siembra al iniciar.
+- `movimientos_bancarios.id_movimiento_fondo`, `fondos_inversion_movimientos.id_movimiento_bancario` y `fondos_inversion_movimientos.id_pago` forman la relación auditable fondo↔banco↔pago. Depósitos/rescates admiten `id_movimiento_fondo` e `id_pago` simultáneos en la fila bancaria; rendimientos no admiten pago/cobro ni vínculo bancario propio. La migración ICBC exige coincidencias únicas, backup verificable, idempotencia y rollback.
 - Los estados históricos de cheques no se reinterpretan. Las invariantes estrictas `Pendiente`/`Depositado`/`Endosado` aplican a operaciones nuevas mediante `backend/utils/received-check-endorsement.js`.
 - La edición de planes/cuotas pertenece al servicio específico de Tesorería. No renombra columnas ni claves y conserva `cuotas_planes_pagos.id_egreso`; una cuota vinculada no puede eliminarse desde ese flujo.
 - Mientras el ERP sea exclusivamente local, la escritura atómica actual requiere como mínimo backups manuales verificables antes de cambios de esquema y validación sobre copias aisladas.

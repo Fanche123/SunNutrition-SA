@@ -1,5 +1,5 @@
 name = "validador_tarea"
-description = "Validador independiente read-only, excepcional y focalizado para tareas con una razón concreta de revisión adicional."
+description = "Validador final read-only para uno de tres focos exclusivos en tareas de riesgo alto; recibe el foco en el paquete."
 model = "gpt-5.6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"

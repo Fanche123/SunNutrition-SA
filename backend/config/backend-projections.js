@@ -133,6 +133,7 @@ const BACKEND_TABLE_PROJECTIONS = {
       importe: ["importe", "monto"],
       periodo_rendimiento: ["periodo_rendimiento", "periodo"],
       id_movimiento_bancario: ["id_movimiento_bancario"],
+      id_pago: ["id_pago"],
       id_gasto_economico: ["id_gasto_economico"],
       referencia: ["referencia"],
       observacion: ["observacion"],

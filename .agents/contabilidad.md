@@ -39,6 +39,7 @@ La integración del fondo es una excepción explícita: cada rendimiento crea en
 - Reportes consume todos los confirmados dentro del Estado de Resultados oficial en cualquier período. Si no existen filas confirmadas, informa cero gastos; no reconstruye productores ni vuelve a sumar el fondo por otra fuente.
 - La migración/materializador `20260727-economic-expenses-history.js` reconoce recepciones, otros gastos, logística, comisiones, Ingresos Brutos, sueldo neto e intereses de planes únicamente con fecha, importe y etiqueta canónicos. Para sueldos conserva una sola fuente por empleado/período cuando neto, egreso y etiqueta coinciden; prioriza la fila con datos de liquidación y luego el menor ID, y falla ante fuentes incompatibles. El financiero se anticipa por cuota; el resarcitorio requiere que pagos y aplicaciones completen `capital + interes_financiero` después del primer vencimiento y hasta el segundo. Capital, aportes y movimientos del fondo no económicos quedan excluidos. Los confirmados históricos se corrigen con ajustes/reversiones.
 - Toda escritura valida, clona el cache y ejecuta un único `saveBackendCache`.
+- La reparación puntual `20260728-icbc-duplicate-repair.js` neutraliza el gasto confirmado duplicado `467` mediante reversión económica y de aplicación append-only; no borra confirmados.
 
 ## Validación y seguridad
 

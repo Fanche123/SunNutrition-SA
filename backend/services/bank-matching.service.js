@@ -101,7 +101,11 @@ function createBankMatchingService(dependencies) {
       })
       .filter(Boolean)
       .sort((left, right) => right.score - left.score);
-    return matches[0] || null;
+    if (!matches.length) return null;
+    if (options.rejectTies === true && matches.length > 1 && matches[0].score === matches[1].score) {
+      return null;
+    }
+    return matches[0];
   }
   
   function uniqueExactBankMatch(movement, candidates, targetAmount) {
@@ -244,6 +248,15 @@ function createBankMatchingService(dependencies) {
     });
   
     const creditorRelationsById = backendRowsById(tables.acreedores_etiquetas?.rows, "id_acreedor_etiqueta");
+    const sourceRelationByExpenseId = new Map();
+    ["recepciones", "otros_gastos", "sueldos", "entregas", "comisiones"].forEach((tableName) => {
+      (tables[tableName]?.rows || []).forEach((row) => {
+        const expenseId = backendId(row.id_egreso);
+        if (expenseId && !sourceRelationByExpenseId.has(expenseId)) {
+          sourceRelationByExpenseId.set(expenseId, backendId(row.id_acreedor_etiqueta));
+        }
+      });
+    });
     const planExpenseIds = new Set(
       (tables.cuotas_planes_pagos?.rows || [])
         .map((row) => backendId(row.id_egreso))
@@ -256,7 +269,10 @@ function createBankMatchingService(dependencies) {
         const pendingAmount = fromCents(totalCents - paidCents);
         if (!isPendingAmount(pendingAmount)) return null;
         const counterparty = backendExpenseCounterpartyInfo(expense, tables);
-        const creditorRelation = creditorRelationsById.get(backendId(expense.id_acreedor_etiqueta));
+        const creditorRelation = creditorRelationsById.get(
+          backendId(expense.id_acreedor_etiqueta)
+          || sourceRelationByExpenseId.get(backendId(expense.id_egreso))
+        );
         return {
           type: "egreso",
           id: backendId(expense.id_egreso),
@@ -550,21 +566,26 @@ function createBankMatchingService(dependencies) {
     const candidateDescription = backendNormalizeText(candidate.description);
     const candidateCuit = normalizeBankCuit(candidate.cuit);
   
+    let score = 0;
+    const reasons = [];
     if (movementCuit && candidateCuit && movementCuit === candidateCuit) {
-      return { score: 70, reason: "CUIT" };
+      score += 70;
+      reasons.push("CUIT");
     }
     if (candidateParty && movementText.includes(candidateParty)) {
-      return { score: 42, reason: "proveedor" };
-    }
-    if (movementName && candidateParty && (
+      score += 42;
+      reasons.push("proveedor");
+    } else if (movementName && candidateParty && (
       movementName.includes(candidateParty) || candidateParty.includes(movementName)
     )) {
-      return { score: 38, reason: "nombre" };
+      score += 38;
+      reasons.push("nombre");
     }
     if (candidateDescription && bankTextOverlapScore(movementText, candidateDescription) >= 2) {
-      return { score: 24, reason: "detalle" };
+      score += 24;
+      reasons.push("detalle");
     }
-    return { score: 0, reason: "" };
+    return { score, reason: reasons.join(" + ") };
   }
 
   return { backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankExpenseCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendIssuedChecksByNumber, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankIdentityScore, bankManualCheckDepositMatch, bankMovementLooksLikeReceivedCheckDeposit, bestBankMatch, bestBankSourceMatch, exactPendingExpenseMatch, identifyBankCounterparty, uniqueExactBankMatch };

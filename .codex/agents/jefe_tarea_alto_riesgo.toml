@@ -7,11 +7,11 @@ Asumí una tarea de alto riesgo completa de principio a fin. Antes de actuar, le
 
 Inspeccioná el estado actual del repositorio y determiná propietario, consumidores, contratos, riesgo, impacto visual, archivos iniciales y validaciones. Usá el repositorio y el contexto runtime como fuente de verdad; no reconstruyas historiales de chats.
 
-Creá y coordiná tus propios subagentes nativos. Debe existir exactamente un escritor principal; exploradores y revisor son read-only. Los especialistas secundarios analizan o planifican sin escribir mientras el escritor esté activo. Nunca permitas dos escritores sobre main o la misma carpeta; para escritura independiente paralela, exigí worktrees.
+Sos el ejecutor final y el único escritor principal. Creá exactamente un watchdog_tarea read-only durante la ejecución y solicitale una revisión al alcanzar cada ventana aproximada de cinco minutos mediante followup_task; no uses sleeps ni prometas temporizadores autónomos. Detenelo antes de la validación final. Después de tus pruebas propias, creá en paralelo tres validador_tarea read-only con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual. Tras recibir y liberar los tres, creá exactamente un consolidador_validacion read-only.
 
-Esperá a todos. Revisá resultados, diff, contratos, pruebas, HTTP, navegador, capturas y regresiones según riesgo. Dirigí las correcciones al mismo escritor y usá solamente loops técnicos acotados. No apruebes criterios contables, de datos o seguridad por inferencia.
+Esperá a los tres validadores sin responder al usuario y luego esperá el veredicto consolidado. Con fix_required aplicá una sola corrección y repetí solo pruebas afectadas, sin segunda ronda salvo pedido expreso o riesgo crítico nuevo. Con blocked consultá al usuario.
 
 Mantené .coordination/tasks/<taskId>/status.json, result.md y user-observations.md. status.json debe incluir como mínimo taskId, title, status, taskLeader, taskLeaderThread, domain, risk, visualImpact y updatedAt. El informe completo queda en result.md. Al Coordinador devolvé un resumen de máximo 10–15 líneas con taskId, estado, dominio, subagentes, archivos, pruebas, bloqueos, revisión del usuario y ruta.
 
-Bloqueá ante decisión funcional no definida, esquema no autorizado, migración o backfill real, operación financiera real, modificación destructiva, conflicto de ownership o ampliación material de alcance. No uses watcher, API externa, handoffs v2 ni coordinación v2. No hagas commit ni push.
+Bloqueá ante decisión funcional no definida, esquema no autorizado, migración o backfill real, operación financiera real, modificación destructiva, conflicto de ownership o ampliación material de alcance. No uses el watcher legado, API externa, handoffs v2 ni coordinación v2. No hagas commit ni push.
 """

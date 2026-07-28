@@ -44,6 +44,11 @@ function fixture(finalCredit = 5048625.53) {
         rows: [{ id_etiqueta: "16", etiqueta: "Rendimiento Fondo" }],
         rowCount: 1
       },
+      pagos: {
+        headers: EXPECTED_BACKEND_COLUMNS.pagos,
+        rows: [],
+        rowCount: 0
+      },
       gastos_economicos: {
         headers: EXPECTED_BACKEND_COLUMNS.gastos_economicos,
         rows: [],
@@ -89,6 +94,11 @@ test("inicializacion autorizada es atomica, exacta e idempotente", () => {
   assert.strictEqual(investmentFundState(initialized.cache).balance, 0);
   assert.strictEqual(initialized.cache.tables.gastos_economicos.rows[0].importe, -48625.51);
   assert.strictEqual(initialized.cache.tables.movimientos_bancarios.rows.every((row) => row.id_movimiento_fondo), true);
+  assert.strictEqual(initialized.cache.tables.movimientos_bancarios.rows.every((row) => row.id_pago), true);
+  assert.deepStrictEqual(
+    initialized.cache.tables.pagos.rows.map((row) => row.monto),
+    [12000000, -5000000.19, -1999999.79, -5048625.53]
+  );
   const replay = initializeInvestmentFundData(initialized.cache, { yieldDate: "2026-07-15" });
   assert.strictEqual(replay.report.idempotent, true);
   assert.deepStrictEqual(replay.cache, initialized.cache);

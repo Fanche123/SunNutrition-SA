@@ -53,7 +53,7 @@ El flujo predeterminado crea hilos principales visibles:
 4. usa siempre `set_thread_title` con un nombre específico;
 5. inserta la consigna completa y deja el hilo trabajando independientemente;
 6. responde inmediatamente sin esperar el resultado;
-7. mientras el hilo permanece activo, resuelve sus propias pruebas y la única ronda de corrección interna permitida;
+7. mientras el hilo permanece activo, resuelve sus propias pruebas y, si el riesgo es alto, el flujo de control final consolidado;
 8. después de declarar el objetivo completado y sin trabajo pendiente, el hilo queda cerrado y toda corrección o ampliación posterior nace como una tarea nueva vinculada.
 
 El Coordinador no usa `spawn_agent` ni Jefes anidados, no hace trabajo técnico y no recibe el informe. El nuevo hilo realiza toda inspección, cambio, prueba, navegador, captura y revisión, y puede crear sus propios especialistas como subagentes.
@@ -68,17 +68,17 @@ Usar Local cuando se necesiten runtime principal, localhost o archivos locales. 
 - El prompt de la corrección debe ser autosuficiente y transportar solo intención, evidencia, estado de integración, módulos iniciales, pruebas relacionadas, riesgos y cambios preexistentes necesarios.
 - La nueva tarea vuelve a evaluar ownership, riesgo y modo de trabajo. No hereda automáticamente el worktree, modelo ni validaciones de la tarea anterior.
 - Si los cambios de origen aún no están integrados, primero resolver su integración o asegurar un checkout que los contenga. No corregir sobre una base que no incluye la implementación y no reabrir el hilo finalizado.
-- Las correcciones internas surgidas antes del cierre —pruebas propias o una única ronda de `validador_tarea`— permanecen dentro de la tarea activa y no generan otro hilo.
+- Las correcciones internas surgidas antes del cierre —pruebas propias o la única corrección posterior al consolidado— permanecen dentro de la tarea activa y no generan otro hilo.
 
 ## Consulta de progreso bajo demanda
 
-Las tareas y correcciones no crean monitores automáticos. Cuando el usuario pide estado, porcentaje, tiempo transcurrido o estimación restante de tareas Codex, el Coordinador usa la skill personal `$estimar-progreso-hilos` y responde con una fotografía inmediata basada en evidencia.
+Las tareas y correcciones no crean monitores para estimar progreso. Cuando el usuario pide estado, porcentaje, tiempo transcurrido o estimación restante de tareas Codex, el Coordinador usa la skill personal `$estimar-progreso-hilos` y responde con una fotografía inmediata basada en evidencia.
 
-La consulta es estrictamente read-only: descubre y lee hilos con las herramientas nativas, no espera su finalización, no les envía mensajes y no cambia archivos ni estado. El Coordinador no crea subagentes, watchers, timers, automations ni procesos residentes para estimar progreso.
+La consulta es estrictamente read-only: descubre y lee hilos con las herramientas nativas, no espera su finalización, no les envía mensajes y no cambia archivos ni estado. El Coordinador no crea subagentes, watchers, timers, automations ni procesos residentes para estimar progreso. Esta consulta es independiente del único Watchdog interno exigido durante tareas de riesgo alto.
 
-## Validación principal única y proporcional
+## Validación proporcional y control consolidado
 
-La única validación principal la ejecuta el mismo hilo o subagente que realizó la implementación. El hilo que delega consolida su evidencia, pero no repite comandos, navegador o inspecciones equivalentes si el ejecutor ya dejó resultados suficientes.
+El mismo hilo o subagente que implementa ejecuta una sola vez las pruebas propias proporcionales. El hilo visible conserva la responsabilidad final y entrega una única respuesta al usuario. Todo prompt declara riesgo e impacto visual.
 
 Antes de cerrar, el ejecutor debe:
 
@@ -91,19 +91,21 @@ Antes de cerrar, el ejecutor debe:
 7. distinguir archivos propios de cambios preexistentes o concurrentes;
 8. informar comandos o casos, resultados, evidencia verificable, riesgos y toda prueba no ejecutada.
 
-El Coordinador revisa solamente ese resumen para detectar cobertura faltante, inconsistencias, riesgos o decisiones necesarias. No relanza validaciones rutinarias equivalentes ni exige controles ya respaldados con evidencia suficiente.
+Para riesgo bajo o medio se cierra con esa validación simple, salvo solicitud expresa o señal concreta. Para riesgo alto —dinero, contabilidad, datos reales, base de datos, migraciones, integraciones complejas o arquitectura transversal—:
 
-Una revisión independiente es excepcional. Solo ante una razón concreta y declarada —alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible— el hilo puede crear un único `validador_tarea` read-only. Debe transmitirle taskId, intención, alcance, dominio, riesgo, impacto visual, archivos propios, diff relevante, pruebas, evidencias, riesgos, cambios preexistentes y la razón de revisión. El validador enfoca su análisis en ese riesgo o brecha y no repite toda la validación principal.
+1. crear exactamente un `watchdog_tarea` read-only al iniciar y solicitar al mismo agente una revisión ultrarrápida al alcanzar cada ventana aproximada de cinco minutos mediante `followup_task`, o usar un mecanismo recurrente nativo equivalente;
+2. no usar sleeps ni prometer periodicidad autónoma no soportada; una tarea menor a cinco minutos puede terminar sin segunda revisión;
+3. detener el Watchdog después de las pruebas propias y antes de validar;
+4. crear en paralelo tres `validador_tarea` read-only con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual;
+5. esperar y liberar los tres antes de crear exactamente un `consolidador_validacion` read-only.
 
-- `approved`: informar la revisión excepcional y cerrar.
-- `fix_required`: aplicar únicamente las correcciones concretas y repetir con el ejecutor las pruebas afectadas, sin segundo validador.
-- `blocked`: detenerse y formular al usuario la decisión o autorización requerida.
+El paquete base común incluye taskId, intención, alcance, dominio, riesgo, impacto visual, archivos propios, diff, pruebas, evidencias, backup/datos cuando aplique, cambios preexistentes, riesgos y puntos no ejecutados. Los controles no modifican, crean agentes ni responden al usuario. El Watchdog solo observa actividad, fase, herramienta, tiempo sin avance, bloqueo y próximo paso, y alerta ante estancamiento o espera anormal. Los validadores emiten `approved`, `fix_required` o `blocked` con evidencia y corrección mínima. El consolidador no repite controles: deduplica, expone contradicciones y preserva todo hallazgo demostrado.
 
-No existe loop validador–corrección–validador. El Coordinador nunca crea ni espera validadores.
+Con `fix_required`, el ejecutor corrige una sola vez y repite solo pruebas afectadas, sin segunda ronda salvo pedido expreso o riesgo crítico nuevo; con `blocked`, consulta al usuario. Nunca coexisten Watchdog, tres validadores y consolidador: el máximo es ejecutor + tres subagentes.
 
 Clasificar el impacto visual como `none`, `minor` o `material`. Un impacto material requiere vista real o aislada, capturas y revisión de overflow, alineación, jerarquía y responsive.
 
-La infraestructura bajo `.coordination/`, su watcher, comandos y documentación se conserva como **modo de recuperación v2**. No se usa en el flujo nativo, no requiere watcher activo y nunca se ejecutan ambos circuitos para la misma tarea.
+La infraestructura bajo `.coordination/`, su watcher, comandos y documentación se conserva como **modo de recuperación v2**. Ese watcher legado no se usa en el flujo nativo y no debe confundirse con `watchdog_tarea`.
 
 Los subagentes no ejecutan migraciones o backfills reales, eliminaciones, operaciones financieras ni acciones destructivas sin autorización. Ningún agente hace commit o push automáticamente.
 

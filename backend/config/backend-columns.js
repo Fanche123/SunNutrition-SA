@@ -10,7 +10,7 @@ const EXPECTED_BACKEND_COLUMNS = {
   fletes: ["id_flete", "nombre_flete", "telefono_flete", "email_flete"],
   datos_bancarios: ["id_dato_bancario", "detalle", "id_acreedor", "id_etiqueta", "tipo_factura"],
   movimientos_bancarios: ["id_movimiento_bancario", "banco", "fecha", "cod_concepto", "concepto", "detalle", "cuit", "nro_cheque", "debito", "credito", "importe", "saldo", "id_pago", "id_cobro", "id_movimiento_fondo"],
-  fondos_inversion_movimientos: ["id_movimiento_fondo", "fecha", "tipo", "importe", "periodo_rendimiento", "id_movimiento_bancario", "id_gasto_economico", "referencia", "observacion", "clave_idempotencia", "hash_payload", "creado_en"],
+  fondos_inversion_movimientos: ["id_movimiento_fondo", "fecha", "tipo", "importe", "periodo_rendimiento", "id_movimiento_bancario", "id_pago", "id_gasto_economico", "referencia", "observacion", "clave_idempotencia", "hash_payload", "creado_en"],
   items: ["id_item", "origen_tipo", "id_origen", "ud_conteo"],
   productos: ["id_producto", "id_item", "nombre_producto", "capacidad_palet", "cantidad_individual", "precio_base", "costo_base", "costo_ud_individual"],
   subproductos: ["id_subproducto", "id_item", "nombre_subproducto", "ud_conteo"],

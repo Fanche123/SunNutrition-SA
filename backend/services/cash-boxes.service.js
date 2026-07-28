@@ -32,7 +32,12 @@ function createCashBoxesService({
 
     const tables = sourceCache?.tables || {};
     const warnings = [];
-    const collections = financialRowsFromDate(
+    const bankRows = (tables.movimientos_bancarios?.rows || [])
+      .map((row) => ({ row }))
+      .filter(({ row }) => isMovementForBank(row, definition.bank));
+    const latestBankMovement = latestObservedBankMovement(bankRows, definition, warnings);
+    const cutoffDate = latestBankMovement?.date || null;
+    const collectionHeaders = financialRowsFromDate(
       tables.cobros?.rows,
       {
         dateColumn: "fecha_cobro",
@@ -41,9 +46,10 @@ function createCashBoxesService({
         amountColumn: "monto"
       },
       definition,
-      warnings
+      warnings,
+      cutoffDate
     );
-    const payments = financialRowsFromDate(
+    const paymentHeaders = financialRowsFromDate(
       tables.pagos?.rows,
       {
         dateColumn: "fecha_pago",
@@ -52,13 +58,30 @@ function createCashBoxesService({
         amountColumn: "monto"
       },
       definition,
-      warnings
+      warnings,
+      cutoffDate
     );
 
-    const bankRows = (tables.movimientos_bancarios?.rows || [])
-      .map((row, index) => ({ row, index }))
-      .filter(({ row }) => isMovementForBank(row, definition.bank));
-    const latestBankMovement = latestObservedBankMovement(bankRows, definition, warnings);
+    const bankAssociations = buildBankAssociationIndexes(
+      tables.movimientos_bancarios?.rows || [],
+      definition
+    );
+    const collections = buildCollectionEntries(
+      collectionHeaders,
+      tables,
+      bankAssociations,
+      definition,
+      warnings,
+      cutoffDate
+    );
+    const payments = buildPaymentEntries(
+      paymentHeaders,
+      tables,
+      bankRows,
+      definition,
+      warnings,
+      cutoffDate
+    );
     const collectionTotalCents = sumSafeCents(collections.map((item) => item.amountCents));
     const paymentTotalCents = sumSafeCents(payments.map((item) => item.amountCents));
     const calculatedBalanceCents = sumSafeCents([
@@ -71,10 +94,6 @@ function createCashBoxesService({
       ? null
       : sumSafeCents([latestBankMovement.balanceCents, -calculatedBalanceCents]);
 
-    const bankAssociations = buildBankAssociationIndexes(
-      tables.movimientos_bancarios?.rows || [],
-      definition
-    );
     const pendingCollections = buildPendingCollections(
       collections,
       tables,
@@ -87,7 +106,14 @@ function createCashBoxesService({
       bankAssociations,
       definition
     );
-    const bankToErp = buildBankToErpSummary(tables, bankRows, definition);
+    const bankToErp = buildBankToErpSummary(tables, bankRows, definition, cutoffDate);
+    const pendingCollectionTotalCents = sumSafeCents(pendingCollections.map((item) => item.amountCents));
+    const pendingPaymentTotalCents = sumSafeCents(pendingPayments.map((item) => item.amountCents));
+    const erpPendingNetCents = sumSafeCents([pendingCollectionTotalCents, -pendingPaymentTotalCents]);
+    const pendingNetGapCents = sumSafeCents([bankToErp.pendingNetCents, -erpPendingNetCents]);
+    const hasPendingAssociations = pendingCollections.length > 0
+      || pendingPayments.length > 0
+      || bankToErp.pendingCount > 0;
     const instrumentScope = summarizeInstrumentScope(collections, payments, definition);
 
     warnings.push(...instrumentScope.warnings);
@@ -102,13 +128,13 @@ function createCashBoxesService({
         initialDate: definition.initialDate,
         initialDateInclusive: true,
         initialBalanceCents: definition.initialBalanceCents,
-        collectionSource: "cobros.monto",
-        paymentSource: "pagos.monto",
-        includedStates: "Todas las filas persistidas; cobros y pagos no tienen columna canónica de estado.",
-        formula: "saldo inicial + cobros - pagos",
+        collectionSource: "porción no cheque de cobros atribuible a ICBC + depósitos canónicos de cheques_recibidos",
+        paymentSource: "pagos con banco ICBC; cheques emitidos sólo cuando existe evidencia de débito efectivo",
+        includedStates: "Ingresos y salidas ICBC hasta el cierre bancario común; efectivo, endosos y otros bancos quedan excluidos.",
+        formula: "saldo inicial + ingresos ICBC - salidas ICBC",
         differenceConvention: "saldo bancario final - saldo calculado del ERP",
         latestBankBalanceSource: "movimientos_bancarios.saldo",
-        latestBankOrder: "fecha, marca de importación y orden persistido"
+        latestBankOrder: "fecha y orden fuente estable del extracto (descendente)"
       },
       summary: {
         collectionCount: collections.length,
@@ -121,18 +147,24 @@ function createCashBoxesService({
         status: differenceCents === null
           ? "unavailable"
           : differenceCents === 0
-            ? "reconciled"
+            ? hasPendingAssociations
+              ? "balanced_with_pending_associations"
+              : "reconciled"
             : "difference"
       },
       erpToBank: {
         pendingCollectionCount: pendingCollections.length,
-        pendingCollectionTotalCents: sumSafeCents(pendingCollections.map((item) => item.amountCents)),
+        pendingCollectionTotalCents,
         pendingPaymentCount: pendingPayments.length,
-        pendingPaymentTotalCents: sumSafeCents(pendingPayments.map((item) => item.amountCents)),
+        pendingPaymentTotalCents,
+        pendingNetCents: erpPendingNetCents,
         collections: pendingCollections,
         payments: pendingPayments
       },
-      bankToErp,
+      bankToErp: {
+        ...bankToErp,
+        pendingNetGapCents
+      },
       instrumentScope,
       warnings: uniqueStrings(warnings)
     };
@@ -159,7 +191,7 @@ function createCashBoxesService({
     }
   }
 
-  function financialRowsFromDate(rows, config, definition, warnings) {
+  function financialRowsFromDate(rows, config, definition, warnings, cutoffDate = null) {
     return (rows || []).reduce((result, row) => {
       const id = backendId(row?.[config.idColumn]);
       const date = backendIsoDate(row?.[config.dateColumn]);
@@ -168,6 +200,7 @@ function createCashBoxesService({
         return result;
       }
       if (date < definition.initialDate) return result;
+      if (cutoffDate && date > cutoffDate) return result;
 
       try {
         result.push({
@@ -195,17 +228,18 @@ function createCashBoxesService({
       result.push({
         ...item,
         date,
-        importedAt: String(item.row._bankImportedAt || "")
+        sourceOrder: stableBankSourceOrder(item.row)
       });
       return result;
     }, []);
 
-    datedRows.sort((left, right) => (
-      left.date.localeCompare(right.date)
-      || left.importedAt.localeCompare(right.importedAt)
-      || left.index - right.index
-    ));
-    const latest = datedRows.at(-1);
+    const latestDate = datedRows.reduce(
+      (result, item) => item.date > result ? item.date : result,
+      ""
+    );
+    const latest = datedRows
+      .filter((item) => item.date === latestDate)
+      .sort((left, right) => left.sourceOrder - right.sourceOrder)[0];
     if (!latest) return null;
 
     let balanceCents = null;
@@ -222,6 +256,147 @@ function createCashBoxesService({
       date: latest.date,
       balanceCents
     };
+  }
+
+  function stableBankSourceOrder(row) {
+    const explicit = Number(row?._bankSourceOrder);
+    if (Number.isFinite(explicit) && explicit > 0) return explicit;
+    const persisted = Number(row?._rowNumber);
+    if (Number.isFinite(persisted) && persisted > 0) return persisted;
+    const id = Number(row?.id_movimiento_bancario);
+    return Number.isFinite(id) ? id : Number.MAX_SAFE_INTEGER;
+  }
+
+  function buildPaymentEntries(headers, tables, bankRows, definition, warnings, cutoffDate) {
+    const issuedChecksByPayment = backendGroupRowsById(
+      tables.cheques_entregados?.rows || [],
+      "id_pago"
+    );
+    const bankRowsByPayment = backendGroupRowsById(
+      bankRows.map(({ row }) => row),
+      "id_pago"
+    );
+    return headers.filter((item) => {
+      const impact = instrumentImpact(item.row.metodo, item.row.banco, definition);
+      if (impact.status !== "declared_icbc") return false;
+      if (!/cheq/.test(backendNormalizeText(item.row.metodo))) return true;
+
+      const bankEvidence = (bankRowsByPayment.get(item.id) || []).some((row) => {
+        const date = backendIsoDate(row.fecha);
+        return date
+          && date >= definition.initialDate
+          && (!cutoffDate || date <= cutoffDate)
+          && Math.abs(toCents(row.debito || 0)) > 0;
+      });
+      const issuedCheckEvidence = (issuedChecksByPayment.get(item.id) || []).some((row) => (
+        isMovementForBank(row, definition.bank)
+        && /debit/.test(backendNormalizeText(row.estado))
+      ));
+      const explicitDebitRow = /debit/.test(backendNormalizeText(item.row.metodo));
+      if (bankEvidence || issuedCheckEvidence || explicitDebitRow) return true;
+
+      warnings.push(
+        `Pago ${item.id || "sin ID"} excluido: el cheque emitido todavía no tiene débito ICBC efectivo.`
+      );
+      return false;
+    });
+  }
+
+  function buildCollectionEntries(headers, tables, associations, definition, warnings, cutoffDate) {
+    const checksByCollection = backendGroupRowsById(
+      tables.cheques_recibidos?.rows || [],
+      "id_cobro"
+    );
+    const directCollections = headers.reduce((result, item) => {
+      const checks = checksByCollection.get(item.id) || [];
+      const methodIsCheck = /cheq/.test(backendNormalizeText(item.row.metodo));
+      const impact = instrumentImpact(item.row.metodo, item.row.banco, definition);
+      if (impact.status === "cash" || impact.status === "non_bank") return result;
+      const declaredForBox = isMovementForBank(item.row, definition.bank);
+      const associatedForBox = (associations.collectionsForBox.get(item.id) || []).length > 0;
+      if (!declaredForBox && !associatedForBox) return result;
+
+      const checkCents = sumCheckCents(checks, item.id, warnings);
+      if (methodIsCheck && !checks.length) return result;
+      const directAmountCents = item.amountCents - checkCents;
+      if (directAmountCents < 0) {
+        warnings.push(`Cobro ${item.id || "sin ID"} excluido: los cheques asociados superan el importe del encabezado.`);
+        return result;
+      }
+      if (directAmountCents > 0) result.push({ ...item, amountCents: directAmountCents });
+      return result;
+    }, []);
+
+    return directCollections.concat(buildDepositedCheckEntries(
+      tables.cheques_recibidos?.rows || [],
+      definition,
+      warnings,
+      cutoffDate
+    ));
+  }
+
+  function sumCheckCents(checks, collectionId, warnings) {
+    const seen = new Set();
+    return sumSafeCents((checks || []).reduce((result, check) => {
+      const checkId = backendId(check.id_cheque_recibido);
+      if (checkId && seen.has(checkId)) {
+        warnings.push(`Cheque ${checkId} duplicado en el cobro ${collectionId || "sin ID"}; se computó una sola vez.`);
+        return result;
+      }
+      if (checkId) seen.add(checkId);
+      try {
+        result.push(Math.abs(toCents(check.monto, { allowEmpty: false })));
+      } catch (_error) {
+        warnings.push(`Cheque ${checkId || "sin ID"} excluido: importe canónico inválido.`);
+      }
+      return result;
+    }, []));
+  }
+
+  function buildDepositedCheckEntries(checks, definition, warnings, cutoffDate = null) {
+    const deposits = new Map();
+    const seenChecks = new Set();
+    (checks || []).forEach((check) => {
+      const checkId = backendId(check.id_cheque_recibido);
+      const depositId = backendId(check.id_deposito);
+      const date = backendIsoDate(check.fecha_deposito);
+      const isDeposited = /deposit|acredit/.test(backendNormalizeText(check.estado));
+      if (!depositId || !date || !isDeposited || !isMovementForBank(check, definition.bank)) return;
+      if (date < definition.initialDate) return;
+      if (cutoffDate && date > cutoffDate) return;
+      if (checkId && seenChecks.has(checkId)) {
+        warnings.push(`Cheque depositado ${checkId} duplicado; se computó una sola vez.`);
+        return;
+      }
+      if (checkId) seenChecks.add(checkId);
+
+      let amountCents;
+      try {
+        amountCents = Math.abs(toCents(check.monto, { allowEmpty: false }));
+      } catch (_error) {
+        warnings.push(`Cheque depositado ${checkId || "sin ID"} excluido: importe canónico inválido.`);
+        return;
+      }
+      const key = `${depositId}|${date}|${definition.bank}`;
+      const current = deposits.get(key) || {
+        row: {
+          id_cliente: check.id_cliente,
+          metodo: "Depósito de cheque/eCheq",
+          banco: definition.bank
+        },
+        id: depositId,
+        date,
+        amountCents: 0,
+        collectionIds: []
+      };
+      current.amountCents = sumSafeCents([current.amountCents, amountCents]);
+      const collectionId = backendId(check.id_cobro);
+      if (collectionId && !current.collectionIds.includes(collectionId)) {
+        current.collectionIds.push(collectionId);
+      }
+      deposits.set(key, current);
+    });
+    return Array.from(deposits.values());
   }
 
   function buildBankAssociationIndexes(rows, definition) {
@@ -265,7 +440,11 @@ function createCashBoxesService({
   function buildPendingCollections(collections, tables, associations, definition) {
     const clientsById = backendRowsById(tables.clientes?.rows || [], "id_cliente");
     return collections
-      .filter((item) => !(associations.collectionsForBox.get(item.id) || []).length)
+      .filter((item) => !item.canonicalBankLinked)
+      .filter((item) => {
+        const collectionIds = item.collectionIds?.length ? item.collectionIds : [item.id];
+        return !collectionIds.some((id) => (associations.collectionsForBox.get(id) || []).length);
+      })
       .map((item) => {
         const client = clientsById.get(backendId(item.row.id_cliente));
         return pendingFinancialRow({
@@ -286,6 +465,10 @@ function createCashBoxesService({
     const expensesById = backendRowsById(tables.egresos?.rows || [], "id_egreso");
     return payments
       .filter((item) => !(associations.paymentsForBox.get(item.id) || []).length)
+      .filter((item) => {
+        const status = instrumentImpact(item.row.metodo, item.row.banco, definition).status;
+        return status !== "cash" && status !== "non_bank" && status !== "other_bank";
+      })
       .map((item) => {
         const details = detailsByPayment.get(item.id) || [];
         const expenseIds = uniqueStrings(details.map((detail) => backendId(detail.id_egreso)).filter(Boolean));
@@ -371,20 +554,6 @@ function createCashBoxesService({
     const normalizedBank = backendNormalizeText(bank);
     const declaredForBox = normalizedBank && backendBankMatches(bank, definition.bank);
 
-    if (declaredForBox) {
-      return {
-        status: "declared_icbc",
-        label: `${definition.bank} declarado`,
-        reason: `El registro declara ${definition.bank}.`
-      };
-    }
-    if (normalizedBank) {
-      return {
-        status: "other_bank",
-        label: "Otro banco declarado",
-        reason: `El registro declara ${String(bank).trim()}, no ${definition.bank}.`
-      };
-    }
     if (/efectivo/.test(normalizedMethod)) {
       return {
         status: "cash",
@@ -397,6 +566,20 @@ function createCashBoxesService({
         status: "non_bank",
         label: "Instrumento no bancario",
         reason: `El método ${String(method).trim()} no implica por sí solo un movimiento en ${definition.bank}.`
+      };
+    }
+    if (declaredForBox) {
+      return {
+        status: "declared_icbc",
+        label: `${definition.bank} declarado`,
+        reason: `El registro declara ${definition.bank}.`
+      };
+    }
+    if (normalizedBank) {
+      return {
+        status: "other_bank",
+        label: "Otro banco declarado",
+        reason: `El registro declara ${String(bank).trim()}, no ${definition.bank}.`
       };
     }
     if (/cheq/.test(normalizedMethod)) {
@@ -413,15 +596,25 @@ function createCashBoxesService({
     };
   }
 
-  function buildBankToErpSummary(tables, bankRows, definition) {
+  function buildBankToErpSummary(tables, bankRows, definition, cutoffDate) {
     const filteredTables = {
       ...tables,
       movimientos_bancarios: {
         ...(tables.movimientos_bancarios || {}),
-        rows: bankRows.map((item) => item.row)
+        rows: bankRows
+          .map((item) => item.row)
+          .filter((row) => {
+            const date = backendIsoDate(row.fecha);
+            return date
+              && date >= definition.initialDate
+              && (!cutoffDate || date <= cutoffDate);
+          })
       }
     };
     const pending = canonicalPendingBankMovements(filteredTables, definition.bank);
+    const pendingRows = pending.map((movement) => pendingBankRow(movement));
+    const credits = pendingRows.filter((movement) => movement.type === "credit");
+    const debits = pendingRows.filter((movement) => movement.type === "debit");
     const classifications = new Map();
     pending.forEach((movement) => {
       const classification = classifyPendingBankMovement(movement);
@@ -445,11 +638,9 @@ function createCashBoxesService({
       && backendIsoDate(row.fecha) >= definition.initialDate
     ));
     const fundNetCents = sumSafeCents(fundMovements.map(({ row }) => bankMovementAmountCents(row)));
-    const pendingNetCents = sumSafeCents(pending.map((movement) => toCents(movement.amount)));
-    const pendingGrossCents = sumSafeCents(pending.map((movement) => Math.abs(toCents(movement.amount))));
-    const pendingSinceInitial = pending.filter((movement) => (
-      movement.date && movement.date >= definition.initialDate
-    ));
+    const pendingNetCents = sumSafeCents(pendingRows.map((movement) => movement.signedAmountCents));
+    const pendingGrossCents = sumSafeCents(pendingRows.map((movement) => movement.amountCents));
+    const pendingSinceInitial = pending;
     const gapClassifications = new Map();
     pendingSinceInitial.forEach((movement) => {
       const classification = classifyPendingBankMovement(movement);
@@ -479,9 +670,38 @@ function createCashBoxesService({
       pendingCount: pending.length,
       pendingNetCents,
       pendingGrossCents,
+      pendingCreditCount: credits.length,
+      pendingCreditTotalCents: sumSafeCents(credits.map((movement) => movement.amountCents)),
+      pendingDebitCount: debits.length,
+      pendingDebitTotalCents: sumSafeCents(debits.map((movement) => movement.amountCents)),
+      credits,
+      debits,
       reconciliationPath: `/api/bank-reconciliation/state?bank=${encodeURIComponent(definition.bank)}`,
       classifications: Array.from(classifications.values()),
       gapFactors
+    };
+  }
+
+  function pendingBankRow(movement) {
+    const signedAmountCents = toCents(movement.amount);
+    const type = signedAmountCents < 0 ? "debit" : "credit";
+    const detail = [
+      movement.concept || movement.bankConcept,
+      movement.detail
+    ].filter(Boolean).join(" · ") || "Sin detalle bancario";
+    const missingLinks = type === "credit"
+      ? "Sin id_cobro, depósito de cheque/eCheq ni id_movimiento_fondo canónico asociado."
+      : "Sin id_pago ni id_movimiento_fondo canónico asociado.";
+    return {
+      id: movement.canonicalMovementId,
+      date: movement.date,
+      detail,
+      reference: movement.movementKey || `Movimiento #${movement.canonicalMovementId || "sin ID"}`,
+      type,
+      amountCents: Math.abs(signedAmountCents),
+      signedAmountCents,
+      status: "unassociated",
+      reason: missingLinks
     };
   }
 

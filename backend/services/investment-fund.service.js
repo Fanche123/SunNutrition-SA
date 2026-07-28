@@ -5,6 +5,7 @@ const { strictMoneyToCents } = require("../utils/money-input");
 const FUND_TYPES = Object.freeze(["deposito", "rescate", "rendimiento"]);
 const FUND_TYPE_SET = new Set(FUND_TYPES);
 const FUND_TYPE_ORDER = Object.freeze({ deposito: 0, rendimiento: 1, rescate: 2 });
+const FUND_BANK = "ICBC";
 const FUND_OPERATION_PATTERNS = Object.freeze({
   deposito: /\b(?:susc(?:ripcion|rip|r)?|suscripcion|suscribir|compra\s+(?:de\s+)?cuotapartes?)\b/,
   rescate: /\b(?:resc(?:ate)?|rescate|venta\s+(?:de\s+)?cuotapartes?)\b/,
@@ -91,6 +92,12 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
   if (type !== "rendimiento" && tagId) {
     throw fundError("INVESTMENT_FUND_TAG_NOT_ALLOWED", "La etiqueta economica corresponde unicamente a rendimientos.");
   }
+  if (type === "rendimiento" && bankMovementId) {
+    throw fundError(
+      "INVESTMENT_FUND_YIELD_BANK_NOT_ALLOWED",
+      "El rendimiento es exclusivamente economico y no admite un movimiento bancario propio."
+    );
+  }
 
   const normalizedPayload = {
     fecha: date,
@@ -124,6 +131,7 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
 
   const timestamp = new Date().toISOString();
   const movementId = backendNextNumericId(table.rows, "id_movimiento_fondo");
+  const paymentTable = type === "rendimiento" ? null : requiredRowsTable(tables, "pagos");
   const bankRow = bankMovementId
     ? validateBankAssociation(bankTable.rows, normalizedPayload, movementId, backendId)
     : null;
@@ -135,6 +143,7 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
     importe: fromCents(amountCents),
     periodo_rendimiento: period,
     id_movimiento_bancario: bankMovementId,
+    id_pago: "",
     id_gasto_economico: "",
     referencia: normalizedPayload.referencia,
     observacion: normalizedPayload.observacion,
@@ -157,6 +166,18 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
       tables,
       timestamp
     });
+  } else {
+    movement.id_pago = createFundPaymentCounterpart({
+      amountCents,
+      bankRow,
+      backendNextNumericId,
+      date,
+      movementId,
+      operationKey,
+      paymentTable,
+      timestamp,
+      type
+    });
   }
 
   table.rows.push(movement);
@@ -166,13 +187,57 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
   bankTable.headers = unique([...(bankTable.headers || []), "id_movimiento_fondo"]);
   if (bankRow) {
     bankRow.id_movimiento_fondo = movementId;
+    bankRow.id_pago = movement.id_pago;
     bankRow._editedLocallyAt = timestamp;
   }
   bankTable.rowCount = bankTable.rows.length;
+  if (paymentTable) {
+    paymentTable.headers = [...expectedBackendColumns.pagos];
+    paymentTable.rowCount = paymentTable.rows.length;
+    paymentTable.updatedAt = timestamp;
+  }
   economicTable.headers = [...expectedBackendColumns.gastos_economicos];
   economicTable.rowCount = economicTable.rows.length;
   cache.generatedAt = timestamp;
   return { idempotent: false, movement };
+}
+
+function createFundPaymentCounterpart({
+  amountCents,
+  bankRow,
+  backendNextNumericId,
+  date,
+  movementId,
+  operationKey,
+  paymentTable,
+  timestamp,
+  type
+}) {
+  const paymentId = backendNextNumericId(paymentTable.rows, "id_pago");
+  const paymentDate = validIsoDate(bankRow?.fecha) || date;
+  const signedAmountCents = type === "rescate" ? -amountCents : amountCents;
+  const paymentPayload = {
+    fecha_pago: paymentDate,
+    metodo: type === "rescate"
+      ? "Fondo de inversion - Rescate"
+      : "Fondo de inversion - Deposito",
+    banco: FUND_BANK,
+    monto: fromCents(signedAmountCents),
+    id_movimiento_fondo: String(movementId)
+  };
+  paymentTable.rows.push({
+    _rowNumber: paymentTable.rows.length + 2,
+    id_pago: paymentId,
+    fecha_pago: paymentPayload.fecha_pago,
+    metodo: paymentPayload.metodo,
+    banco: paymentPayload.banco,
+    monto: paymentPayload.monto,
+    _fundMovementId: String(movementId),
+    _fundOperationKey: `fondo-pago:${operationKey}`,
+    _fundOperationPayload: hashPayload(paymentPayload),
+    _editedLocallyAt: timestamp
+  });
+  return paymentId;
 }
 
 function createYieldEconomicExpense({
@@ -291,6 +356,12 @@ function classifyInvestmentFundCandidate(movement, tables = {}) {
   }
 
   const type = operationTypes[0];
+  if (type === "rendimiento") {
+    return review(
+      "El rendimiento se registra solo como movimiento economico; el importe del rescate ya contiene ese resultado y no admite impacto bancario separado.",
+      type
+    );
+  }
   const expectsDebit = type === "deposito";
   const directionIsReliable = expectsDebit
     ? debitCents > 0 && creditCents === 0 && amountCents < 0
@@ -314,12 +385,6 @@ function classifyInvestmentFundCandidate(movement, tables = {}) {
   if (type === "rescate" && Math.abs(amountCents) > investmentFundLedger(fundRows).balanceCents) {
     return review("El rescate supera el saldo disponible del fondo y no puede registrarse automaticamente.", type);
   }
-  if (type === "rendimiento" && fundRows.some((row) => (
-    text(row.tipo) === "rendimiento" && text(row.periodo_rendimiento) === date.slice(0, 7)
-  ))) {
-    return review("Ya existe un rendimiento registrado para el mes del movimiento.", type);
-  }
-
   const payload = {
     fecha: date,
     tipo: type,
@@ -331,17 +396,6 @@ function classifyInvestmentFundCandidate(movement, tables = {}) {
     observacion: "Clasificado desde Conciliacion bancaria por evidencia explicita de fondo.",
     clave_idempotencia: `fondo-banco:${movementId}`
   };
-  if (type === "rendimiento") {
-    const yieldTags = (tables.etiquetas?.rows || []).filter((row) => (
-      normalizeFundText(row.etiqueta) === "rendimiento fondo"
-    ));
-    if (yieldTags.length !== 1) {
-      return review("El rendimiento requiere una unica etiqueta economica 'Rendimiento Fondo'.", type);
-    }
-    payload.periodo_rendimiento = date.slice(0, 7);
-    payload.id_etiqueta = text(yieldTags[0].id_etiqueta);
-  }
-
   return {
     id: movementId,
     confidence: "reliable",
@@ -499,6 +553,7 @@ function fundError(code, message, statusCode = 400) {
 }
 
 module.exports = {
+  FUND_BANK,
   FUND_TYPES,
   applyInvestmentFundMovement,
   classifyInvestmentFundCandidate,

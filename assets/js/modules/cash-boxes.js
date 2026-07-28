@@ -4,7 +4,9 @@
   const state = {
     snapshot: null,
     collectionFilter: "",
-    paymentFilter: ""
+    paymentFilter: "",
+    bankCreditFilter: "",
+    bankDebitFilter: ""
   };
 
   function byId(id) {
@@ -51,6 +53,8 @@
     setText("cash-box-status-badge", "Calculando");
     renderPendingBody("cash-box-pending-collections-body", [], "", "Cargando cobros pendientes...");
     renderPendingBody("cash-box-pending-payments-body", [], "", "Cargando pagos pendientes...");
+    renderBankPendingBody("cash-box-bank-credits-body", [], "", "Cargando créditos bancarios pendientes...");
+    renderBankPendingBody("cash-box-bank-debits-body", [], "", "Cargando débitos bancarios pendientes...");
   }
 
   function renderCashBoxSnapshot() {
@@ -61,7 +65,7 @@
     setText("cash-box-rule-caption", `${rule.formula} · desde ${displayDate(rule.initialDate)} inclusive`);
     setText(
       "cash-box-scope-description",
-      `Se incluyen todos los cobros y pagos persistidos desde el ${displayDate(rule.initialDate)} inclusive, una sola vez por encabezado.`
+      `Se incluyen cobros/pagos con ICBC y depósitos efectivos de cheques/eCheq desde el ${displayDate(rule.initialDate)} inclusive. Los cheques recibidos se computan al depositarse y los emitidos sólo al debitarse.`
     );
     setText("cash-box-initial-balance", moneyFromCents(rule.initialBalanceCents));
     setText("cash-box-initial-date", `Desde ${displayDate(rule.initialDate)} inclusive`);
@@ -89,6 +93,17 @@
     setText("cash-box-bank-pending-count", String(bankToErp.pendingCount));
     setText("cash-box-bank-pending-gross", moneyFromCents(bankToErp.pendingGrossCents));
     setText("cash-box-bank-pending-net", moneyFromCents(bankToErp.pendingNetCents));
+    setText("cash-box-erp-pending-net", moneyFromCents(erpToBank.pendingNetCents));
+    setText("cash-box-pending-net-gap-bank", moneyFromCents(bankToErp.pendingNetCents));
+    setText("cash-box-pending-net-gap", moneyFromCents(bankToErp.pendingNetGapCents));
+    setText(
+      "cash-box-bank-credits-summary",
+      `${bankToErp.pendingCreditCount} pendiente(s) · ${moneyFromCents(bankToErp.pendingCreditTotalCents)}`
+    );
+    setText(
+      "cash-box-bank-debits-summary",
+      `${bankToErp.pendingDebitCount} pendiente(s) · ${moneyFromCents(bankToErp.pendingDebitTotalCents)}`
+    );
     renderGapFactors(bankToErp.gapFactors || []);
     renderWarnings(snapshot.warnings || []);
 
@@ -101,6 +116,7 @@
       `${erpToBank.pendingPaymentCount} pendiente(s) · ${moneyFromCents(erpToBank.pendingPaymentTotalCents)}`
     );
     renderPendingTables();
+    renderBankPendingTables();
   }
 
   function renderBalanceStatus(status) {
@@ -112,6 +128,10 @@
 
     const presentation = {
       reconciled: { text: "Conciliado", className: "is-reconciled" },
+      balanced_with_pending_associations: {
+        text: "El saldo cuadra, pero faltan asociaciones individuales",
+        className: "is-difference"
+      },
       difference: { text: "Con diferencia", className: "is-difference" },
       unavailable: { text: "Sin saldo bancario", className: "is-unavailable" }
     }[status] || { text: "Sin calcular", className: "is-unavailable" };
@@ -188,12 +208,51 @@
     `).join("");
   }
 
+  function renderBankPendingTables() {
+    const bankToErp = state.snapshot?.bankToErp;
+    if (!bankToErp) return;
+    renderBankPendingBody(
+      "cash-box-bank-credits-body",
+      bankToErp.credits || [],
+      state.bankCreditFilter,
+      "No hay créditos bancarios sin contrapartida ERP en el corte."
+    );
+    renderBankPendingBody(
+      "cash-box-bank-debits-body",
+      bankToErp.debits || [],
+      state.bankDebitFilter,
+      "No hay débitos bancarios sin contrapartida ERP en el corte."
+    );
+  }
+
+  function renderBankPendingBody(bodyId, rows, filter, emptyMessage) {
+    const body = byId(bodyId);
+    if (!body) return;
+    const visibleRows = filterRows(rows, filter);
+    if (!visibleRows.length) {
+      const message = rows.length && filter ? "No hay resultados para el filtro aplicado." : emptyMessage;
+      body.innerHTML = `<tr><td class="empty" colspan="6">${escapeHtml(message)}</td></tr>`;
+      return;
+    }
+    body.innerHTML = visibleRows.map((row) => `
+      <tr>
+        <td>${escapeHtml(displayDate(row.date))}</td>
+        <td>${escapeHtml(row.detail || "-")}</td>
+        <td>${escapeHtml(row.reference || "-")}</td>
+        <td><span class="cash-box-row-status">${row.type === "credit" ? "Crédito" : "Débito"}</span></td>
+        <td class="num">${escapeHtml(moneyFromCents(row.amountCents))}</td>
+        <td><small class="cash-box-row-reason">${escapeHtml(row.reason || "")}</small></td>
+      </tr>
+    `).join("");
+  }
+
   function filterRows(rows, filter) {
     const query = normalizedText(filter);
     if (!query) return rows;
     return rows.filter((row) => normalizedText([
       row.date,
       row.counterparty,
+      row.detail,
       row.reference,
       row.instrument,
       row.reason
@@ -230,11 +289,13 @@
   }
 
   function renderErrorState(error) {
-    setStatus(`No se pudo cargar Cajas: ${error.message}`, "error");
+    setStatus(`No se pudo cargar Caja: ${error.message}`, "error");
     setText("cash-box-status-badge", "Error");
     renderBalanceStatus("unavailable");
     renderPendingBody("cash-box-pending-collections-body", [], "", "No se pudieron cargar los cobros.");
     renderPendingBody("cash-box-pending-payments-body", [], "", "No se pudieron cargar los pagos.");
+    renderBankPendingBody("cash-box-bank-credits-body", [], "", "No se pudieron cargar los créditos bancarios.");
+    renderBankPendingBody("cash-box-bank-debits-body", [], "", "No se pudieron cargar los débitos bancarios.");
   }
 
   function bindCashBoxEvents() {
@@ -247,6 +308,14 @@
     byId("cash-box-payments-filter")?.addEventListener("input", (event) => {
       state.paymentFilter = event.target.value;
       renderPendingTables();
+    });
+    byId("cash-box-bank-credits-filter")?.addEventListener("input", (event) => {
+      state.bankCreditFilter = event.target.value;
+      renderBankPendingTables();
+    });
+    byId("cash-box-bank-debits-filter")?.addEventListener("input", (event) => {
+      state.bankDebitFilter = event.target.value;
+      renderBankPendingTables();
     });
   }
 

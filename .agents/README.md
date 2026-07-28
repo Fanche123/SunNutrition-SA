@@ -59,11 +59,13 @@ Un hilo cerrado no se reabre. Un turno bloqueado esperando una decisión no est�
 
 El progreso se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador responde con una fotografía inmediata y read-only basada en evidencia de los hilos visibles; no crea subagentes, watchers, timers ni automations para estimarlo.
 
-Cada iteración tiene una única validación principal, ejecutada por el hilo o subagente que implementa y respaldada con criterios de completitud, pruebas proporcionales y evidencia verificable. El Coordinador no repite esos controles: revisa únicamente cobertura, inconsistencias, riesgos y decisiones pendientes.
+Cada iteración tiene pruebas propias proporcionales ejecutadas una sola vez por quien implementa. Riesgo bajo/medio cierra con validación simple; riesgo alto agrega un Watchdog durante ejecución, tres validadores finales paralelos con focos exclusivos y un consolidador posterior. El hilo visible entrega una única respuesta al usuario.
 
 Rol auxiliar de infraestructura:
 
-- `.codex/agents/validador_tarea.toml`: revisión independiente read-only excepcional y focalizada, solo ante alto riesgo, señales de fallo, evidencia insuficiente o alcance transversal sensible.
+- `.codex/agents/watchdog_tarea.toml`: control read-only ultrarrápido durante tareas de riesgo alto.
+- `.codex/agents/validador_tarea.toml`: perfil read-only instanciado tres veces en paralelo con focos exclusivos.
+- `.codex/agents/consolidador_validacion.toml`: veredicto único read-only después de liberar los validadores.
 
 ## Coordinación anterior
 

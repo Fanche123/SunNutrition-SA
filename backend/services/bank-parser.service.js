@@ -143,7 +143,8 @@ function createBankParserService(dependencies) {
     receivedChecksByNumber = new Map(),
     issuedChecksByNumber = new Map(),
     receivedCheckDepositGroups = [],
-    bank = ""
+    bank = "",
+    assignedPaymentIds = new Set()
   ) {
     const identified = identifyBankCounterparty(movement, identityIndex);
     const identifiedName = compactBankText(identified?.name || "");
@@ -194,11 +195,16 @@ function createBankParserService(dependencies) {
     }
   
     if (toCents(movement.amount) < 0) {
-      const paymentMatch = bestBankMatch(enrichedMovement, paymentCandidates.filter((candidate) => candidate.direction !== "credito"), absoluteMoney(movement.amount), {
+      const availablePayments = paymentCandidates.filter((candidate) => (
+        candidate.direction !== "credito" && !assignedPaymentIds.has(String(candidate.id ?? "").trim())
+      ));
+      const paymentMatch = bestBankMatch(enrichedMovement, availablePayments, absoluteMoney(movement.amount), {
         requireExactDate: true,
-        requireIdentity: true
-      }) || uniqueExactBankMatch(enrichedMovement, paymentCandidates.filter((candidate) => candidate.direction !== "credito"), absoluteMoney(movement.amount));
+        requireIdentity: true,
+        rejectTies: true
+      }) || uniqueExactBankMatch(enrichedMovement, availablePayments, absoluteMoney(movement.amount));
       if (paymentMatch) {
+        assignedPaymentIds.add(String(paymentMatch.id ?? "").trim());
         return {
           ...enrichedMovement,
           status: "listo",
@@ -209,8 +215,10 @@ function createBankParserService(dependencies) {
   
       if (
         checkMatch?.idPago
+        && !assignedPaymentIds.has(String(checkMatch.idPago ?? "").trim())
         && Math.abs(toCents(backendNumber(checkMatch.amount)) - Math.abs(toCents(movement.amount))) <= 500
       ) {
+        assignedPaymentIds.add(String(checkMatch.idPago ?? "").trim());
         return {
           ...enrichedMovement,
           status: "listo",
@@ -284,15 +292,20 @@ function createBankParserService(dependencies) {
     }
     const creditPaymentMatch = bestBankMatch(
       enrichedMovement,
-      paymentCandidates.filter((candidate) => candidate.direction === "credito"),
+      paymentCandidates.filter((candidate) => (
+        candidate.direction === "credito" && !assignedPaymentIds.has(String(candidate.id ?? "").trim())
+      )),
       movement.amount,
-      { requireExactDate: true, requireIdentity: false }
+      { requireExactDate: true, requireIdentity: false, rejectTies: true }
     ) || uniqueExactBankMatch(
       enrichedMovement,
-      paymentCandidates.filter((candidate) => candidate.direction === "credito"),
+      paymentCandidates.filter((candidate) => (
+        candidate.direction === "credito" && !assignedPaymentIds.has(String(candidate.id ?? "").trim())
+      )),
       movement.amount
     );
     if (creditPaymentMatch) {
+      assignedPaymentIds.add(String(creditPaymentMatch.id ?? "").trim());
       return {
         ...enrichedMovement,
         status: "listo",

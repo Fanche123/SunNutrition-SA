@@ -590,6 +590,17 @@ async function testAdminEditor() {
   ];
   assert.deepStrictEqual(filterRows(searchableRows, "cliente").map((row) => row.id), [1, 3]);
   assert.deepStrictEqual(filterRows(searchableRows, "", { nombre: "sur" }).map((row) => row.id), [2]);
+  const dateRows = [
+    { id: 1, fecha: "2026-06-16", estado: "Confirmado" },
+    { id: 2, fecha: null, estado: "Pendiente" },
+    { id: 3, fecha: "fecha-invalida", estado: "Pendiente" }
+  ];
+  ["16", "16/", "16/0", "16/06", "16/06/", "16/06/2026", "06/2026"].forEach((filter) => {
+    assert.deepStrictEqual(filterRows(dateRows, "", { fecha: filter }).map((row) => row.id), [1]);
+  });
+  assert.deepStrictEqual(filterRows(dateRows, "", { fecha: "fecha-" }).map((row) => row.id), [3]);
+  assert.deepStrictEqual(filterRows(dateRows, "", { fecha: "/" }).map((row) => row.id), [1]);
+  assert.deepStrictEqual(filterRows(dateRows, "", { estado: "confirm" }).map((row) => row.id), [1]);
   assert.strictEqual(matchesColumnFilter(30, { operator: "gte", value: 20 }), true);
   assert.deepStrictEqual(normalizeColumnFilters({ NOMBRE: "cliente" }, ["id", "nombre"]), { nombre: "cliente" });
   assert.throws(() => normalizeColumnFilters({ intrusa: "x" }, ["id"]), /no existe/);

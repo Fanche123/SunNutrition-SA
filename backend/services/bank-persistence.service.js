@@ -170,6 +170,7 @@ function createBankPersistenceService(dependencies) {
       _bankCbuAlias: cleanBackendText(movement.cbuAlias),
       _bankDocType: cleanBackendText(movement.docType),
       _bankChannel: cleanBackendText(movement.channel),
+      _bankSourceOrder: Number.isFinite(Number(movement.rowNumber)) ? Number(movement.rowNumber) : "",
       _bankMovementKey: movementKey,
       _bankImportedAt: timestamp,
       _editedLocallyAt: timestamp
@@ -206,6 +207,18 @@ function createBankPersistenceService(dependencies) {
       throw error;
     }
     assertBankAssociationExists(tables, idPago, idCobro);
+    if (idPago) {
+      const conflictingMovement = table.rows.find((row) => (
+        row !== existing && backendId(row.id_pago) === idPago
+      ));
+      if (conflictingMovement) {
+        const error = new Error(
+          `El pago ${idPago} ya esta asociado al movimiento bancario ${backendId(conflictingMovement.id_movimiento_bancario)}.`
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+    }
 
     const existingPaymentId = backendId(existing.id_pago);
     const existingCollectionId = backendId(existing.id_cobro);
@@ -297,6 +310,13 @@ function createBankPersistenceService(dependencies) {
     const total = fromCents(Math.abs(toCents(movement.amount)));
     const tagId = backendId(sourceMatch.idEtiqueta || movement.idEtiqueta)
       || backendTagIdForName(movement.tag || movement.suggestedExpenseType, tables);
+    const creditorTagRelationId = backendId(sourceRow.id_acreedor_etiqueta)
+      || backendCreditorTagRelationId(
+        sourceMatch.idAcreedor || bankMovementBackendCreditorId(movement),
+        tagId,
+        tables
+      )
+      || backendId(movement.idAcreedorEtiqueta);
     const invoiceDate = backendIsoDate(reviewRow.date) || sourceMatch.invoiceDate || sourceMatch.date || movement.date;
     const timestamp = new Date().toISOString();
   
@@ -306,6 +326,7 @@ function createBankPersistenceService(dependencies) {
       fecha_factura: invoiceDate,
       fecha_prevista_pago: movement.date,
       id_etiqueta: tagId,
+      id_acreedor_etiqueta: creditorTagRelationId,
       tipo_factura: cleanBackendText(reviewRow.tipo_factura)
         || sourceMatch.invoiceType
         || movement.providerMatch?.invoiceType

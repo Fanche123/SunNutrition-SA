@@ -400,17 +400,22 @@ function normalizeColumnFilters(rawFilters, headers) {
 
 function matchesColumnFilter(rawValue, rawFilter) {
   const value = String(rawValue ?? "");
+  const comparableValues = columnFilterComparableValues(value);
   if (Array.isArray(rawFilter)) {
     const accepted = new Set(rawFilter.map((item) => String(item ?? "").trim().toLowerCase()));
-    return accepted.has(value.trim().toLowerCase());
+    return comparableValues.some((candidate) => accepted.has(candidate.trim().toLowerCase()));
   }
   if (rawFilter && typeof rawFilter === "object") {
     const operator = String(rawFilter.operator || rawFilter.op || "contains").toLowerCase();
     const expected = String(rawFilter.value ?? "").trim();
     if (operator === "empty") return !value.trim();
     if (operator === "notempty") return Boolean(value.trim());
-    if (operator === "equals" || operator === "eq") return value.trim().toLowerCase() === expected.toLowerCase();
-    if (operator === "startswith") return value.trim().toLowerCase().startsWith(expected.toLowerCase());
+    if (operator === "equals" || operator === "eq") {
+      return comparableValues.some((candidate) => candidate.trim().toLowerCase() === expected.toLowerCase());
+    }
+    if (operator === "startswith") {
+      return comparableValues.some((candidate) => candidate.trim().toLowerCase().startsWith(expected.toLowerCase()));
+    }
     if (["gt", "gte", "lt", "lte"].includes(operator)) {
       const left = Number(value);
       const right = Number(expected);
@@ -420,9 +425,17 @@ function matchesColumnFilter(rawValue, rawFilter) {
       if (operator === "lt") return left < right;
       return left <= right;
     }
-    return value.toLowerCase().includes(expected.toLowerCase());
+    return comparableValues.some((candidate) => candidate.toLowerCase().includes(expected.toLowerCase()));
   }
-  return value.toLowerCase().includes(String(rawFilter).trim().toLowerCase());
+  const expected = String(rawFilter).trim().toLowerCase();
+  return comparableValues.some((candidate) => candidate.toLowerCase().includes(expected));
+}
+
+function columnFilterComparableValues(value) {
+  const values = [value];
+  const isoDate = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (isoDate) values.push(`${isoDate[3]}/${isoDate[2]}/${isoDate[1]}`);
+  return values;
 }
 
 module.exports = {

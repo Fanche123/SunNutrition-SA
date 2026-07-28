@@ -45,6 +45,11 @@ function fixture() {
         ],
         rowCount: 4
       },
+      pagos: {
+        headers: EXPECTED_BACKEND_COLUMNS.pagos,
+        rows: [],
+        rowCount: 0
+      },
       gastos_economicos: {
         headers: EXPECTED_BACKEND_COLUMNS.gastos_economicos,
         rows: [],
@@ -141,7 +146,15 @@ test("saldo en centavos, asociaciones bancarias y rendimiento como gasto negativ
   assert.strictEqual(state.balance, 0);
   assert.strictEqual(cache.tables.movimientos_bancarios.rows[0].id_movimiento_fondo, 1);
   assert.strictEqual(cache.tables.movimientos_bancarios.rows[3].id_movimiento_fondo, 5);
-  assert.strictEqual(cache.tables.movimientos_bancarios.rows.every((row) => !row.id_pago && !row.id_cobro), true);
+  assert.strictEqual(cache.tables.movimientos_bancarios.rows.every((row) => row.id_pago && !row.id_cobro), true);
+  assert.deepStrictEqual(
+    cache.tables.pagos.rows.map((row) => row.monto),
+    [12000000, -5000000.19, -1999999.79, -5048625.53]
+  );
+  assert.deepStrictEqual(
+    cache.tables.fondos_inversion_movimientos.rows.map((row) => row.id_pago),
+    [1, 2, 3, "", 4]
+  );
   const economic = cache.tables.gastos_economicos.rows[0];
   assert.strictEqual(economic.id_gasto_economico, yieldResult.movement.id_gasto_economico);
   assert.strictEqual(economic.importe, -48625.51);
@@ -194,7 +207,7 @@ test("rechaza importes, fechas, duplicados mensuales, saldo insuficiente y asoci
   assert.strictEqual(invalid.tables.gastos_economicos.rows.length, 1);
 });
 
-test("un movimiento asociado al fondo deja de ser pendiente sin falsos pagos o cobros", () => {
+test("un movimiento asociado al fondo deja de ser pendiente con pago ICBC trazable y sin cobro", () => {
   const cache = fixture();
   apply(cache, {
     fecha: "2026-07-01",
@@ -222,8 +235,11 @@ test("un movimiento asociado al fondo deja de ser pendiente sin falsos pagos o c
   });
   const pending = bankPersistence.canonicalPendingBankMovements(cache.tables, "ICBC");
   assert.strictEqual(pending.some((row) => String(row.canonicalMovementId) === "1"), false);
-  assert.strictEqual(cache.tables.movimientos_bancarios.rows[0].id_pago, "");
+  assert.strictEqual(cache.tables.movimientos_bancarios.rows[0].id_pago, 1);
   assert.strictEqual(cache.tables.movimientos_bancarios.rows[0].id_cobro, "");
+  assert.strictEqual(cache.tables.fondos_inversion_movimientos.rows[0].id_pago, 1);
+  assert.strictEqual(cache.tables.pagos.rows[0].banco, "ICBC");
+  assert.strictEqual(cache.tables.pagos.rows[0].monto, 12000000);
 });
 
 test("el endpoint persiste una sola vez y reintenta de forma idempotente", async () => {
@@ -273,15 +289,15 @@ test("clasifica suscripciones, rescates, rendimientos y cuotapartes solo con evi
   assert.deepStrictEqual(candidates.map((row) => [row.confidence, row.type]), [
     ["reliable", "deposito"],
     ["reliable", "rescate"],
-    ["reliable", "rendimiento"],
+    ["review", "rendimiento"],
     ["reliable", "deposito"],
     ["reliable", "rescate"]
   ]);
   assert.strictEqual(candidates[0].payload.importe, 1500.25);
   assert.strictEqual(candidates[0].payload.id_movimiento_bancario, "10");
   assert.strictEqual(candidates[0].payload.clave_idempotencia, "fondo-banco:10");
-  assert.strictEqual(candidates[2].payload.periodo_rendimiento, "2026-07");
-  assert.strictEqual(candidates[2].payload.id_etiqueta, "16");
+  assert.strictEqual(candidates[2].payload, null);
+  assert.match(candidates[2].reason, /exclusivamente economico|solo como movimiento economico/i);
 });
 
 test("marca ambiguedad, signo contradictorio, datos incompletos y asociaciones competidoras sin payload", () => {
@@ -302,7 +318,7 @@ test("marca ambiguedad, signo contradictorio, datos incompletos y asociaciones c
     { etiquetas: { rows: [] } }
   );
   assert.strictEqual(missingYieldTag.confidence, "review");
-  assert.match(missingYieldTag.reason, /etiqueta economica/);
+  assert.match(missingYieldTag.reason, /movimiento economico/);
   assert.strictEqual(classifyInvestmentFundCandidate(analyzedMovement(25, "TRANSFERENCIA PROVEEDOR", -10), tables), null);
 });
 
@@ -323,7 +339,7 @@ test("una regla descriptiva de datos bancarios no bloquea un rescate FCI confiab
   assert.strictEqual(candidate.payload.id_movimiento_bancario, "26");
 });
 
-test("un rescate sin saldo y un rendimiento mensual duplicado quedan sin accion automatica", () => {
+test("un rescate sin saldo y cualquier rendimiento bancario quedan sin accion automatica", () => {
   const tables = fixture().tables;
   const rescue = classifyInvestmentFundCandidate(
     analyzedMovement(27, "CRED RESC FCI", 100),
@@ -344,7 +360,7 @@ test("un rescate sin saldo y un rendimiento mensual duplicado quedan sin accion 
     tables
   );
   assert.strictEqual(duplicateYield.confidence, "review");
-  assert.match(duplicateYield.reason, /Ya existe un rendimiento/);
+  assert.match(duplicateYield.reason, /movimiento economico/);
 });
 
 test("el candidato bancario se registra una vez y no admite otra operacion sobre la misma fila", () => {
@@ -428,7 +444,7 @@ test("createExpenses no ejecuta una segunda ruta financiera para un candidato FC
   assert.match(response.payload.result.notes[0], /Movimientos de fondo para agregar/);
 });
 
-test("un rendimiento bancario confiable asocia credito, fondo y gasto economico en el mismo snapshot", () => {
+test("un rendimiento bancario no crea pago, cobro ni vínculo bancario propio", () => {
   const cache = fixture();
   cache.tables.movimientos_bancarios.rows.push(
     bankRow(30, "2026-07-20", 0, 48625.51, "RENDIMIENTO FCI")
@@ -437,12 +453,19 @@ test("un rendimiento bancario confiable asocia credito, fondo y gasto economico 
     analyzedMovement(30, "RENDIMIENTO FCI", 48625.51),
     cache.tables
   );
-  const result = apply(cache, candidate.payload);
-  assert.strictEqual(result.movement.tipo, "rendimiento");
-  assert.strictEqual(result.movement.id_movimiento_bancario, "30");
-  assert.strictEqual(cache.tables.movimientos_bancarios.rows.at(-1).id_movimiento_fondo, 1);
-  assert.strictEqual(cache.tables.gastos_economicos.rows.length, 1);
-  assert.strictEqual(cache.tables.gastos_economicos.rows[0].importe, -48625.51);
+  assert.strictEqual(candidate.confidence, "review");
+  assert.strictEqual(candidate.payload, null);
+  assert.throws(() => apply(cache, {
+    fecha: "2026-07-20",
+    tipo: "rendimiento",
+    importe: 48625.51,
+    periodo_rendimiento: "2026-07",
+    id_etiqueta: 16,
+    id_movimiento_bancario: 30,
+    clave_idempotencia: "rendimiento-bancario"
+  }), (error) => error.code === "INVESTMENT_FUND_YIELD_BANK_NOT_ALLOWED");
+  assert.strictEqual(cache.tables.pagos.rows.length, 0);
+  assert.strictEqual(cache.tables.gastos_economicos.rows.length, 0);
 });
 
 test("Estado de Resultados consume el rendimiento una sola vez como gasto negativo", () => {
