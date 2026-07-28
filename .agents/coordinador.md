@@ -29,7 +29,20 @@ El prompt del hilo debe exigir que el resumen final incluya el `taskId` explíci
 
 Cuando el usuario pide el progreso de una o varias tareas, el Coordinador usa `$estimar-progreso-hilos` y responde con una fotografía inmediata y read-only. No envía mensajes ni cambia el estado de los hilos inspeccionados, y no crea subagentes, watchers, timers ni automations para estimar avance.
 
-El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador, no modifica archivos y no recibe ni procesa el informe final. Las correcciones del mismo objetivo se escriben directamente en el hilo visible de la tarea. En esta primera versión el Coordinador sólo crea tareas nuevas y no reenvía correcciones.
+El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador, no modifica archivos y no recibe ni procesa el informe final.
+
+Una tarea activa conserva en su propio hilo únicamente las correcciones surgidas de sus pruebas o de la única ronda permitida de un `validador_tarea` excepcional. Queda cerrada solo cuando declara el objetivo completado y sin trabajo pendiente, o cuando el usuario la cancela expresamente. Un turno bloqueado a la espera de una decisión o autorización puede reanudarse en el mismo hilo. Después del cierre confirmado, el hilo no se reabre: todo defecto, ajuste, ampliación o nueva observación posterior se crea como una tarea independiente mediante el mismo flujo nativo, con `taskId` nuevo, hilo principal visible nuevo y título específico.
+
+La tarea de corrección debe:
+
+- declarar el `parentTaskId` o la tarea de origen;
+- expresar el problema y el resultado esperado de forma autosuficiente, sin depender de releer todo el chat anterior;
+- incluir evidencia disponible, estado de integración, archivos o módulos iniciales, pruebas relacionadas, riesgos y cambios preexistentes conocidos;
+- volver a decidir dominio, modelo, esfuerzo y modo según los escritores activos y el estado actual;
+- evitar repetir validaciones históricas salvo lo necesario para reproducir la regresión;
+- comprobar que el checkout elegido contiene la implementación original.
+
+Si la tarea cerrada vive solo en un worktree no integrado, el Coordinador no crea la corrección contra Local ni contra un worktree nuevo sin esos cambios. Primero crea o solicita la integración segura correspondiente, o asegura que la nueva tarea parta del mismo estado de código. Nunca reabre el hilo finalizado para resolver esta dependencia.
 
 La respuesta del Coordinador usa exclusivamente:
 

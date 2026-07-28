@@ -46,9 +46,11 @@ Arquitectura no posee tablas operativas. Posee el diseño de despacho y los cont
 
 Tesorería expone además operaciones compuestas exactas bajo `/api/treasury/collections`, `/api/treasury/payments`, `/api/treasury/partner-contributions` y `/api/treasury/investment-fund`. Sus servicios propietarios validan y persisten el cache completo una sola vez; `server.js` solo los compone y no ejecuta siembras financieras durante el arranque.
 
+El control de cajas expone lectura focalizada bajo `/api/treasury/cash-boxes?box=icbc`. `cash-boxes.service.js` es dueño de la única regla de saldo y pendientes; `server.js` sólo inyecta utilidades existentes y `router.js` sólo despacha. La vista `cashbox` consume ese contrato sin cargar tablas completas ni recalcular importes.
+
 Conciliación bancaria expone lectura focalizada bajo `/api/bank-reconciliation/state` y `/api/bank-reconciliation/summary`. `movimientos_bancarios` es la única fuente de movimientos importados: las asociaciones vacías definen pendientes y `id_pago`, `id_cobro` o `id_movimiento_fondo` define conciliados. El metadato superior histórico `bankReconciliation.pendingMovements` queda ignorado, sin borrado ni migración automática.
 
-Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnóstico `/api/reports/income-statement/economic-comparison`. `router.js` solo despacha y `server.js` solo inyecta dependencias. La única integración automática confirmada es el rendimiento del fondo: Tesorería crea un gasto negativo en el mismo snapshot y Reportes consume solo ese origen en el resultado oficial.
+Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnóstico `/api/reports/income-statement/economic-comparison`. `router.js` solo despacha y `server.js` inyecta la lectura exclusiva de `gastos_economicos` confirmados para todos los períodos, sin reconstrucción desde tablas productoras. `backend-table.service.js` materializa idempotentemente IIBB y comisión por canal al guardar `ventas`, logística al guardar `entregas` y el subtotal sin IVA al guardar `otros_gastos`, antes del único snapshot. El alta integral de Otros gastos aplica el mismo contrato. El rendimiento del fondo crea su gasto negativo en el mismo snapshot.
 
 ## Dependencias y localización
 
@@ -63,7 +65,7 @@ Contabilidad posee las operaciones bajo `/api/economic-expenses` y el diagnósti
 - Persistencia: `data-store.js`, repositorios, config y AGENT Base de datos.
 - Dominio: buscar el módulo/servicio dueño antes de tocar compartidos.
 - Documentación: `docs/architecture.md` y ownership.
-- Flujo de desarrollo: el Coordinador crea un hilo principal visible por pedido y termina inmediatamente. Ese hilo ejecuta la tarea completa y puede crear especialistas; el Coordinador no recibe su informe.
+- Flujo de desarrollo: el Coordinador crea un hilo principal visible por pedido y termina inmediatamente. Ese hilo ejecuta la tarea completa y puede crear especialistas; el Coordinador no recibe su informe. La declaración de objetivo completado y sin trabajo pendiente vuelve inmutable el alcance del hilo; un bloqueo por decisión no lo cierra. Toda corrección o ampliación posterior al cierre obtiene `taskId` e hilo nuevos, vinculados a la tarea de origen y basados en un checkout que contenga su implementación.
 - Arranque: `npm start` pasa por `tools/erp-server.js`; `server:status` solo aprueba un runtime fresco del checkout esperado y `server:restart`/`server:stop` controlan únicamente la instancia cuyo health y lock autenticado coinciden. El contrato y los puertos aislados se documentan en `docs/local-server.md`. Los scripts `coordinator`, `coordinator:once`, `coordination:status`, `coordination:action`, `coordination:await`, `coordination:test` y la prueba real quedan disponibles solo como herramientas manuales del legado.
 
 ## Flujo de trabajo
@@ -83,6 +85,8 @@ El despliegue predeterminado es local sobre `127.0.0.1`. `backend/config/access.
 ## Trabajo con subagentes nativos
 
 El Coordinador recibe pedidos nuevos y crea un hilo principal visible con `create_thread`, nunca un Jefe anidado mediante `spawn_agent`. El nuevo hilo determina ownership y coordina sus subagentes. No se ejecutan dos escritores sobre la misma carpeta; el paralelismo de escritura requiere worktrees.
+
+Las correcciones internas detectadas antes del cierre permanecen en la tarea activa. Una vez que declara el objetivo completado sin trabajo pendiente —o el usuario la cancela— el hilo no se reabre: el Coordinador crea una tarea nueva autosuficiente, registra la relación con el `parentTaskId` y vuelve a decidir dominio, riesgo y entorno. Un turno bloqueado puede reanudarse al recibir la decisión faltante. Si el origen solo existe en un worktree no integrado, la integración o disponibilidad de ese mismo estado es una precondición de la nueva corrección.
 
 El progreso de tareas Codex se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador entrega una fotografía read-only basada en estado, turnos y timestamps; no crea subagentes, watchers, timers ni automations para seguimiento. La validación principal queda en el ejecutor; `validador_tarea` solo se usa por una razón independiente concreta.
 

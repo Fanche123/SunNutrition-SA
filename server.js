@@ -25,6 +25,7 @@ const { MIME_TYPES } = require("./backend/http-config");
 const { createAccessConfig } = require("./backend/config/access");
 const { ADMIN_TABLE_POLICY } = require("./backend/config/admin-table-policy");
 const { createQueryLimits } = require("./backend/config/query-limits");
+const { backfillHistoricalEconomicExpenses } = require("./backend/migrations/20260727-economic-expenses-history");
 const { readAppState, writeAppState } = require("./backend/repositories/app-state.repository");
 const { createRequestHandler } = require("./backend/routes/router");
 const { createAccessControl } = require("./backend/services/access-control.service");
@@ -33,6 +34,7 @@ const { createPartnerContributionsService } = require("./backend/services/partne
 const { createPaymentPlansService } = require("./backend/services/payment-plans.service");
 const { createCollectionEntryService } = require("./backend/services/collection-entry.service");
 const { createPaymentEntryService } = require("./backend/services/payment-entry.service");
+const { createCashBoxesService } = require("./backend/services/cash-boxes.service");
 const { createReceivedChecksService } = require("./backend/services/received-checks.service");
 const { createInvestmentFundService } = require("./backend/services/investment-fund.service");
 const { createSalesOrderEntryService } = require("./backend/services/sales-order-entry.service");
@@ -184,14 +186,15 @@ const expenseClassification = createExpenseClassificationService({
 const {
   backendCreditorDisplayName,
   backendCreditorTagNames,
-  backendEconomicExpenseRows,
   backendExpenseCategoryTotals,
   backendExpenseCounterpartyInfo,
+  backendExpenseCounterpartyMaps,
   backendExpenseLinkedOrigin,
   backendExpenseSourceConfigs,
   backendExpenseSourceTypeKey,
   backendExpenseSupplierName,
   backendStatementExpenseCategories,
+  backendStatementExpenseRows,
   backendTagIdForName,
   backendTagNameForCreditorTagId,
   backendTagNameForId,
@@ -226,9 +229,10 @@ const {
 } = payrollNormalization;
 const buildBackendIncomeStatementReport = createIncomeStatementService({
   backendExpenseCategoryTotals,
+  backendExpenseCounterpartyInfo,
+  backendExpenseCounterpartyMaps,
   backendGroupRowsById,
   backendId,
-  backendIsGrossRevenueTaxInvoice,
   backendIsoDate,
   backendIsSchoolClient,
   backendLastInventorySummary,
@@ -239,11 +243,12 @@ const buildBackendIncomeStatementReport = createIncomeStatementService({
   backendObjectSum,
   backendOffsetIsoDate,
   backendPayrollSummary,
-  backendRate,
   backendRowsById,
+  backendStatementExpenseRows,
   backendUncategorizedExpenseRows,
   loadCache
 });
+const buildBackendIncomeStatementDetail = buildBackendIncomeStatementReport.buildDetail;
 
 const {
   handlePayrollScaleRead,
@@ -275,11 +280,13 @@ const {
   handleAppStateSave,
   handleBackendSqlQuery,
   handleCashflowReport,
+  handleIncomeStatementDetail,
   handleIncomeStatementReport
 } = createCoreHandlers({
   APP_STATE_FILE,
   backendComparisonPeriod,
   buildBackendCashflowReport,
+  buildBackendIncomeStatementDetail,
   buildBackendIncomeStatementReport,
   readAppState,
   readJsonBody,
@@ -313,7 +320,8 @@ const {
   recordAllRowsRead,
   ensureAdminSessionBackup,
   saveBackendCache,
-  sendJson
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
 const { handleBackendTableRequest, handleBackendTableSave } = createBackendTableService({
   backendEditableColumns,
@@ -327,7 +335,8 @@ const { handleBackendTableRequest, handleBackendTableSave } = createBackendTable
   readJsonBody,
   recordAllRowsRead,
   saveBackendCache,
-  sendJson
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
 const bankPersistence = createBankPersistenceService({
   backendBankMatches,
@@ -563,6 +572,19 @@ const { handlePaymentFullEntry } = createPaymentEntryService({
   loadCache,
   readJsonBody,
   saveBackendCache,
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
+});
+const { handleCashBoxesGet } = createCashBoxesService({
+  backendBankMatches,
+  backendExpenseCounterpartyInfo,
+  backendGroupRowsById,
+  backendId,
+  backendIsoDate,
+  backendNormalizeText,
+  backendRowsById,
+  canonicalPendingBankMovements,
+  loadCache,
   sendJson
 });
 const {
@@ -628,7 +650,8 @@ const {
   normalizePartnerName,
   readJsonBody,
   saveBackendCache,
-  sendJson
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
 const { handleSalesOrderFullEntry } = createSalesOrderEntryService({
   backendId,
@@ -664,7 +687,8 @@ const { handleOtherExpenseFullEntry } = createOtherExpenseEntryService({
   loadCache,
   readJsonBody,
   saveBackendCache,
-  sendJson
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
 const { handleReceptionFullEntry } = createReceptionEntryService({
   EXPECTED_BACKEND_COLUMNS,
@@ -679,7 +703,8 @@ const { handleReceptionFullEntry } = createReceptionEntryService({
   readJsonBody,
   rootDir: ROOT_DIR,
   saveBackendCache,
-  sendJson
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
 const {
   handleAdjustment: handleEconomicExpenseAdjustment,
@@ -746,6 +771,7 @@ const server = http.createServer(createRequestHandler({
     handleBankReconciliationDepositChecks,
     handleBankReconciliationState,
     handleBankReconciliationSummary,
+    handleCashBoxesGet,
     handleCashflowReport,
     handleCollectionFullEntry,
     handleCreditorCreate,
@@ -762,6 +788,7 @@ const server = http.createServer(createRequestHandler({
     handleEconomicExpenseReconciliation,
     handleEconomicExpenseReversal,
     handleEconomicExpensesList,
+    handleIncomeStatementDetail,
     handleIncomeStatementReport,
     handleInvestmentFundCreate,
     handleInvestmentFundList,

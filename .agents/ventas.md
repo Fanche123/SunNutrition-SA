@@ -98,9 +98,10 @@ Los contratos de filas están centralizados en `backend-columns.js`/`backend-pro
 ## Dependencias
 
 - **Tesorería:** cobros y retenciones determinan el saldo; cheques/bancos continúan el flujo financiero.
+- **Cajas:** el control ICBC de Tesorería consume `cobros.fecha_cobro`, `cobros.monto`, cliente, método y banco una sola vez por encabezado; no suma `cobros_detalle` ni modifica contratos de Ventas.
 - **Compras/Logística:** `logistics-entry.js` crea entregas y también egresos; limitar cambios a la rama comercial o coordinar propietarios.
 - **Inventario:** pedidos/detalles/productos alimentan unidades del modelo teórico.
-- **Reportes:** ventas, pedidos y clientes alimentan Estado de Resultados/cashflow.
+- **Reportes:** ventas, pedidos y clientes alimentan Estado de Resultados/cashflow; Estado de Resultados vincula `ventas.id_entrega` con `entregas.id_entrega` y reconoce `ventas.subtotal` exclusivamente en el mes de `entregas.fecha`.
 - **Administración/Base de datos:** endpoint genérico, editor, columnas, registry y persistencia.
 - **Arquitectura/UI:** coordinador comercial, `app.js`, `index.html` y orden de scripts son compartidos.
 
@@ -155,7 +156,7 @@ Precios, ventas, cobros y comisiones monetarias dependen de `shared/money.js` y 
 
 ## Gaps confirmados
 
-- Contabilidad posee gastos económicos, aplicaciones, ajustes y reversiones. Ventas conserva comisiones y logística como productores todavía no integrados.
+- Contabilidad posee gastos económicos, aplicaciones, ajustes y reversiones. Desde `2026-04-01`, `Factura_A`/`Factura_B` produce Ingresos Brutos por `1,5%` del subtotal; cada venta produce además la comisión definida por su canal; y una entrega con egreso y relación canónica del flete produce Logística. El guardado de ventas y entregas materializa el gasto idempotentemente en el mismo snapshot.
 
 - El alta de pedidos tiene servicio y endpoint específico; el editor genérico continúa disponible pero no es el camino canónico de la pantalla Pedidos.
 - No se encontró un writer especializado de `ventas`; `sales-orders.js` la lee para deuda pero solo crea `pedidos` y `detalle_pedidos`.

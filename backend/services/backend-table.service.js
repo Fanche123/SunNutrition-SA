@@ -2,7 +2,7 @@ const { fromCents } = require("../../shared/money");
 const { isMoneyColumn } = require("../../shared/money-columns");
 const { strictMoneyToCents } = require("../utils/money-input");
 
-function createBackendTableService({ backendEditableColumns, backendEditablePrimaryKey, backendId, backendNextNumericId, backendTable, ensureBackendTable, expectedBackendColumns, loadCache, readJsonBody, recordAllRowsRead = () => {}, saveBackendCache, sendJson }) {
+function createBackendTableService({ backendEditableColumns, backendEditablePrimaryKey, backendId, backendNextNumericId, backendTable, ensureBackendTable, expectedBackendColumns, loadCache, readJsonBody, recordAllRowsRead = () => {}, saveBackendCache, sendJson, synchronizeEconomicExpenses = (cache) => cache }) {
   function handleBackendTableRequest(request, response) {
     const startedAt = Date.now();
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -35,7 +35,7 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
         return;
       }
   
-      const cache = loadCache();
+      let cache = loadCache();
       cache.tables = cache.tables || {};
       let table = cache.tables[tableName];
       // Algunas tablas internas se crean al registrar su primer movimiento.
@@ -116,6 +116,9 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
       table.rowCount = currentRows.length;
       table.headers = columns;
       cache.generatedAt = new Date().toISOString();
+      if ((rowsToSave.length || deletedIds.length) && ["ventas", "entregas", "otros_gastos", "egresos", "sueldos", "cuotas_planes_pagos", "pagos", "detalle_pagos"].includes(tableName)) {
+        cache = synchronizeEconomicExpenses(cache, tableName);
+      }
       saveBackendCache(cache);
   
       sendJson(response, 200, {

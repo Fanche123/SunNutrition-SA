@@ -172,11 +172,19 @@ test("compra invalida o fallo de guardado no deja encabezado parcial", async () 
 
 test("otros gastos persiste ambas entidades una sola vez", async () => {
   const harness = createHarness(baseCache());
-  await invoke(createOtherExpenseEntryService(harness.dependencies).handleOtherExpenseFullEntry, otherExpensePayload());
+  const service = createOtherExpenseEntryService({
+    ...harness.dependencies,
+    synchronizeEconomicExpenses: (cache) => {
+      cache.tables.gastos_economicos.rows.push({ id_gasto_economico: 1, origen_tipo: "otro_gasto" });
+      return cache;
+    }
+  });
+  await invoke(service.handleOtherExpenseFullEntry, otherExpensePayload());
   assert.equal(harness.responses[0].status, 200);
   assert.equal(harness.saveCount(), 1);
   assert.equal(harness.cache().tables.egresos.rows.length, 1);
   assert.equal(harness.cache().tables.otros_gastos.rows.length, 1);
+  assert.equal(harness.cache().tables.gastos_economicos.rows.length, 1);
 });
 
 test("fallo entre las entidades de otros gastos no persiste el egreso y permite reintento", async () => {

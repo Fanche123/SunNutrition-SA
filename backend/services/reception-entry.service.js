@@ -14,7 +14,8 @@ function createReceptionEntryService(dependencies) {
     readJsonBody,
     rootDir,
     saveBackendCache,
-    sendJson
+    sendJson,
+    synchronizeEconomicExpenses = (cache) => cache
   } = dependencies;
 
   async function handleReceptionFullEntry(request, response) {
@@ -31,7 +32,7 @@ function createReceptionEntryService(dependencies) {
         return;
       }
 
-      const cache = loadCache();
+      let cache = loadCache();
       snapshot = JSON.parse(JSON.stringify(cache));
       const tables = cache.tables || (cache.tables = {});
       requiredReceptionTables().forEach((tableName) => ensureBackendTable(tables, tableName));
@@ -51,6 +52,7 @@ function createReceptionEntryService(dependencies) {
       tables.egresos.rows.push(prepared.expenseRow);
       finalizeTables(tables, ["recepciones", "detalle_recepciones", "egresos"]);
       cache.generatedAt = new Date().toISOString();
+      cache = synchronizeEconomicExpenses(cache, "egresos");
       saveBackendCache(cache);
       cacheWasSaved = true;
 

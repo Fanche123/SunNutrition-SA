@@ -62,134 +62,52 @@ function createExpenseClassificationService(dependencies) {
     return backendId(tag?.id_etiqueta);
   }
   
-  function backendEconomicExpenseRows(tables, startIso, endIso) {
-    const tagNameById = backendTagNameMap(tables);
-    const creditorTagById = backendRowsById(tables.acreedores_etiquetas?.rows, "id_acreedor_etiqueta");
-    const providersById = backendRowsById(tables.proveedores?.rows, "id_proveedor");
-    const purchasesById = backendRowsById(tables.compras?.rows, "id_compra");
-    const fletesById = backendRowsById(tables.fletes?.rows, "id_flete");
-    const employeesById = backendRowsById(tables.empleados?.rows, "id_empleado");
-    const creditorsById = backendRowsById(tables.acreedores?.rows, "id_acreedor");
-    const channelsById = backendRowsById(tables.canales?.rows, "id_canal");
-    const expensesById = backendRowsById(tables.egresos?.rows, "id_egreso");
-    const rows = [];
-  
-    const categoryFor = (row) => {
-      return backendTagNameForCreditorTagId(row.id_acreedor_etiqueta, tables, { relationsById: creditorTagById, tagNameById })
-        || cleanBackendText(row._etiqueta_gasto)
-        || backendTagNameForId(expensesById.get(backendId(row.id_egreso))?.id_etiqueta, tagNameById);
-    };
-    const amountFor = (row, columns) => {
-      for (const column of columns) {
-        const amount = backendNumber(row[column]);
-        if (amount) return normalizeMoney(amount);
-      }
-      const linkedExpense = expensesById.get(backendId(row.id_egreso));
-      return normalizeMoney(backendNumber(linkedExpense?.subtotal || linkedExpense?.total));
-    };
-    const add = (entry) => {
-      const date = backendIsoDate(entry.date);
-      if (date < startIso || date > endIso) return;
-      if (!entry.category || !entry.amount) return;
-      rows.push({ ...entry, date });
-    };
-  
-    (tables.recepciones?.rows || []).forEach((reception) => {
-      const purchase = purchasesById.get(backendId(reception.id_compra));
-      const provider = providersById.get(backendId(purchase?.id_proveedor || reception._id_acreedor));
-      add({
-        id: reception.id_recepcion,
-        date: reception.fecha_recepcion || reception._fecha_factura,
-        supplier: provider?.nombre || cleanBackendText(reception._nombre_acreedor),
-        category: categoryFor(reception) || "Mercaderia",
-        amount: amountFor(reception, ["subtotal", "_subtotal", "total", "_total"]),
-        source: `recepciones #${reception.id_recepcion || ""}`
-      });
-    });
-  
-    (tables.entregas?.rows || []).forEach((delivery) => {
-      const carrier = fletesById.get(backendId(delivery.id_flete));
-      add({
-        id: delivery.id_entrega,
-        date: delivery.fecha || delivery._fecha_factura,
-        supplier: carrier?.nombre_flete || cleanBackendText(delivery._nombre_acreedor),
-        category: categoryFor(delivery) || "Logistica",
-        amount: amountFor(delivery, ["subtotal", "_subtotal", "total", "_total"]),
-        source: `entregas #${delivery.id_entrega || ""}`
-      });
-    });
-  
-    (tables.otros_gastos?.rows || []).forEach((expense) => {
-      const creditor = creditorsById.get(backendId(expense.id_acreedor));
-      add({
-        id: expense.id_otros_gastos,
-        date: expense.fecha_otros_gastos || expense._fecha_factura,
-        supplier: backendCreditorDisplayName(creditor, tables) || cleanBackendText(expense._nombre_acreedor),
-        category: categoryFor(expense),
-        amount: amountFor(expense, ["subtotal", "_subtotal", "total", "_total"]),
-        source: `otros_gastos #${expense.id_otros_gastos || ""}`
-      });
-    });
-  
-    (tables.sueldos?.rows || []).forEach((salary) => {
-      const employee = employeesById.get(backendId(salary.id_empleado));
-      add({
-        id: salary.id_sueldo,
-        date: salary.fecha,
-        supplier: employee?.nombre_empleado || "",
-        category: categoryFor(salary) || "Sueldos",
-        amount: amountFor(salary, ["sueldo_bruto", "sueldo_neto"]),
-        source: `sueldos #${salary.id_sueldo || ""}`
-      });
-    });
-  
-    (tables.comisiones?.rows || []).forEach((commission) => {
-      const channel = channelsById.get(backendId(commission.id_canal));
-      add({
-        id: commission.id_comision,
-        date: commission.fecha,
-        supplier: channel?.nombre || "",
-        category: categoryFor(commission) || "Comisiones",
-        amount: amountFor(commission, ["comision", "subtotal"]),
-        source: `comisiones #${commission.id_comision || ""}`
-      });
-    });
-  
-    return rows;
-  }
-  
   function backendExpenseCategoryTotals(tables, startIso, endIso) {
     const totalsInCents = {};
-    backendEconomicExpenseRows(tables, startIso, endIso).forEach((expense) => {
+    backendStatementExpenseRows(tables, startIso, endIso).forEach((expense) => {
       totalsInCents[expense.category] = (totalsInCents[expense.category] || 0)
         + toCents(expense.amount);
     });
-    const startPeriod = String(startIso || "").slice(0, 7);
-    const endPeriod = String(endIso || "").slice(0, 7);
-    const tagNameById = backendTagNameMap(tables);
-    (tables.gastos_economicos?.rows || [])
-      .filter((expense) => (
-        expense.estado === "confirmado"
-        && expense.origen_tipo === "fondo_inversion"
-        && expense.periodo_economico >= startPeriod
-        && expense.periodo_economico <= endPeriod
-      ))
-      .forEach((expense) => {
-        const category = backendTagNameForId(expense.id_etiqueta, tagNameById) || "Rendimiento Fondo";
-        totalsInCents[category] = (totalsInCents[category] || 0)
-          + toCents(backendNumber(expense.importe));
-      });
 
     return Object.fromEntries(Object.entries(totalsInCents).map(([category, cents]) => [
       category,
       fromCents(cents)
     ]));
   }
+
+  function backendPersistedEconomicExpenseRows(tables, startIso, endIso) {
+    const tagNameById = backendTagNameMap(tables);
+    return (tables.gastos_economicos?.rows || [])
+      .filter((expense) => {
+        const date = backendIsoDate(expense.fecha_economica);
+        return expense.estado === "confirmado" && date >= startIso && date <= endIso;
+      })
+      .map((expense) => ({
+        id: expense.id_gasto_economico,
+        date: backendIsoDate(expense.fecha_economica),
+        supplier: "",
+        category: backendTagNameForId(expense.id_etiqueta, tagNameById),
+        amount: normalizeMoney(backendNumber(expense.importe)),
+        concept: cleanBackendText(expense.concepto),
+        movementType: cleanBackendText(expense.tipo_movimiento),
+        reason: cleanBackendText(expense.motivo),
+        originType: cleanBackendText(expense.origen_tipo),
+        originId: backendId(expense.origen_id),
+        originSubkey: cleanBackendText(expense.origen_subclave),
+        source: `gastos_economicos #${expense.id_gasto_economico || ""}`,
+        raw: expense
+      }))
+      .filter((expense) => expense.category && expense.amount);
+  }
+
+  function backendStatementExpenseRows(tables, startIso, endIso) {
+    return backendPersistedEconomicExpenseRows(tables, startIso, endIso);
+  }
   
   function backendUncategorizedExpenseRows(tables, startIso, endIso) {
     const statementCategories = backendStatementExpenseCategories();
   
-    return backendEconomicExpenseRows(tables, startIso, endIso)
+    return backendStatementExpenseRows(tables, startIso, endIso)
       .filter((expense) => {
         return !statementCategories.has(backendNormalizeText(expense.category));
       })
@@ -210,67 +128,152 @@ function createExpenseClassificationService(dependencies) {
     return backendExpenseCounterpartyInfo(expense, tables).name;
   }
   
-  function backendExpenseCounterpartyInfo(expense, tables) {
+  function backendExpenseCounterpartyMaps(tables) {
+    const creditorsByOrigin = new Map();
+    (tables.acreedores?.rows || []).forEach((creditor) => {
+      const key = `${backendExpenseSourceTypeKey(creditor.origen_tipo_acreedor)}:${backendId(creditor.origen_id_acreedor)}`;
+      if (!creditorsByOrigin.has(key)) creditorsByOrigin.set(key, creditor);
+    });
+
+    return {
+      bankMovementsById: backendRowsById(tables.movimientos_bancarios?.rows, "id_movimiento_bancario"),
+      channelsById: backendRowsById(tables.canales?.rows, "id_canal"),
+      clientsById: backendRowsById(tables.clientes?.rows, "id_cliente"),
+      commissionsById: backendRowsById(tables.comisiones?.rows, "id_comision"),
+      creditorsById: backendRowsById(tables.acreedores?.rows, "id_acreedor"),
+      creditorsByOrigin,
+      deliveriesById: backendRowsById(tables.entregas?.rows, "id_entrega"),
+      employeesById: backendRowsById(tables.empleados?.rows, "id_empleado"),
+      freightsById: backendRowsById(tables.fletes?.rows, "id_flete"),
+      fundMovementsById: backendRowsById(tables.fondos_inversion_movimientos?.rows, "id_movimiento_fondo"),
+      otherExpensesById: backendRowsById(tables.otros_gastos?.rows, "id_otros_gastos"),
+      otherCreditorsById: backendRowsById(tables.otros_acreedores?.rows, "id_otro_acreedor"),
+      paymentPlansById: backendRowsById(tables.planes_pagos?.rows, "id_plan_pago"),
+      providersById: backendRowsById(tables.proveedores?.rows, "id_proveedor"),
+      purchasesById: backendRowsById(tables.compras?.rows, "id_compra"),
+      quotasById: backendRowsById(tables.cuotas_planes_pagos?.rows, "id_cuota_plan_pago"),
+      receptionsById: backendRowsById(tables.recepciones?.rows, "id_recepcion"),
+      salariesById: backendRowsById(tables.sueldos?.rows, "id_sueldo"),
+      salesById: backendRowsById(tables.ventas?.rows, "id_venta")
+    };
+  }
+
+  function backendExpenseCounterpartyInfo(expense, tables, helpers = {}) {
     const linkedOrigin = backendExpenseLinkedOrigin(expense, tables);
     const originType = backendExpenseSourceTypeKey(linkedOrigin.type);
     const originId = linkedOrigin.id;
-    const providersById = backendRowsById(tables.proveedores?.rows, "id_proveedor");
-    const creditorsById = backendRowsById(tables.acreedores?.rows, "id_acreedor");
+    const maps = helpers.maps || backendExpenseCounterpartyMaps(tables);
+
+    if (originType === "egreso") {
+      return backendExpenseCounterpartyInfo({ id_egreso: originId }, tables, { maps });
+    }
   
-    if (originType === "recepciones") {
-      const receptionsById = backendRowsById(tables.recepciones?.rows, "id_recepcion");
-      const purchasesById = backendRowsById(tables.compras?.rows, "id_compra");
-      const reception = linkedOrigin.row || receptionsById.get(originId);
-      const purchase = purchasesById.get(backendId(reception?.id_compra));
-      const provider = providersById.get(backendId(purchase?.id_proveedor));
+    if (originType === "recepcion" || originType === "recepciones") {
+      const reception = linkedOrigin.row || maps.receptionsById.get(originId);
+      const purchase = maps.purchasesById.get(backendId(reception?.id_compra));
+      const provider = maps.providersById.get(backendId(purchase?.id_proveedor));
       return {
         name: provider?.nombre || "",
         cuit: normalizeBankCuit(provider?.cuit),
-        detail: "Recepcion"
+        detail: `Recepcion #${originId}`
       };
     }
   
-    if (originType === "otros gastos" || originType === "otros_gastos") {
-      const otherExpensesById = backendRowsById(tables.otros_gastos?.rows, "id_otros_gastos");
-      const otherExpense = linkedOrigin.row || otherExpensesById.get(originId);
-      const creditor = creditorsById.get(backendId(otherExpense?.id_acreedor));
+    if (originType === "otro gasto" || originType === "otros gastos") {
+      const otherExpense = linkedOrigin.row || maps.otherExpensesById.get(originId);
+      const creditor = maps.creditorsById.get(backendId(otherExpense?.id_acreedor));
       return {
-        name: backendCreditorDisplayName(creditor, tables),
+        name: backendCreditorDisplayName(creditor, tables, maps),
         cuit: normalizeBankCuit(creditor?.cuit_cuil),
-        detail: otherExpense?.detalle || backendCreditorTagNames(creditor?.id_acreedor, tables).join(" ")
+        detail: otherExpense?.detalle || `Otro gasto #${originId}`
       };
     }
   
-    if (originType === "sueldos") {
-      const salariesById = backendRowsById(tables.sueldos?.rows, "id_sueldo");
-      const employeesById = backendRowsById(tables.empleados?.rows, "id_empleado");
-      const salary = linkedOrigin.row || salariesById.get(originId);
-      const employee = employeesById.get(backendId(salary?.id_empleado));
+    if (originType === "sueldo" || originType === "sueldos") {
+      const salary = linkedOrigin.row || maps.salariesById.get(originId);
+      const employee = maps.employeesById.get(backendId(salary?.id_empleado));
       return {
         name: employee?.nombre_empleado || "",
         cuit: normalizeBankCuit(employee?.cuit_cuil || employee?.dni),
-        detail: "Sueldos"
+        detail: `Sueldo #${originId}`
       };
     }
   
     if (originType === "logistica") {
-      const deliveriesById = backendRowsById(tables.entregas?.rows, "id_entrega");
-      const freightsById = backendRowsById(tables.fletes?.rows, "id_flete");
-      const delivery = linkedOrigin.row || deliveriesById.get(originId);
-      const freight = freightsById.get(backendId(delivery?.id_flete));
+      const delivery = linkedOrigin.row || maps.deliveriesById.get(originId);
+      const freight = maps.freightsById.get(backendId(delivery?.id_flete));
       return {
         name: freight?.nombre_flete || "",
         cuit: normalizeBankCuit(freight?.cuit),
-        detail: "Logistica"
+        detail: `Entrega #${originId}`
+      };
+    }
+
+    if (originType === "comision venta" || originType === "ingresos brutos" || originType === "venta") {
+      const sale = maps.salesById.get(originId);
+      const client = maps.clientsById.get(backendId(sale?.id_cliente));
+      const channel = maps.channelsById.get(backendId(client?.id_canal));
+      const isCommission = originType === "comision venta";
+      return {
+        name: isCommission ? channel?.nombre || "" : client?.nombre_cliente || "",
+        cuit: normalizeBankCuit(client?.cuit),
+        detail: `Venta #${originId}`
+      };
+    }
+
+    if (originType === "comisiones") {
+      const commission = linkedOrigin.row || maps.commissionsById.get(originId);
+      const channel = maps.channelsById.get(backendId(commission?.id_canal));
+      return {
+        name: channel?.nombre || "",
+        cuit: "",
+        detail: `Comision #${originId}`
+      };
+    }
+
+    if (originType === "plan pago") {
+      const quota = maps.quotasById.get(originId);
+      const plan = maps.paymentPlansById.get(backendId(quota?.id_plan_pago));
+      return {
+        name: cleanBackendText(plan?.organismo || plan?.nombre),
+        cuit: "",
+        detail: `Cuota ${cleanBackendText(quota?.nro_cuota) || `#${originId}`}`
+      };
+    }
+
+    if (originType === "fondo inversion") {
+      const movement = maps.fundMovementsById.get(originId);
+      return {
+        name: "",
+        cuit: "",
+        detail: cleanBackendText(movement?.referencia || movement?.observacion) || `Movimiento de fondo #${originId}`
+      };
+    }
+
+    if (originType === "movimiento bancario") {
+      const movement = maps.bankMovementsById.get(originId);
+      return {
+        name: "",
+        cuit: normalizeBankCuit(movement?.cuit),
+        detail: cleanBackendText(movement?.detalle || movement?.concepto) || `Movimiento bancario #${originId}`
+      };
+    }
+
+    const canonicalCreditor = maps.creditorsByOrigin.get(`${originType}:${originId}`);
+    if (canonicalCreditor) {
+      return {
+        name: backendCreditorDisplayName(canonicalCreditor, tables, maps),
+        cuit: normalizeBankCuit(canonicalCreditor.cuit_cuil),
+        detail: backendCreditorTagNames(canonicalCreditor.id_acreedor, tables).join(" ")
       };
     }
   
     // Egresos historicos pueden no tener fila operativa enlazada. En esos casos
     // el import conserva el acreedor original en _id_acreedor.
-    const historicalCreditor = creditorsById.get(backendId(expense._id_acreedor));
+    const historicalCreditor = maps.creditorsById.get(backendId(expense._id_acreedor));
     if (historicalCreditor) {
       return {
-        name: backendCreditorDisplayName(historicalCreditor, tables),
+        name: backendCreditorDisplayName(historicalCreditor, tables, maps),
         cuit: normalizeBankCuit(historicalCreditor.cuit_cuil),
         detail: cleanBackendText(expense._etiqueta_gasto) || backendCreditorTagNames(historicalCreditor.id_acreedor, tables).join(" ")
       };
@@ -313,25 +316,25 @@ function createExpenseClassificationService(dependencies) {
     return text;
   }
   
-  function backendCreditorDisplayName(creditor, tables) {
+  function backendCreditorDisplayName(creditor, tables, maps = {}) {
     if (!creditor) return "";
     const originType = backendNormalizeText(creditor.origen_tipo_acreedor);
     const originId = backendId(creditor.origen_id_acreedor);
   
     if (originType === "proveedor") {
-      return backendRowsById(tables.proveedores?.rows, "id_proveedor").get(originId)?.nombre || "";
+      return (maps.providersById || backendRowsById(tables.proveedores?.rows, "id_proveedor")).get(originId)?.nombre || "";
     }
     if (originType === "empleado") {
-      return backendRowsById(tables.empleados?.rows, "id_empleado").get(originId)?.nombre_empleado || "";
+      return (maps.employeesById || backendRowsById(tables.empleados?.rows, "id_empleado")).get(originId)?.nombre_empleado || "";
     }
     if (originType === "flete") {
-      return backendRowsById(tables.fletes?.rows, "id_flete").get(originId)?.nombre_flete || "";
+      return (maps.freightsById || backendRowsById(tables.fletes?.rows, "id_flete")).get(originId)?.nombre_flete || "";
     }
     if (originType === "canal") {
-      return backendRowsById(tables.canales?.rows, "id_canal").get(originId)?.nombre || "";
+      return (maps.channelsById || backendRowsById(tables.canales?.rows, "id_canal")).get(originId)?.nombre || "";
     }
     if (originType === "otros acreedores") {
-      return backendRowsById(tables.otros_acreedores?.rows, "id_otro_acreedor").get(originId)?.nombre_otro_acreedor || "";
+      return (maps.otherCreditorsById || backendRowsById(tables.otros_acreedores?.rows, "id_otro_acreedor")).get(originId)?.nombre_otro_acreedor || "";
     }
   
     return creditor.acuerdo_de_pago || "";
@@ -350,7 +353,7 @@ function createExpenseClassificationService(dependencies) {
     return names;
   }
 
-  return { backendCreditorDisplayName, backendCreditorTagNames, backendEconomicExpenseRows, backendExpenseCategoryTotals, backendExpenseCounterpartyInfo, backendExpenseLinkedOrigin, backendExpenseSourceConfigs, backendExpenseSourceTypeKey, backendExpenseSupplierName, backendStatementExpenseCategories, backendTagIdForName, backendTagNameForCreditorTagId, backendTagNameForId, backendTagNameMap, backendUncategorizedExpenseRows };
+  return { backendCreditorDisplayName, backendCreditorTagNames, backendExpenseCategoryTotals, backendExpenseCounterpartyInfo, backendExpenseCounterpartyMaps, backendExpenseLinkedOrigin, backendExpenseSourceConfigs, backendExpenseSourceTypeKey, backendExpenseSupplierName, backendPersistedEconomicExpenseRows, backendStatementExpenseCategories, backendStatementExpenseRows, backendTagIdForName, backendTagNameForCreditorTagId, backendTagNameForId, backendTagNameMap, backendUncategorizedExpenseRows };
 }
 
 module.exports = { createExpenseClassificationService };

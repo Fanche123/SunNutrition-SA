@@ -1087,12 +1087,14 @@ function bindEvents() {
     const [year, month] = els["period-select"].value.split("-").map(Number);
     state.selectedYear = year;
     state.selectedMonth = month;
+    closeIncomeStatementDetail({ restoreFocus: false });
     saveState();
     render();
   });
 
   els["comparison-select"].addEventListener("change", () => {
     state.selectedComparison = els["comparison-select"].value;
+    closeIncomeStatementDetail({ restoreFocus: false });
     saveState();
     render();
   });
@@ -1585,14 +1587,31 @@ function bindEvents() {
   });
 
   els["statement-body"].addEventListener("click", (event) => {
+    const conceptButton = event.target.closest("[data-statement-concept]");
+    if (conceptButton) {
+      openIncomeStatementDetail(conceptButton);
+      return;
+    }
     const button = event.target.closest("[data-toggle-group]");
     if (!button) return;
     const group = button.dataset.toggleGroup;
     const isOpen = button.getAttribute("aria-expanded") === "true";
+    if (isOpen) closeIncomeStatementDetailForGroup(group);
     button.setAttribute("aria-expanded", String(!isOpen));
     document.querySelectorAll(`[data-group="${group}"]`).forEach((row) => {
       row.hidden = isOpen;
     });
+  });
+  document.getElementById("statement-detail-close")?.addEventListener("click", () => {
+    closeIncomeStatementDetail();
+  });
+  document.getElementById("statement-detail-more")?.addEventListener("click", () => {
+    loadIncomeStatementDetailPage(false);
+  });
+  document.getElementById("statement-detail-panel")?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    closeIncomeStatementDetail();
   });
 
   els["cashflow-timeline"].addEventListener("click", (event) => {
@@ -1878,7 +1897,7 @@ function switchView(view) {
     dashboard: ["Dashboard", "Resumen de los datos guardados en este navegador."],
     results: ["Estado de Resultados", "Resultado mensual estimado desde egresos, ventas e inventario."],
     cashflow: ["Cashflow", "Flujo de caja proyectado y editable por fecha."],
-    cashbox: ["Caja", "Visualizacion de caja y saldos reales."],
+    cashbox: ["Cajas", "Control bidireccional de saldos bancarios y movimientos registrados."],
     "bank-reconciliation": ["Conciliacion bancaria", "Comparacion del extracto bancario contra pagos, cobros y egresos del backend."],
     "creditor-entry": ["Acreedores", "Alta de acreedores, origenes y etiquetas."],
     "expense-entry": ["Egresos", "Carga agrupada de recepciones, sueldos, logistica, otros gastos y comisiones."],
@@ -1927,6 +1946,7 @@ function switchView(view) {
   if (view === "partner-contributions-entry") loadPartnerContributions();
   if (view === "payment-plans") renderPaymentPlans();
   if (view === "investment-fund") loadInvestmentFund();
+  if (view === "cashbox") loadCashBoxes();
   if (view === "salary-entry") initializeViewOnce(view, initializeSalaryEntry);
   if (view === "reception-entry") {
     initializeViewOnce(view, async () => {

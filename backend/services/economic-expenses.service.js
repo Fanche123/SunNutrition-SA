@@ -23,7 +23,10 @@ function createEconomicExpensesService(dependencies) {
     const url = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`);
     const state = text(url.searchParams.get("estado"));
     const period = text(url.searchParams.get("periodo"));
-    const filtered = rows.filter((row) => (!state || row.estado === state) && (!period || row.periodo_economico === period));
+    const filtered = rows.filter((row) => (
+      (!state || row.estado === state)
+      && (!period || text(row.fecha_economica).startsWith(`${period}-`))
+    ));
     return sendJson(response, 200, { ok: true, rows: filtered });
   }
 
@@ -120,9 +123,16 @@ function createEconomicExpensesService(dependencies) {
       )) {
         return result(400, "La reversion total debe tener el importe contrario al gasto precedente.");
       }
-      validateConfirmed(input, rows, "", cache);
       const replay = idempotentReplay(rows, input.clave_idempotencia, input.hash_payload);
       if (replay) return replay;
+      if (movementType === "reversion" && rows.some((row) => (
+        row.estado === "confirmado"
+        && row.tipo_movimiento === "reversion"
+        && backendId(row.id_gasto_precedente) === backendId(precedent.id_gasto_economico)
+      ))) {
+        return result(409, "El gasto confirmado ya tiene una reversion total.");
+      }
+      validateConfirmed(input, rows, "", cache);
       input.id_gasto_economico = backendNextNumericId(rows, "id_gasto_economico");
       input.creado_en = now;
       input.actualizado_en = now;
@@ -155,7 +165,7 @@ function createEconomicExpensesService(dependencies) {
   function normalizeExpense(source, defaultState) {
     const row = {
       id_gasto_economico: backendId(source.id_gasto_economico),
-      periodo_economico: text(source.periodo_economico),
+      fecha_economica: text(source.fecha_economica),
       id_etiqueta: backendId(source.id_etiqueta),
       concepto: text(source.concepto),
       tipo_economico: text(source.tipo_economico),
@@ -186,9 +196,9 @@ function createEconomicExpensesService(dependencies) {
 
   function validateConfirmed(row, rows, currentId = "", cache = {}) {
     if (row.estado !== "confirmado") throw validation("Estado confirmado invalido.");
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(row.periodo_economico)) throw validation("El periodo economico es obligatorio y debe usar AAAA-MM.");
+    if (!validIsoDate(row.fecha_economica)) throw validation("La fecha economica es obligatoria y debe usar AAAA-MM-DD.");
     if (!row.id_etiqueta || !row.concepto || !row.origen_tipo || !row.origen_id || !row.origen_subclave) {
-      throw validation("Periodo, etiqueta, concepto, origen y origen_subclave son obligatorios.");
+      throw validation("Fecha, etiqueta, concepto, origen y origen_subclave son obligatorios.");
     }
     if (!(cache.tables?.etiquetas?.rows || []).some((tag) => backendId(tag.id_etiqueta) === row.id_etiqueta)) {
       throw validation("La etiqueta economica no existe.");
@@ -196,6 +206,12 @@ function createEconomicExpensesService(dependencies) {
     if (!ECONOMIC_TYPES.has(row.tipo_economico) || !MOVEMENT_TYPES.has(row.tipo_movimiento)) throw validation("Tipo economico o movimiento invalido.");
     if (toCents(row.importe) === 0) throw validation("El importe debe ser distinto de cero.");
     if (!row.clave_idempotencia || !row.hash_payload) throw validation("La identidad idempotente es obligatoria.");
+    if (row.tipo_movimiento === "original" && (row.id_gasto_precedente || row.motivo)) {
+      throw validation("Precedente y motivo corresponden solo a ajustes o reversiones.");
+    }
+    if (row.tipo_movimiento !== "original" && (!row.id_gasto_precedente || !row.motivo)) {
+      throw validation("Los ajustes y reversiones requieren precedente y motivo.");
+    }
     const duplicate = rows.find((candidate) =>
       backendId(candidate.id_gasto_economico) !== backendId(currentId)
       && candidate.estado !== "descartado"
@@ -255,6 +271,18 @@ function routeId(url) {
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function validIsoDate(value) {
+  const candidate = text(value);
+  const match = candidate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return false;
+  const date = new Date(0);
+  date.setUTCHours(0, 0, 0, 0);
+  date.setUTCFullYear(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return date.getUTCFullYear() === Number(match[1])
+    && date.getUTCMonth() === Number(match[2]) - 1
+    && date.getUTCDate() === Number(match[3]);
 }
 
 function payloadHash(value) {

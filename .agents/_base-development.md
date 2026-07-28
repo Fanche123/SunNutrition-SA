@@ -53,11 +53,22 @@ El flujo predeterminado crea hilos principales visibles:
 4. usa siempre `set_thread_title` con un nombre específico;
 5. inserta la consigna completa y deja el hilo trabajando independientemente;
 6. responde inmediatamente sin esperar el resultado;
-7. el usuario continúa correcciones y revisión dentro del hilo visible creado.
+7. mientras el hilo permanece activo, resuelve sus propias pruebas y la única ronda de corrección interna permitida;
+8. después de declarar el objetivo completado y sin trabajo pendiente, el hilo queda cerrado y toda corrección o ampliación posterior nace como una tarea nueva vinculada.
 
 El Coordinador no usa `spawn_agent` ni Jefes anidados, no hace trabajo técnico y no recibe el informe. El nuevo hilo realiza toda inspección, cambio, prueba, navegador, captura y revisión, y puede crear sus propios especialistas como subagentes.
 
 Usar Local cuando se necesiten runtime principal, localhost o archivos locales. Usar Worktree para aislamiento o cuando otra tarea escritora ya esté activa. No ejecutar dos escritores simultáneos sobre la misma carpeta principal.
+
+### Tareas cerradas y correcciones posteriores
+
+- El cierre requiere que el hilo declare el objetivo completado y sin trabajo pendiente, o que el usuario lo cancele expresamente. Un turno `blocked` o una pregunta por decisión/autorización no cierran la tarea y puede reanudarse en el mismo hilo.
+- Después del cierre confirmado, no continuar implementación ni enviar correcciones nuevas a ese hilo.
+- Un fallo, ajuste o requisito descubierto después del cierre recibe `taskId`, título e hilo principal visible nuevos, con referencia explícita a la tarea de origen.
+- El prompt de la corrección debe ser autosuficiente y transportar solo intención, evidencia, estado de integración, módulos iniciales, pruebas relacionadas, riesgos y cambios preexistentes necesarios.
+- La nueva tarea vuelve a evaluar ownership, riesgo y modo de trabajo. No hereda automáticamente el worktree, modelo ni validaciones de la tarea anterior.
+- Si los cambios de origen aún no están integrados, primero resolver su integración o asegurar un checkout que los contenga. No corregir sobre una base que no incluye la implementación y no reabrir el hilo finalizado.
+- Las correcciones internas surgidas antes del cierre —pruebas propias o una única ronda de `validador_tarea`— permanecen dentro de la tarea activa y no generan otro hilo.
 
 ## Consulta de progreso bajo demanda
 

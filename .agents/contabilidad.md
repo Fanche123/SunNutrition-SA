@@ -21,7 +21,8 @@ Contabilidad no posee `egresos`, `pagos`, productores operativos ni el Estado de
 - RR. HH. produce sueldos y costos laborales.
 - Ventas produce comisiones y logística.
 - Tesorería produce refinanciaciones, planes de pago y rendimientos del fondo de inversión.
-- Reportes consume gastos confirmados y diagnósticos.
+- Reportes consume exclusivamente gastos confirmados por `fecha_economica` en todos los períodos y diagnósticos.
+- El detalle lazy del Estado de Resultados conserva `origen_tipo`, `origen_id`, `concepto`, movimiento e importe de esas mismas filas confirmadas para resolver contraparte y referencia; no agrega escrituras ni reconstruye productores.
 - Tesorería consulta la conciliación económica de egresos.
 
 La integración del fondo es una excepción explícita: cada rendimiento crea en el mismo guardado un gasto confirmado `fondo_inversion`, positivo en Tesorería y negativo únicamente en `gastos_economicos`.
@@ -34,13 +35,16 @@ La integración del fondo es una excepción explícita: cada rendimiento crea en
 - La idempotencia durable usa clave y hash separados de esa identidad.
 - Las aplicaciones vigentes respetan tolerancia `0,01`; la conciliación es derivada.
 - Capital, intereses, aplicaciones y comparaciones usan el contrato único `shared/money.js` / `docs/money-contract.md`; la tolerancia `0,01` representa exactamente un centavo, no una comparación de punto flotante.
-- No generar automáticamente gastos por impuestos ni decidir políticas contables pendientes.
-- Reportes consume solo los confirmados con `origen_tipo = fondo_inversion` dentro del Estado de Resultados oficial; no los reconstruye desde banco ni los vuelve a sumar por otra fuente.
+- Ingresos Brutos es el criterio confirmado: `1,5%` del subtotal de cada `Factura_A` o `Factura_B`; el productor crea el gasto confirmado y el reporte no lo recalcula.
+- Reportes consume todos los confirmados dentro del Estado de Resultados oficial en cualquier período. Si no existen filas confirmadas, informa cero gastos; no reconstruye productores ni vuelve a sumar el fondo por otra fuente.
+- La migración/materializador `20260727-economic-expenses-history.js` reconoce recepciones, otros gastos, logística, comisiones, Ingresos Brutos, sueldo neto e intereses de planes únicamente con fecha, importe y etiqueta canónicos. Para sueldos conserva una sola fuente por empleado/período cuando neto, egreso y etiqueta coinciden; prioriza la fila con datos de liquidación y luego el menor ID, y falla ante fuentes incompatibles. El financiero se anticipa por cuota; el resarcitorio requiere que pagos y aplicaciones completen `capital + interes_financiero` después del primer vencimiento y hasta el segundo. Capital, aportes y movimientos del fondo no económicos quedan excluidos. Los confirmados históricos se corrigen con ajustes/reversiones.
 - Toda escritura valida, clona el cache y ejecuta un único `saveBackendCache`.
 
 ## Validación y seguridad
 
-Usá exclusivamente fixtures y caches temporales. Cubrí estados, identidad funcional, idempotencia/409, precedentes, sobreaplicación, conciliación, diagnóstico vacío y Administración solo lectura. No tocar cache real, app-state, egresos, pagos o productores sin aprobación específica.
+Usá fixtures y caches temporales para validar. Una carga real autorizada exige dry-run, backup verificable y reintento idempotente. Cubrí estados, fecha diaria, identidad funcional, idempotencia/409, precedentes, sobreaplicación, conciliación, exclusiones y consumo por Reportes.
+
+El materializador reconoce `egresos.imp_internos` por `fecha_factura`, con identidad `egreso + impuestos_internos`, etiqueta maestra `Impuestos Internos` y presentaciĂłn bajo `Otros Impuestos`; cambios y anulaciones son append-only.
 
 ## Trabajo directo
 

@@ -152,6 +152,7 @@ function applyInvestmentFundMovement(cache, source, dependencies) {
       movementId,
       operationKey,
       period,
+      date,
       tagId,
       tables,
       timestamp
@@ -182,6 +183,7 @@ function createYieldEconomicExpense({
   movementId,
   operationKey,
   period,
+  date,
   tagId,
   tables,
   timestamp
@@ -194,7 +196,7 @@ function createYieldEconomicExpense({
   if (existing) return backendId(existing.id_gasto_economico);
   const expenseId = backendNextNumericId(economicTable.rows, "id_gasto_economico");
   const economicPayload = {
-    periodo_economico: period,
+    fecha_economica: date,
     id_etiqueta: tagId,
     concepto: `Rendimiento fondo de inversion ${period}`,
     tipo_economico: "interes_financiero",
@@ -205,7 +207,7 @@ function createYieldEconomicExpense({
     origen_id: backendId(movementId),
     origen_subclave: period,
     id_gasto_precedente: "",
-    motivo: "Interes a favor registrado como gasto negativo por criterio funcional.",
+    motivo: "",
     clave_idempotencia: economicKey
   };
   economicTable.rows.push({

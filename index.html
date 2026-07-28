@@ -57,7 +57,7 @@
           </button>
           <div class="nav-group-items" inert>
             <button class="nav-item nav-subitem" data-view="bank-reconciliation" type="button">Conciliación bancaria</button>
-            <button class="nav-item nav-subitem" data-view="cashbox" type="button">Caja</button>
+            <button class="nav-item nav-subitem" data-view="cashbox" type="button">Cajas</button>
             <button class="nav-item nav-subitem" data-view="expense-entry" type="button">Egresos</button>
             <button class="nav-item nav-subitem" data-view="payments-entry" type="button">Pagos</button>
             <button class="nav-item nav-subitem" data-view="issued-check-entry" type="button">Cheques entregados</button>
@@ -211,6 +211,33 @@
           <table class="statement-table">
             <tbody id="statement-body"></tbody>
           </table>
+        </section>
+
+        <section class="panel statement-detail-panel" id="statement-detail-panel" hidden aria-live="polite" tabindex="-1">
+          <div class="panel-header statement-detail-header">
+            <div>
+              <h2 id="statement-detail-title">Detalle del concepto</h2>
+              <span id="statement-detail-period"></span>
+            </div>
+            <button class="btn btn-secondary statement-detail-close" id="statement-detail-close" type="button">Cerrar</button>
+          </div>
+          <div id="statement-detail-summary" class="statement-detail-summary"></div>
+          <div class="table-wrap statement-detail-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Acreedor / contraparte</th>
+                  <th>Referencia o concepto</th>
+                  <th class="num">Monto</th>
+                </tr>
+              </thead>
+              <tbody id="statement-detail-body"></tbody>
+            </table>
+          </div>
+          <div class="statement-detail-actions">
+            <button class="btn btn-secondary" id="statement-detail-more" type="button" hidden>Cargar más movimientos</button>
+          </div>
         </section>
 
         <section class="panel" id="review-panel">
@@ -1356,11 +1383,145 @@
         </section>
       </section>
 
-      <section class="view" id="view-cashbox">
-        <section class="panel commercial-entry-panel">
-          <h2>Caja</h2>
-          <p>Visualizacion de caja y saldos reales. No forma parte de carga de datos.</p>
+      <section class="view" id="view-cashbox" aria-labelledby="cash-boxes-title">
+        <div class="data-entry-page-heading cash-boxes-page-heading">
+          <div>
+            <h2 id="cash-boxes-title">Cajas</h2>
+            <p>Control bidireccional entre los movimientos registrados y el saldo bancario observado.</p>
+          </div>
+          <button type="button" class="secondary" id="cash-boxes-refresh">Actualizar</button>
+        </div>
+        <p class="form-status cash-boxes-status" id="cash-boxes-status" role="status" aria-live="polite">
+          Cargando Saldo del ICBC...
+        </p>
+
+        <section class="panel cash-box-balance-panel" aria-labelledby="cash-box-icbc-title">
+          <div class="panel-header cash-box-balance-heading">
+            <div>
+              <span class="cash-box-eyebrow">Tesorería · ICBC</span>
+              <h2 id="cash-box-icbc-title">Saldo del ICBC</h2>
+              <span id="cash-box-rule-caption">Saldo inicial + cobros - pagos</span>
+            </div>
+            <strong class="cash-box-status-badge" id="cash-box-status-badge">Calculando</strong>
+          </div>
+
+          <div class="cash-box-summary-grid">
+            <article>
+              <span>Saldo inicial</span>
+              <strong id="cash-box-initial-balance">$ 0,00</strong>
+              <small id="cash-box-initial-date">Desde -</small>
+            </article>
+            <article class="is-positive">
+              <span>Cobros computados</span>
+              <strong id="cash-box-collections-total">$ 0,00</strong>
+              <small id="cash-box-collections-count">0 registros</small>
+            </article>
+            <article class="is-negative">
+              <span>Pagos computados</span>
+              <strong id="cash-box-payments-total">$ 0,00</strong>
+              <small id="cash-box-payments-count">0 registros</small>
+            </article>
+            <article class="is-calculated">
+              <span>Saldo calculado ERP</span>
+              <strong id="cash-box-calculated-balance">$ 0,00</strong>
+              <small>Saldo inicial + cobros - pagos</small>
+            </article>
+            <article>
+              <span>Último saldo ICBC</span>
+              <strong id="cash-box-bank-balance">Sin saldo</strong>
+              <small id="cash-box-bank-movement">Sin movimientos bancarios</small>
+            </article>
+            <article class="cash-box-difference-card" id="cash-box-difference-card">
+              <span>Diferencia banco - ERP</span>
+              <strong id="cash-box-difference">Sin comparar</strong>
+              <small>Positiva: el banco supera al ERP. Negativa: el ERP supera al banco.</small>
+            </article>
+          </div>
+
+          <div class="cash-box-scope-note">
+            <strong>Alcance inicial autorizado</strong>
+            <span id="cash-box-scope-description">Se incluyen todos los cobros y pagos persistidos desde la fecha inicial, una sola vez por encabezado.</span>
+          </div>
+          <div class="cash-box-warnings" id="cash-box-warnings" hidden></div>
         </section>
+
+        <section class="panel cash-box-bank-control" aria-labelledby="cash-box-bank-control-title">
+          <div class="panel-header">
+            <div>
+              <h2 id="cash-box-bank-control-title">Banco → ERP</h2>
+              <span>Movimientos de ICBC sin pago, cobro o movimiento de fondo asociado.</span>
+            </div>
+            <button type="button" class="secondary" id="cash-box-open-reconciliation">Abrir conciliación bancaria</button>
+          </div>
+          <div class="cash-box-direction-summary">
+            <div><span>Pendientes</span><strong id="cash-box-bank-pending-count">0</strong></div>
+            <div><span>Importe pendiente bruto</span><strong id="cash-box-bank-pending-gross">$ 0,00</strong></div>
+            <div><span>Neto pendiente</span><strong id="cash-box-bank-pending-net">$ 0,00</strong></div>
+          </div>
+          <div class="cash-box-gap-factors" id="cash-box-gap-factors"></div>
+        </section>
+
+        <div class="cash-box-pending-grid">
+          <section class="panel cash-box-pending-panel" aria-labelledby="cash-box-pending-collections-title">
+            <div class="panel-header cash-box-pending-heading">
+              <div>
+                <h2 id="cash-box-pending-collections-title">Cobros sin contrapartida ICBC</h2>
+                <span id="cash-box-pending-collections-summary">0 pendientes</span>
+              </div>
+              <label>
+                <span class="visually-hidden">Filtrar cobros por fecha, contraparte o referencia</span>
+                <input id="cash-box-collections-filter" type="search" placeholder="Filtrar cobros...">
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table class="cash-box-pending-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Contraparte</th>
+                    <th>Referencia</th>
+                    <th>Método / instrumento</th>
+                    <th class="num">Importe</th>
+                    <th>Estado / motivo</th>
+                  </tr>
+                </thead>
+                <tbody id="cash-box-pending-collections-body">
+                  <tr><td class="empty" colspan="6">Cargando cobros pendientes...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="panel cash-box-pending-panel" aria-labelledby="cash-box-pending-payments-title">
+            <div class="panel-header cash-box-pending-heading">
+              <div>
+                <h2 id="cash-box-pending-payments-title">Pagos sin contrapartida ICBC</h2>
+                <span id="cash-box-pending-payments-summary">0 pendientes</span>
+              </div>
+              <label>
+                <span class="visually-hidden">Filtrar pagos por fecha, contraparte o referencia</span>
+                <input id="cash-box-payments-filter" type="search" placeholder="Filtrar pagos...">
+              </label>
+            </div>
+            <div class="table-wrap">
+              <table class="cash-box-pending-table">
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Contraparte</th>
+                    <th>Referencia</th>
+                    <th>Método / instrumento</th>
+                    <th class="num">Importe</th>
+                    <th>Estado / motivo</th>
+                  </tr>
+                </thead>
+                <tbody id="cash-box-pending-payments-body">
+                  <tr><td class="empty" colspan="6">Cargando pagos pendientes...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section class="view" id="view-expense-entry">
@@ -2697,6 +2858,7 @@
   <script src="assets/js/app.js?v=20260727-inventory-purchase-history"></script>
 <script src="assets/js/core/api.js?v=20260723-same-origin"></script>
 <script src="assets/js/core/files.js?v=20260722-architecture-stage3"></script>
+<script src="assets/js/modules/cash-boxes.js?v=20260728-icbc-control"></script>
 <script src="assets/js/modules/bank-reconciliation-core.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-render.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-checks.js?v=20260722-architecture-stage2"></script>

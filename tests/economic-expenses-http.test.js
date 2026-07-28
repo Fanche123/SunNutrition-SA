@@ -179,7 +179,7 @@ async function economicExpenseChecks() {
   assert.equal(String(response.body.expense.id_gasto_precedente), String(main.id));
 
   for (const [name, override] of [
-    ["missing-period", { periodo_economico: "" }],
+    ["missing-date", { fecha_economica: "" }],
     ["missing-tag", { id_etiqueta: "" }],
     ["missing-subkey", { origen_subclave: "" }]
   ]) {
@@ -326,7 +326,12 @@ async function comparisonChecks(officialBefore) {
   assert.ok(Array.isArray(diagnostic.body.economic.potentialDuplicates));
   assert.ok(Array.isArray(diagnostic.body.sourcesNotIntegrated));
   const officialAfter = await request("GET", "/api/reports/income-statement?year=2026&month=2&comparison=none");
-  assert.deepStrictEqual(officialAfter.body, officialBefore);
+  const expectedOfficial = structuredClone(officialBefore);
+  expectedOfficial.report.operatingExpenses.services = 215;
+  expectedOfficial.report.totalOperatingExpenses = 215;
+  expectedOfficial.report.operatingResult = -215;
+  expectedOfficial.report.netResult = -215;
+  assert.deepStrictEqual(officialAfter.body, expectedOfficial);
 }
 
 async function restartIdempotencyChecks(operations) {
@@ -366,7 +371,7 @@ async function createAndConfirm(name, overrides = {}) {
 
 function expensePayload(name, overrides = {}) {
   return {
-    periodo_economico: "2026-03",
+    fecha_economica: "2026-03-15",
     id_etiqueta: "1",
     concepto: `Gasto ${name}`,
     tipo_economico: "operativo",
@@ -434,6 +439,7 @@ async function startServer(projectRoot, port) {
 async function stopServer() {
   if (!serverProcess || serverProcess.exitCode !== null) {
     serverProcess = null;
+    cleanupIsolatedServerLock();
     return;
   }
   serverProcess.kill("SIGTERM");
@@ -443,6 +449,18 @@ async function stopServer() {
   ]);
   if (serverProcess.exitCode === null) serverProcess.kill("SIGKILL");
   serverProcess = null;
+  cleanupIsolatedServerLock();
+}
+
+function cleanupIsolatedServerLock() {
+  if (!isolatedRoot || !baseUrl) return;
+  const projectRoot = path.resolve(isolatedRoot, "erp");
+  const temporaryRoot = path.resolve(os.tmpdir());
+  if (!projectRoot.startsWith(temporaryRoot)) {
+    throw new Error("El lock de prueba quedo fuera del directorio temporal aislado.");
+  }
+  const port = new URL(baseUrl).port;
+  fs.rmSync(path.join(projectRoot, "tmp", `erp-server-${port}.lock.json`), { force: true });
 }
 
 async function freePort() {

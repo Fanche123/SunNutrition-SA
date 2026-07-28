@@ -1,3 +1,7 @@
+let incomeStatementDetailRequestId = 0;
+let incomeStatementDetailState = null;
+const INCOME_STATEMENT_DETAIL_PAGE_SIZE = 200;
+
 async function loadBackendStatementReport() {
   const requestId = backendStatementRequestId + 1;
   backendStatementRequestId = requestId;
@@ -44,6 +48,7 @@ async function loadBackendCashflowReport() {
 }
 
 function renderStatementLoadError(error) {
+  closeIncomeStatementDetail({ restoreFocus: false });
   const message = escapeHtml(error?.message || "No se pudo actualizar el Estado de Resultados.");
   els["statement-body"].innerHTML = emptyRow(5, `Error de carga: ${message} No se muestran resultados anteriores.`);
   els.warnings.innerHTML = `<div class="notice warn">Falló la actualización del Estado de Resultados. Reintente la carga.</div>`;
@@ -356,6 +361,7 @@ function lastInventoryBetween(startIso, endIso) {
 
 // Renderiza el Estado de Resultados con grupos desplegables y porcentajes sobre ventas.
 function renderStatement(report, comparisonReport = null) {
+  closeIncomeStatementDetail({ restoreFocus: false });
   els["period-label"].textContent = "";
   const base = report.salesNet;
   const comparisonBase = comparisonReport?.salesNet || 0;
@@ -366,27 +372,27 @@ function renderStatement(report, comparisonReport = null) {
   const rows = [
     statementHeader(report, comparison),
     groupTotal("ventas", "Facturacion", report.salesNet, comparison?.report.salesNet, base, comparison, "ventas-netas"),
-    childLine("ventas", "Escuelas", report.salesBuckets.schools, comparison?.report.salesBuckets.schools, base, comparison),
-    childLine("ventas", "Otros", report.salesBuckets.other, comparison?.report.salesBuckets.other, base, comparison),
+    childLine("ventas", "Escuelas", report.salesBuckets.schools, comparison?.report.salesBuckets.schools, base, comparison, "sales.schools", report.detailCounts?.["sales.schools"]),
+    childLine("ventas", "Otros", report.salesBuckets.other, comparison?.report.salesBuckets.other, base, comparison, "sales.other", report.detailCounts?.["sales.other"]),
     groupTotal("costo-ventas", "Costo de ventas", report.totalCostOfSales, comparison?.report.totalCostOfSales, base, comparison, "costo-de-ventas"),
-    childLine("costo-ventas", "Mercaderia", report.costOfSales.merchandise, comparison?.report.costOfSales.merchandise, base, comparison),
-    childLine("costo-ventas", "Comisiones", report.costOfSales.commissions, comparison?.report.costOfSales.commissions, base, comparison),
-    childLine("costo-ventas", "Ingresos Brutos", report.costOfSales.grossRevenueTax, comparison?.report.costOfSales.grossRevenueTax, base, comparison),
-    childLine("costo-ventas", "Logistica", report.costOfSales.logistics, comparison?.report.costOfSales.logistics, base, comparison),
+    childLine("costo-ventas", "Mercaderia", report.costOfSales.merchandise, comparison?.report.costOfSales.merchandise, base, comparison, "cost.merchandise", report.detailCounts?.["cost.merchandise"]),
+    childLine("costo-ventas", "Comisiones", report.costOfSales.commissions, comparison?.report.costOfSales.commissions, base, comparison, "cost.commissions", report.detailCounts?.["cost.commissions"]),
+    childLine("costo-ventas", "Ingresos Brutos", report.costOfSales.grossRevenueTax, comparison?.report.costOfSales.grossRevenueTax, base, comparison, "cost.grossRevenueTax", report.detailCounts?.["cost.grossRevenueTax"]),
+    childLine("costo-ventas", "Logistica", report.costOfSales.logistics, comparison?.report.costOfSales.logistics, base, comparison, "cost.logistics", report.detailCounts?.["cost.logistics"]),
     utilityTotal("Utilidad bruta", report.grossMargin, comparison?.report.grossMargin, base, comparison),
     groupTotal("gastos-operativos", "Gastos operativos", report.totalOperatingExpenses, comparison?.report.totalOperatingExpenses, base, comparison, "gastos-operativos"),
-    childLine("gastos-operativos", "Sueldos", report.operatingExpenses.salaries, comparison?.report.operatingExpenses.salaries, base, comparison),
-    childLine("gastos-operativos", "Sueldos_Extras", report.operatingExpenses.extraSalaries, comparison?.report.operatingExpenses.extraSalaries, base, comparison),
-    childLine("gastos-operativos", "Administrativos", report.operatingExpenses.admin, comparison?.report.operatingExpenses.admin, base, comparison),
-    childLine("gastos-operativos", "Servicios", report.operatingExpenses.services, comparison?.report.operatingExpenses.services, base, comparison),
-    childLine("gastos-operativos", "Alquiler", report.operatingExpenses.rent, comparison?.report.operatingExpenses.rent, base, comparison),
-    childLine("gastos-operativos", "Mantenimiento y Varios", report.operatingExpenses.maintenanceAndMisc, comparison?.report.operatingExpenses.maintenanceAndMisc, base, comparison),
+    childLine("gastos-operativos", "Sueldos", report.operatingExpenses.salaries, comparison?.report.operatingExpenses.salaries, base, comparison, "operating.salaries", report.detailCounts?.["operating.salaries"]),
+    childLine("gastos-operativos", "Sueldos_Extras", report.operatingExpenses.extraSalaries, comparison?.report.operatingExpenses.extraSalaries, base, comparison, "operating.extraSalaries", report.detailCounts?.["operating.extraSalaries"]),
+    childLine("gastos-operativos", "Administrativos", report.operatingExpenses.admin, comparison?.report.operatingExpenses.admin, base, comparison, "operating.admin", report.detailCounts?.["operating.admin"]),
+    childLine("gastos-operativos", "Servicios", report.operatingExpenses.services, comparison?.report.operatingExpenses.services, base, comparison, "operating.services", report.detailCounts?.["operating.services"]),
+    childLine("gastos-operativos", "Alquiler", report.operatingExpenses.rent, comparison?.report.operatingExpenses.rent, base, comparison, "operating.rent", report.detailCounts?.["operating.rent"]),
+    childLine("gastos-operativos", "Mantenimiento y Varios", report.operatingExpenses.maintenanceAndMisc, comparison?.report.operatingExpenses.maintenanceAndMisc, base, comparison, "operating.maintenanceAndMisc", report.detailCounts?.["operating.maintenanceAndMisc"]),
     utilityTotal("Utilidad operativa", report.operatingResult, comparison?.report.operatingResult, base, comparison),
     groupTotal("gastos-no-operativos", "Gastos no operativos", report.totalNonOperatingExpenses, comparison?.report.totalNonOperatingExpenses, base, comparison, "gastos-no-operativos"),
-    childLine("gastos-no-operativos", "Otros Impuestos", report.nonOperatingExpenses.otherTaxes, comparison?.report.nonOperatingExpenses.otherTaxes, base, comparison),
-    childLine("gastos-no-operativos", "Gastos Bancarios", report.nonOperatingExpenses.bankFees, comparison?.report.nonOperatingExpenses.bankFees, base, comparison),
-    childLine("gastos-no-operativos", "Intereses", report.nonOperatingExpenses.interest, comparison?.report.nonOperatingExpenses.interest, base, comparison),
-    childLine("gastos-no-operativos", "Inversion General", report.nonOperatingExpenses.generalInvestment, comparison?.report.nonOperatingExpenses.generalInvestment, base, comparison),
+    childLine("gastos-no-operativos", "Otros Impuestos", report.nonOperatingExpenses.otherTaxes, comparison?.report.nonOperatingExpenses.otherTaxes, base, comparison, "nonOperating.otherTaxes", report.detailCounts?.["nonOperating.otherTaxes"]),
+    childLine("gastos-no-operativos", "Gastos Bancarios", report.nonOperatingExpenses.bankFees, comparison?.report.nonOperatingExpenses.bankFees, base, comparison, "nonOperating.bankFees", report.detailCounts?.["nonOperating.bankFees"]),
+    childLine("gastos-no-operativos", "Intereses", report.nonOperatingExpenses.interest, comparison?.report.nonOperatingExpenses.interest, base, comparison, "nonOperating.interest", report.detailCounts?.["nonOperating.interest"]),
+    childLine("gastos-no-operativos", "Inversion General", report.nonOperatingExpenses.generalInvestment, comparison?.report.nonOperatingExpenses.generalInvestment, base, comparison, "nonOperating.generalInvestment", report.detailCounts?.["nonOperating.generalInvestment"]),
     grand("Utilidad", report.netResult, comparison?.report.netResult, base, comparison, "utilidad")
   ];
 
@@ -415,6 +421,160 @@ function renderStatement(report, comparisonReport = null) {
   setUnitMetric("metric-margin-unit", "Por Ud", report.totalNonOperatingExpenses, report.unitsSold);
   setUnitMetric("metric-net-unit", "Por Ud", report.netResult, report.unitsSold);
   setUtilityProducedMetric(report);
+}
+
+async function openIncomeStatementDetail(button) {
+  const concept = button?.dataset.statementConcept || "";
+  if (!concept) return;
+  if (incomeStatementDetailState?.trigger === button && button.getAttribute("aria-expanded") === "true") {
+    closeIncomeStatementDetail();
+    return;
+  }
+
+  closeIncomeStatementDetail({ restoreFocus: false });
+  const panel = document.getElementById("statement-detail-panel");
+  const title = document.getElementById("statement-detail-title");
+  const period = document.getElementById("statement-detail-period");
+  const summary = document.getElementById("statement-detail-summary");
+  const body = document.getElementById("statement-detail-body");
+  const more = document.getElementById("statement-detail-more");
+  if (!panel || !title || !period || !summary || !body || !more) return;
+
+  const label = button.querySelector("span")?.textContent?.trim() || "Detalle del concepto";
+  incomeStatementDetailState = {
+    concept,
+    year: state.selectedYear,
+    month: state.selectedMonth,
+    trigger: button,
+    rows: [],
+    count: 0,
+    total: 0,
+    hasMore: false
+  };
+  button.setAttribute("aria-expanded", "true");
+  panel.hidden = false;
+  title.textContent = label;
+  period.textContent = `${MONTHS[state.selectedMonth]} ${state.selectedYear}`;
+  summary.textContent = "Cargando movimientos...";
+  body.innerHTML = emptyRow(4, "Cargando detalle...");
+  more.hidden = true;
+  more.disabled = false;
+  panel.focus({ preventScroll: true });
+  panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  await loadIncomeStatementDetailPage(true);
+}
+
+async function loadIncomeStatementDetailPage(reset = false) {
+  const active = incomeStatementDetailState;
+  if (!active) return;
+  const more = document.getElementById("statement-detail-more");
+  const offset = reset ? 0 : active.rows.length;
+  const requestId = incomeStatementDetailRequestId + 1;
+  incomeStatementDetailRequestId = requestId;
+  if (more) more.disabled = true;
+
+  try {
+    const params = new URLSearchParams({
+      year: String(active.year),
+      month: String(active.month),
+      concept: active.concept,
+      offset: String(offset),
+      limit: String(INCOME_STATEMENT_DETAIL_PAGE_SIZE)
+    });
+    const response = await fetch(`${API_BASE_URL}/api/reports/income-statement/detail?${params.toString()}`, {
+      cache: "no-store"
+    });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "No se pudo cargar el detalle del concepto.");
+    }
+    if (requestId !== incomeStatementDetailRequestId || incomeStatementDetailState !== active) return;
+    const detail = payload.detail;
+    if (
+      detail?.concept !== active.concept
+      || detail?.period?.year !== active.year
+      || detail?.period?.month !== active.month
+    ) {
+      throw new Error("El detalle recibido no corresponde al periodo solicitado.");
+    }
+
+    active.rows = reset ? [...detail.rows] : [...active.rows, ...detail.rows];
+    active.count = detail.count;
+    active.total = detail.total;
+    active.hasMore = detail.hasMore;
+    renderIncomeStatementDetail(active);
+  } catch (error) {
+    if (requestId !== incomeStatementDetailRequestId || incomeStatementDetailState !== active) return;
+    renderIncomeStatementDetailError(error, Boolean(active.rows.length));
+  } finally {
+    if (requestId === incomeStatementDetailRequestId && more) more.disabled = false;
+  }
+}
+
+function renderIncomeStatementDetail(detail) {
+  const summary = document.getElementById("statement-detail-summary");
+  const body = document.getElementById("statement-detail-body");
+  const more = document.getElementById("statement-detail-more");
+  if (!summary || !body || !more) return;
+
+  const complete = !detail.hasMore && detail.rows.length === detail.count;
+  if (complete) {
+    const visibleTotalCents = detail.rows.reduce((sum, row) => sum + moneyToCents(row.amount), 0);
+    if (visibleTotalCents !== moneyToCents(detail.total)) {
+      renderIncomeStatementDetailError(new Error("El detalle no concilia con el total del concepto."), false);
+      return;
+    }
+  }
+
+  const movementLabel = detail.count === 1 ? "1 movimiento" : `${detail.count} movimientos`;
+  const visibleLabel = detail.rows.length < detail.count
+    ? ` · ${detail.rows.length} visibles`
+    : "";
+  summary.textContent = `${movementLabel}${visibleLabel} · Total conciliado: ${formatMoney(detail.total)}`;
+  summary.dataset.status = "success";
+  body.innerHTML = detail.rows.length
+    ? detail.rows.map((row) => `
+      <tr>
+        <td>${formatDate(row.date)}</td>
+        <td>${escapeHtml(row.counterparty ? displayNameLabel(row.counterparty) : "Sin contraparte vinculada")}</td>
+        <td>${escapeHtml(row.reference || "Sin referencia disponible")}</td>
+        <td class="num ${row.amount < 0 ? "negative" : ""}">${formatMoney(row.amount)}</td>
+      </tr>
+    `).join("")
+    : emptyRow(4, "No hay movimientos para este concepto en el periodo.");
+  more.hidden = !detail.hasMore;
+}
+
+function renderIncomeStatementDetailError(error, preserveRows) {
+  const summary = document.getElementById("statement-detail-summary");
+  const body = document.getElementById("statement-detail-body");
+  const more = document.getElementById("statement-detail-more");
+  if (summary) {
+    summary.textContent = error?.message || "No se pudo cargar el detalle.";
+    summary.dataset.status = "error";
+  }
+  if (body && !preserveRows) {
+    body.innerHTML = emptyRow(4, "No se pudo mostrar el detalle. Reintente la apertura.");
+  }
+  if (more) more.hidden = true;
+}
+
+function closeIncomeStatementDetail(options = {}) {
+  const { restoreFocus = true } = options;
+  const activeTrigger = incomeStatementDetailState?.trigger;
+  incomeStatementDetailRequestId += 1;
+  incomeStatementDetailState = null;
+  document.querySelectorAll("[data-statement-concept][aria-expanded='true']").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+  const panel = document.getElementById("statement-detail-panel");
+  if (panel) panel.hidden = true;
+  if (restoreFocus && activeTrigger?.isConnected) activeTrigger.focus();
+}
+
+function closeIncomeStatementDetailForGroup(group) {
+  const activeRow = incomeStatementDetailState?.trigger?.closest("[data-group]");
+  if (activeRow?.dataset.group === group) closeIncomeStatementDetail({ restoreFocus: false });
 }
 
 function setUtilityProducedMetric(report) {
@@ -486,10 +646,25 @@ function statLine(label, value, comparisonValue, format = "number", comparison =
   `;
 }
 
-function childLine(group, label, value, comparisonValue, base = 0, comparison = null) {
+function childLine(group, label, value, comparisonValue, base = 0, comparison = null, conceptKey = "", detailCount = 0) {
+  const conceptLabel = escapeHtml(label);
+  const labelContent = conceptKey && detailCount > 0
+    ? `
+      <button
+        class="statement-concept-button"
+        type="button"
+        data-statement-concept="${escapeHtml(conceptKey)}"
+        aria-controls="statement-detail-panel"
+        aria-expanded="false"
+      >
+        <span>${conceptLabel}</span>
+        <span class="statement-concept-hint" aria-hidden="true">Ver detalle</span>
+      </button>
+    `
+    : conceptLabel;
   return `
     <tr class="detail-row statement-row-${group}" data-group="${group}" hidden>
-      <td>${label}</td>
+      <td>${labelContent}</td>
       ${statementValueCells(value || 0, comparisonValue || 0, base, comparison)}
     </tr>
   `;

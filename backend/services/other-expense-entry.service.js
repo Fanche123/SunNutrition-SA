@@ -11,7 +11,8 @@ function createOtherExpenseEntryService(dependencies) {
     loadCache,
     readJsonBody,
     saveBackendCache,
-    sendJson
+    sendJson,
+    synchronizeEconomicExpenses = (cache) => cache
   } = dependencies;
 
   async function handleOtherExpenseFullEntry(request, response) {
@@ -24,7 +25,7 @@ function createOtherExpenseEntryService(dependencies) {
         return;
       }
 
-      const cache = loadCache();
+      let cache = loadCache();
       const tables = cache.tables || (cache.tables = {});
       ["egresos", "otros_gastos", "acreedores", "acreedores_etiquetas", "etiquetas"]
         .forEach((tableName) => ensureBackendTable(tables, tableName));
@@ -73,6 +74,7 @@ function createOtherExpenseEntryService(dependencies) {
       });
       finalizeTables(tables, ["egresos", "otros_gastos"]);
       cache.generatedAt = new Date().toISOString();
+      cache = synchronizeEconomicExpenses(cache);
       saveBackendCache(cache);
       sendJson(response, 200, { ok: true, otherExpenseId, expenseId });
     } catch (error) {

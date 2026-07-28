@@ -102,6 +102,8 @@ Crear, mover, renombrar o eliminar un archivo permanente de Administración obli
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
 
+Las altas, ediciones y bajas administrativas de `egresos` invocan el materializador econĂłmico compartido antes del guardado, para que `imp_internos` no eluda las reglas append-only de Contabilidad.
+
 ## Trabajo directo
 
 - Recibí pedidos en lenguaje natural y reuní solo el contexto relevante de Administración.

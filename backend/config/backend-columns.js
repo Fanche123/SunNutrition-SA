@@ -48,7 +48,7 @@ const EXPECTED_BACKEND_COLUMNS = {
   sueldos: ["id_sueldo", "fecha", "id_empleado", "id_acreedor_etiqueta", "id_egreso", "valor_remunerativo", "valor_no_remunerativo", "hs_trabajadas", "hs_con_justificacion_medica", "hs_feriado", "hs_extra", "premios", "sueldo_bruto", "sueldo_neto"],
   comisiones: ["id_comision", "fecha", "id_canal", "id_acreedor_etiqueta", "id_egreso", "id_venta", "subtotal", "comision"],
   sueldos_calculo: ["id_sueldo", "fecha", "id_empleado", "valor_remunerativo", "valor_no_remunerativo", "hs_trabajadas", "hs_con_justificacion_medica", "hs_feriado", "hs_extra", "premios", "sueldo_bruto", "sueldo_neto"],
-  gastos_economicos: ["id_gasto_economico", "periodo_economico", "id_etiqueta", "concepto", "tipo_economico", "tipo_movimiento", "importe", "estado", "origen_tipo", "origen_id", "origen_subclave", "id_gasto_precedente", "motivo", "clave_idempotencia", "hash_payload", "creado_en", "actualizado_en", "confirmado_en"],
+  gastos_economicos: ["id_gasto_economico", "fecha_economica", "id_etiqueta", "concepto", "tipo_economico", "tipo_movimiento", "importe", "estado", "origen_tipo", "origen_id", "origen_subclave", "id_gasto_precedente", "motivo", "clave_idempotencia", "hash_payload", "creado_en", "actualizado_en", "confirmado_en"],
   gastos_egresos: ["id_gasto_egreso", "id_gasto_economico", "id_egreso", "importe_aplicado", "componente_egreso", "componente_otro", "tipo_aplicacion", "estado", "id_aplicacion_precedente", "motivo", "clave_idempotencia", "hash_payload", "creado_en"],
   inventarios: ["id_inventario", "fecha", "turno", "id_empleado", "valor_total"],
   detalle_inventarios: ["id_detalle_inventario", "id_inventario", "id_item", "cantidad", "costo_unitario_usado", "valor_total"]

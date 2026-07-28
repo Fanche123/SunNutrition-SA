@@ -14,17 +14,20 @@ Leé también `.agents/_base-development.md`. Este inventario es un mapa: para c
 - Depósito manual o conciliado de cheques recibidos y actualización de estados de cheques.
 - Lectura de caja para flujo financiero; planes ARCA y aportes/retiros de socios existentes.
 - Libro mayor del fondo de inversión, depósitos, rescates, rendimientos y asociaciones bancarias explícitas.
+- Control read-only de cajas con saldo calculado, último saldo bancario y pendientes en ambos sentidos.
 
 Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fuentes de egresos; RRHH conserva liquidaciones; Reportes conserva las agregaciones de cashflow. Coordinar cuando cambie uno de esos contratos. Fuera de alcance: fórmulas operativas ajenas, esquema/migraciones, SQL, UI global y reglas contables no confirmadas.
 
 ## Patrones de propiedad
 
 - `assets/js/modules/bank-reconciliation-*.js`
+- `assets/js/modules/cash-boxes.js`
 - `assets/js/modules/*check*.js`
 - `assets/js/modules/payment-*.js`
 - `assets/js/modules/collections-retentions.js`
 - `assets/js/modules/partner-contributions-*.js`
 - `backend/services/bank-*.service.js`
+- `backend/services/cash-boxes.service.js`
 - `backend/services/payment-plans.service.js`
 - `backend/services/partner-contributions.service.js`
 - `backend/services/investment-fund.service.js`
@@ -33,8 +36,8 @@ Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fu
 
 ## Inventario actual de archivos
 
-- Frontend propio: `bank-reconciliation-checks.js`, `bank-reconciliation-core.js`, `bank-reconciliation-drafts.js`, `bank-reconciliation-render.js`, `investment-fund.js`, `collections-retentions.js`, `issued-check-entry.js`, `issued-check-pending.js`, `received-check-entry.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js`, todos en `assets/js/modules/`.
-- Backend propio: `backend/bank-rules.js`; `backend/services/bank-matching.service.js`, `bank-parser.service.js`, `bank-persistence.service.js`, `bank-reconciliation.service.js`, `bank-reference.service.js`, `investment-fund.service.js`, `collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js`; `backend/utils/bank.js` y `backend/utils/received-check-endorsement.js`. Pruebas específicas: `tests/payment-plans.test.js`, `tests/investment-fund.test.js` y `tests/received-check-endorsement-schema.test.js`; contratos: `docs/payment-plans.md`, `docs/investment-fund.md` y `docs/received-check-endorsement.md`.
+- Frontend propio: `bank-reconciliation-checks.js`, `bank-reconciliation-core.js`, `bank-reconciliation-drafts.js`, `bank-reconciliation-render.js`, `cash-boxes.js`, `investment-fund.js`, `collections-retentions.js`, `issued-check-entry.js`, `issued-check-pending.js`, `received-check-entry.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js`, todos en `assets/js/modules/`.
+- Backend propio: `backend/bank-rules.js`; `backend/services/bank-matching.service.js`, `bank-parser.service.js`, `bank-persistence.service.js`, `bank-reconciliation.service.js`, `bank-reference.service.js`, `cash-boxes.service.js`, `investment-fund.service.js`, `collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js`; `backend/utils/bank.js` y `backend/utils/received-check-endorsement.js`. Pruebas específicas: `tests/cash-boxes.test.js`, `tests/payment-plans.test.js`, `tests/investment-fund.test.js` y `tests/received-check-endorsement-schema.test.js`; contratos: `docs/payment-plans.md`, `docs/investment-fund.md` y `docs/received-check-endorsement.md`.
 - Consumidores/dependencias directas: `backend/services/cashflow.service.js`, `backend/services/expense-classification.service.js`; `assets/js/modules/dashboard.js`, `reports-cashflow.js`, `sales-orders.js`, `operational-shared.js`.
 - Compartidos sensibles: `assets/js/core/api.js`, `assets/js/app.js`, `index.html`, `server.js`, `backend/routes/router.js`, `backend/services/backend-table.service.js`, `backend/services/creditor-entry.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`.
 
@@ -53,6 +56,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 - `GET /api/backend/tables/:tabla?all=true` y `POST /api/backend/tables/:tabla`: lectura y upsert genérico (`rows`; opcional `deletedIds`).
 - `GET /api/bank-reconciliation/state?bank=...` → filas de `movimientos_bancarios` sin `id_pago`, `id_cobro` ni `id_movimiento_fondo`, reanalizadas, y última fecha bancaria del banco seleccionado.
 - `GET /api/bank-reconciliation/summary` → última fecha global, días calendario en Buenos Aires y detalle por banco para Dashboard.
+- `GET /api/treasury/cash-boxes?box=icbc` → regla read-only focalizada para `Saldo del ICBC`: usa `cobros.monto` y `pagos.monto` desde `2026-06-09` inclusive, último `movimientos_bancarios.saldo`, pendientes ERP → Banco y resumen Banco → ERP.
 - `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → valida todo el archivo, inserta atómicamente solo ocurrencias nuevas en `movimientos_bancarios` y devuelve `{ ok, report }` con todos los pendientes canónicos.
 - `POST /api/bank-reconciliation/apply`: `{ bank, applyMode, movementKeys, reviewRows }` → contadores/notas en `result`; una conciliación exitosa completa `id_pago` o `id_cobro` en la misma fila bancaria.
 - `POST /api/bank-reconciliation/deposit-checks`: banco, fecha, movimiento opcional, `manualDeposit` y `checkIds` → cantidad/monto depositado.
@@ -72,6 +76,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 - Escritura e idempotencia: `bank-persistence.service.js`, `bank-reconciliation.service.js`, `collection-entry.service.js`, `payment-entry.service.js` y `partner-contributions.service.js`. Las operaciones compuestas trabajan sobre una copia del cache y realizan un único reemplazo atómico.
 - La idempotencia durable usa metadatos internos `_operationId`/`_operationPayload` o `_bankOperationKey`/`_bankOperationPayload` en la fila financiera propietaria. No usa memoria ni `app-state`, no altera columnas registradas y su ciclo de vida es el de la propia operación: al eliminar legítimamente la fila propietaria también desaparece su marcador. No existe un registro separado de crecimiento ilimitado.
 - `movimientos_bancarios` es la única fuente persistente para importados, pendientes e historial conciliado. Pendiente significa `id_pago`, `id_cobro` e `id_movimiento_fondo` vacíos; conciliado significa exactamente una asociación válida. La huella usa banco, fecha, concepto/detalle, CUIT, cheque, débito, crédito, importe y saldo, y la deduplicación compara multiplicidades. `_bankMovementKey` conserva la ocurrencia técnica sin cambiar la identidad económica. El metadato histórico `bankReconciliation.pendingMovements`, si existe, queda ignorado y no se borra automáticamente.
+- `cash-boxes.service.js` concentra la única regla del control ICBC: saldo inicial auditable de `3.801.130,05`, cobros menos pagos por encabezado en centavos, diferencia `saldo bancario - saldo ERP`, orden del último movimiento por fecha/importación/orden persistido y asociaciones sólo mediante los IDs reales de `movimientos_bancarios`. Todos los métodos entran en la fórmula inicial y los que no identifican impacto ICBC se clasifican como advertencia, sin filtros inventados.
 - El fondo calcula en centavos `depósitos + rendimientos - rescates`. Un rendimiento conserva importe positivo en Tesorería y crea en el mismo snapshot un gasto económico confirmado negativo; depósitos y rescates vinculados no completan `id_pago` ni `id_cobro`.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
 - Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
@@ -105,7 +110,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 
 Pagos, cobros, cheques y planes dependen del contrato único `shared/money.js` / `docs/money-contract.md`. Toda asignación, saldo y conciliación compara centavos enteros; los IDs, fechas y tasas conservan contratos propios.
 
-- Contabilidad posee el reconocimiento y la conciliación económica. Tesorería puede consultar esa conciliación, pero no decide períodos o etiquetas; pagos y planes no generan gastos automáticamente en la primera etapa.
+- Contabilidad posee el reconocimiento y la conciliación económica. Las altas/ediciones de cuotas materializan su interés financiero con la etiqueta maestra `Intereses`; guardar un pago vuelve a sincronizar el resarcitorio en el mismo snapshot. La instancia se determina por la fecha del pago que completa `capital + interes_financiero`: hasta el primer vencimiento no agrega resarcitorio; después del primero y hasta el segundo sí. Pagos incompletos o fuera de esas ventanas no presumen instancia. Capital, aportes, depósitos y rescates no generan gastos económicos.
 
 - No tocar `.env`, adjuntos ni `tmp/backend-data-cache.json`; no enviar POST financieros a una instancia con datos reales. `node server.js` puede escribir al arrancar: siembra planes/aportes y ajusta esquema bancario.
 - `analyze` normaliza y propone referencias sobre una copia de tablas y persiste atómicamente las filas bancarias nuevas con asociaciones vacías; no crea pagos, cobros ni egresos. Conciliar actualiza esa misma fila después de validar la asociación.

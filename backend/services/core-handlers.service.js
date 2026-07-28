@@ -1,5 +1,5 @@
 function createCoreHandlers(dependencies) {
-  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementReport, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
+  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementDetail, buildBackendIncomeStatementReport, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
 
 function handleIncomeStatementReport(request, response) {
   try {
@@ -22,6 +22,31 @@ function handleIncomeStatementReport(request, response) {
     sendJson(response, 200, { ok: true, report, comparisonReport });
   } catch (error) {
     sendJson(response, 500, { ok: false, error: error.message });
+  }
+}
+
+function handleIncomeStatementDetail(request, response) {
+  try {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const year = Number(url.searchParams.get("year"));
+    const month = Number(url.searchParams.get("month"));
+    const concept = String(url.searchParams.get("concept") || "");
+    const offset = url.searchParams.get("offset");
+    const limit = url.searchParams.get("limit");
+
+    if (!Number.isInteger(year) || !Number.isInteger(month) || month < 0 || month > 11) {
+      sendJson(response, 400, { ok: false, error: "Periodo invalido." });
+      return;
+    }
+
+    const detail = buildBackendIncomeStatementDetail(year, month, concept, { offset, limit });
+    sendJson(response, 200, { ok: true, detail });
+  } catch (error) {
+    sendJson(response, error.status || 500, {
+      ok: false,
+      code: error.code || "INCOME_STATEMENT_DETAIL_ERROR",
+      error: error.message
+    });
   }
 }
 
@@ -71,7 +96,7 @@ async function handleAppStateSave(request, response) {
   sendJson(response, 200, { ok: true });
 }
 
-  return { handleAppStateGet, handleAppStateSave, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementReport };
+  return { handleAppStateGet, handleAppStateSave, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementDetail, handleIncomeStatementReport };
 }
 
 module.exports = { createCoreHandlers };

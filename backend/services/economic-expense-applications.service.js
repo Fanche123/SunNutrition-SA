@@ -139,6 +139,12 @@ function createEconomicExpenseApplicationsService(dependencies) {
     if (row.componente_egreso === "otro" && !row.componente_otro) throw validation("El otro componente debe describirse.");
     if (toCents(row.importe_aplicado) === 0) throw validation("El importe aplicado debe ser distinto de cero.");
     if (!row.clave_idempotencia || !row.hash_payload) throw validation("La identidad idempotente es obligatoria.");
+    if (row.tipo_aplicacion === "original" && (row.id_aplicacion_precedente || row.motivo)) {
+      throw validation("Precedente y motivo corresponden solo a sustituciones o reversiones.");
+    }
+    if (row.tipo_aplicacion !== "original" && (!row.id_aplicacion_precedente || !row.motivo)) {
+      throw validation("Las sustituciones y reversiones requieren precedente y motivo.");
+    }
   }
 
   function validateCapacity(input, cache, ignoredApplicationId = "") {

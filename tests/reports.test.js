@@ -6,6 +6,7 @@ const vm = require("node:vm");
 const money = require("../shared/money");
 
 const { createCashflowService } = require("../backend/services/cashflow.service");
+const { createCoreHandlers } = require("../backend/services/core-handlers.service");
 const { createExpenseClassificationService } = require("../backend/services/expense-classification.service");
 const { createIncomeCalculationService } = require("../backend/services/income-calculation.service");
 const { createIncomeStatementService } = require("../backend/services/income-statement.service");
@@ -66,7 +67,9 @@ function emptyReportTables() {
     "ventas", "clientes", "canales", "productos", "items", "pedidos", "detalle_pedidos",
     "inventarios", "detalle_inventarios", "sueldos", "etiquetas", "acreedores_etiquetas",
     "egresos", "recepciones", "compras", "entregas", "otros_gastos", "comisiones",
-    "proveedores", "fletes", "empleados", "acreedores"
+    "proveedores", "fletes", "empleados", "acreedores", "gastos_economicos",
+    "cuotas_planes_pagos", "planes_pagos", "fondos_inversion_movimientos",
+    "movimientos_bancarios", "otros_acreedores"
   ].map((name) => [name, table()]));
 }
 
@@ -86,15 +89,22 @@ test("Estado de Resultados distingue mes vacío y usa inventarios valorizados pe
     { id_inventario: 1, id_item: 1, cantidad: 1, costo_unitario_usado: 100 },
     { id_inventario: 2, id_item: 1, cantidad: 1, costo_unitario_usado: 40 }
   );
-  const report = reportHarness(tables)(2026, 6);
+  const buildReport = reportHarness(tables);
+  const report = buildReport(2026, 6);
   assert.equal(report.initialInventory.value, 100);
   assert.equal(report.finalInventory.value, 40);
   assert.equal(report.costOfSales.merchandise, 60);
+  const merchandise = buildReport.buildDetail(2026, 6, "cost.merchandise");
+  assert.equal(merchandise.count, 2);
+  assert.equal(merchandise.total, report.costOfSales.merchandise);
+  assert.equal(merchandise.rows.some((row) => /Inventario inicial/.test(row.reference)), true);
+  assert.equal(merchandise.rows.some((row) => /Inventario final/.test(row.reference) && row.amount === -40), true);
 });
 
-test("Estado de Resultados agrega ventas, compras, sueldos, comisiones y no categorizados", () => {
+test("Estado de Resultados usa gastos economicos confirmados y deriva el mes de la fecha", () => {
   const tables = emptyReportTables();
-  tables.ventas.rows.push({ id_venta: 1, fecha_factura: "2026-07-10", subtotal: 1000, id_cliente: 1, id_pedido: 1, tipo_factura: "Factura_A" });
+  tables.ventas.rows.push({ id_venta: 1, id_entrega: 1, fecha_factura: "2026-07-10", subtotal: 1000, id_cliente: 1, id_pedido: 1, tipo_factura: "Factura_A" });
+  tables.entregas.rows.push({ id_entrega: "1", fecha: "2026-07-10" });
   tables.clientes.rows.push({ id_cliente: 1, nombre_cliente: "Cliente", id_canal: 1 });
   tables.canales.rows.push({ id_canal: 1, comision: 5 });
   tables.pedidos.rows.push({ id_pedido: 1, id_cliente: 1, fecha_entrega: "2026-07-10" });
@@ -102,7 +112,10 @@ test("Estado de Resultados agrega ventas, compras, sueldos, comisiones y no cate
   tables.detalle_pedidos.rows.push({ id_pedido: 1, id_producto: 1, cantidad_cajas: 2 });
   tables.etiquetas.rows.push(
     { id_etiqueta: 1, etiqueta: "Mercaderia" },
-    { id_etiqueta: 2, etiqueta: "Categoria nueva" }
+    { id_etiqueta: 2, etiqueta: "Categoria nueva" },
+    { id_etiqueta: 3, etiqueta: "Sueldos" },
+    { id_etiqueta: 4, etiqueta: "Comisiones" },
+    { id_etiqueta: 5, etiqueta: "Ingresos Brutos" }
   );
   tables.egresos.rows.push({ id_egreso: 1, subtotal: 200 }, { id_egreso: 2, subtotal: 30 });
   tables.recepciones.rows.push(
@@ -110,14 +123,438 @@ test("Estado de Resultados agrega ventas, compras, sueldos, comisiones y no cate
     { id_recepcion: 2, id_egreso: 2, fecha_recepcion: "2026-07-13", _etiqueta_gasto: "Categoria nueva" }
   );
   tables.sueldos.rows.push({ id_sueldo: 1, fecha: "2026-07-20", id_empleado: 1, sueldo_bruto: 300, hs_trabajadas: 8, hs_extra: 2 });
+  tables.gastos_economicos.rows.push(
+    { id_gasto_economico: 1, fecha_economica: "2026-07-12", id_etiqueta: 1, importe: 200, estado: "confirmado" },
+    { id_gasto_economico: 2, fecha_economica: "2026-07-13", id_etiqueta: 2, importe: 30, estado: "confirmado" },
+    { id_gasto_economico: 3, fecha_economica: "2026-07-20", id_etiqueta: 3, importe: 300, estado: "confirmado" },
+    { id_gasto_economico: 4, fecha_economica: "2026-07-15", id_etiqueta: 4, importe: 40, estado: "confirmado" },
+    { id_gasto_economico: 5, fecha_economica: "2026-07-18", id_etiqueta: 1, importe: 999, estado: "borrador" },
+    { id_gasto_economico: 6, fecha_economica: "2026-08-01", id_etiqueta: 1, importe: 999, estado: "confirmado" },
+    { id_gasto_economico: 7, fecha_economica: "2026-07-16", id_etiqueta: 5, importe: 17, estado: "confirmado" }
+  );
   const report = reportHarness(tables)(2026, 6);
   assert.equal(report.salesNet, 1000);
   assert.equal(report.unitsSold, 20);
   assert.equal(report.costOfSales.merchandisePurchases, 200);
-  assert.equal(report.costOfSales.commissions, 50);
+  assert.equal(report.costOfSales.commissions, 40);
+  assert.equal(report.costOfSales.grossRevenueTax, 17);
   assert.equal(report.operatingExpenses.salaries, 300);
   assert.equal(report.payroll.totalHours, 10);
   assert.equal(report.uncategorized.length, 1);
+});
+
+test("Estado de Resultados imputa ventas solo por fecha de entrega sin duplicarlas", () => {
+  const tables = emptyReportTables();
+  tables.ventas.rows.push(
+    { id_venta: 1, id_entrega: "10", fecha_factura: "2026-03-28", subtotal: 100, total: 121, id_cliente: 1, id_pedido: 1 },
+    { id_venta: 2, id_entrega: 20, fecha_factura: "2026-04-10", subtotal: 200, total: 242, id_cliente: 2, id_pedido: 2 },
+    { id_venta: 3, id_entrega: 30, fecha_factura: "2026-04-12", subtotal: 300, total: 363, id_cliente: 3, id_pedido: 3 },
+    { id_venta: 3, id_entrega: 30, fecha_factura: "2026-04-12", subtotal: 999, total: 999, id_cliente: 3, id_pedido: 3 },
+    { id_venta: 4, fecha_factura: "2026-04-13", subtotal: 400, total: 484, id_cliente: 4, id_pedido: 4 },
+    { id_venta: 5, id_entrega: 999, fecha_factura: "2026-04-14", subtotal: 500, total: 605, id_cliente: 5, id_pedido: 5 },
+    { id_venta: 6, id_entrega: 40, fecha_factura: "2026-04-15", subtotal: 600, total: 726, id_cliente: 6, id_pedido: 6 },
+    { id_venta: 7, id_entrega: "50", fecha_factura: "2026-04-16", subtotal: 7.25, total: 999, id_cliente: 7, id_pedido: 7 },
+    { id_venta: 8, id_entrega: 50, fecha_factura: "2026-04-17", subtotal: 8.75, total: 999, id_cliente: 8, id_pedido: 8 }
+  );
+  tables.entregas.rows.push(
+    { id_entrega: 10, fecha: "2026-04-02" },
+    { id_entrega: "20", fecha: "2026-05-03" },
+    { id_entrega: "30", fecha: "2026-04-12" },
+    { id_entrega: "40", fecha: "2026-04-31" },
+    { id_entrega: 50, fecha: "2026-04-20" }
+  );
+  for (let value = 1; value <= 8; value += 1) {
+    tables.clientes.rows.push({ id_cliente: value, nombre_cliente: `Cliente ${value}` });
+    tables.pedidos.rows.push({ id_pedido: value, id_cliente: value });
+    tables.productos.rows.push({ id_producto: value, cantidad_individual: 1 });
+    tables.detalle_pedidos.rows.push({ id_pedido: value, id_producto: value, cantidad_cajas: 1 });
+  }
+
+  const march = reportHarness(tables)(2026, 2);
+  const april = reportHarness(tables)(2026, 3);
+  const may = reportHarness(tables)(2026, 4);
+
+  assert.equal(march.salesNet, 0);
+  assert.equal(april.salesNet, 416);
+  assert.equal(may.salesNet, 200);
+  assert.equal(april.unitsSold, 4);
+  assert.equal(april.customerCount, 4);
+  assert.deepEqual(
+    april.salesDateIssues,
+    [
+      { id_venta: "4", id_entrega: "", reason: "missing_delivery_id" },
+      { id_venta: "5", id_entrega: "999", reason: "delivery_not_found" },
+      { id_venta: "6", id_entrega: "40", reason: "invalid_delivery_date" }
+    ]
+  );
+});
+
+test("Estado de Resultados no reconstruye IIBB desde ventas en ningun periodo", () => {
+  const tables = emptyReportTables();
+  tables.ventas.rows.push({
+    id_venta: 1,
+    fecha_factura: "2026-07-10",
+    subtotal: 1000,
+    tipo_factura: "Factura_A"
+  });
+  const report = reportHarness(tables)(2026, 6);
+  assert.equal(report.costOfSales.grossRevenueTax, 0);
+});
+
+test("Estado de Resultados no reconstruye gastos de productores en ningun periodo", () => {
+  const tables = emptyReportTables();
+  tables.egresos.rows.push(
+    { id_egreso: 1, subtotal: 200 },
+    { id_egreso: 2, subtotal: 30 },
+    { id_egreso: 3, subtotal: 40 },
+    { id_egreso: 4, subtotal: 50 }
+  );
+  tables.recepciones.rows.push({
+    id_recepcion: 1,
+    id_egreso: 1,
+    fecha_recepcion: "2026-03-12",
+    _etiqueta_gasto: "Mercaderia"
+  });
+  tables.sueldos.rows.push({
+    id_sueldo: 1,
+    fecha: "2026-03-20",
+    sueldo_bruto: 300,
+    hs_trabajadas: 8
+  });
+  tables.otros_gastos.rows.push({
+    id_otros_gastos: 1,
+    fecha_otros_gastos: "2026-03-14",
+    id_egreso: 2,
+    id_acreedor_etiqueta: 3
+  });
+  tables.entregas.rows.push({
+    id_entrega: 1,
+    fecha: "2026-03-15",
+    id_egreso: 3,
+    id_acreedor_etiqueta: 4
+  });
+  tables.comisiones.rows.push({
+    id_comision: 1,
+    fecha: "2026-03-16",
+    id_egreso: 4,
+    id_acreedor_etiqueta: 5,
+    comision: 50
+  });
+  tables.cuotas_planes_pagos.rows.push({
+    id_cuota_plan_pago: 1,
+    fecha_primer_vencimiento: "2026-03-16",
+    interes_financiero: 60,
+    id_egreso: 4
+  });
+  tables.etiquetas.rows.push(
+    { id_etiqueta: 3, etiqueta: "Servicios" },
+    { id_etiqueta: 4, etiqueta: "Logistica" },
+    { id_etiqueta: 5, etiqueta: "Comisiones" }
+  );
+  tables.acreedores_etiquetas.rows.push(
+    { id_acreedor_etiqueta: 3, id_etiqueta: 3 },
+    { id_acreedor_etiqueta: 4, id_etiqueta: 4 },
+    { id_acreedor_etiqueta: 5, id_etiqueta: 5 }
+  );
+  const withoutEconomicExpenses = reportHarness(tables)(2026, 2);
+  assert.equal(withoutEconomicExpenses.costOfSales.merchandisePurchases, 0);
+  assert.equal(withoutEconomicExpenses.costOfSales.commissions, 0);
+  assert.equal(withoutEconomicExpenses.costOfSales.logistics, 0);
+  assert.equal(withoutEconomicExpenses.operatingExpenses.salaries, 0);
+  assert.equal(withoutEconomicExpenses.operatingExpenses.services, 0);
+  assert.equal(withoutEconomicExpenses.uncategorized.length, 0);
+  assert.equal(withoutEconomicExpenses.payroll.totalHours, 8);
+
+  tables.etiquetas.rows.push(
+    { id_etiqueta: 1, etiqueta: "Mercaderia" },
+    { id_etiqueta: 2, etiqueta: "Sueldos" },
+    { id_etiqueta: 7, etiqueta: "Impuestos Internos" }
+  );
+  tables.gastos_economicos.rows.push(
+    { id_gasto_economico: 1, fecha_economica: "2026-03-12", id_etiqueta: 1, importe: 125, estado: "confirmado" },
+    { id_gasto_economico: 2, fecha_economica: "2026-03-20", id_etiqueta: 2, importe: 250, estado: "confirmado" },
+    { id_gasto_economico: 3, fecha_economica: "2026-03-31", id_etiqueta: 7, importe: 12.34, estado: "confirmado" }
+  );
+  const withEconomicExpenses = reportHarness(tables)(2026, 2);
+  assert.equal(withEconomicExpenses.costOfSales.merchandisePurchases, 125);
+  assert.equal(withEconomicExpenses.operatingExpenses.salaries, 250);
+  assert.equal(withEconomicExpenses.totalCostOfSales, 125);
+  assert.equal(withEconomicExpenses.totalOperatingExpenses, 250);
+  assert.equal(withEconomicExpenses.nonOperatingExpenses.otherTaxes, 12.34);
+});
+
+test("Detalle del Estado de Resultados concilia movimientos, contrapartes, reversiones y ventas por entrega", () => {
+  const tables = emptyReportTables();
+  tables.etiquetas.rows.push(
+    { id_etiqueta: 1, etiqueta: "Sueldos" },
+    { id_etiqueta: 2, etiqueta: "Servicios" },
+    { id_etiqueta: 3, etiqueta: "Intereses" },
+    { id_etiqueta: 4, etiqueta: "Comisiones" },
+    { id_etiqueta: 5, etiqueta: "Logistica" },
+    { id_etiqueta: 6, etiqueta: "Gastos Bancarios" }
+  );
+  tables.empleados.rows.push({ id_empleado: 1, nombre_empleado: "Empleada Ana", dni: "30111222" });
+  tables.sueldos.rows.push({ id_sueldo: 100, id_empleado: 1, fecha: "2026-04-30", sueldo_neto: 1000 });
+  tables.proveedores.rows.push({ id_proveedor: 300, nombre: "Proveedor Norte", cuit: "30-11111111-1" });
+  tables.acreedores.rows.push({
+    id_acreedor: 1,
+    origen_tipo_acreedor: "proveedor",
+    origen_id_acreedor: 300
+  });
+  tables.otros_gastos.rows.push({
+    id_otros_gastos: 200,
+    id_acreedor: 1,
+    detalle: "Internet abril",
+    fecha_otros_gastos: "2026-04-10"
+  });
+  tables.planes_pagos.rows.push({ id_plan_pago: 1, nombre: "Plan 2026", organismo: "AFIP" });
+  tables.cuotas_planes_pagos.rows.push({
+    id_cuota_plan_pago: 400,
+    id_plan_pago: 1,
+    nro_cuota: 2,
+    interes_financiero: 60,
+    interes_resarcitorio: 5
+  });
+  tables.clientes.rows.push({
+    id_cliente: 20,
+    nombre_cliente: "Cliente Entregado",
+    id_canal: 10,
+    tipo: "Comercio"
+  });
+  tables.canales.rows.push({ id_canal: 10, nombre: "Canal Online" });
+  tables.ventas.rows.push({
+    id_venta: 500,
+    id_entrega: 500,
+    id_cliente: 20,
+    fecha_factura: "2026-03-28",
+    tipo_factura: "Factura_A",
+    nro_factura: "A-500",
+    subtotal: 200
+  });
+  tables.fletes.rows.push({ id_flete: 9, nombre_flete: "Flete Sur" });
+  tables.entregas.rows.push(
+    { id_entrega: 500, fecha: "2026-04-05" },
+    { id_entrega: 501, fecha: "2026-04-06", id_flete: 9 }
+  );
+  tables.gastos_economicos.rows.push(
+    {
+      id_gasto_economico: 1,
+      fecha_economica: "2026-04-30",
+      id_etiqueta: 1,
+      concepto: "Sueldo neto abril",
+      tipo_movimiento: "original",
+      importe: 1000,
+      estado: "confirmado",
+      origen_tipo: "sueldo",
+      origen_id: 100
+    },
+    {
+      id_gasto_economico: 2,
+      fecha_economica: "2026-04-10",
+      id_etiqueta: 2,
+      concepto: "Servicio de internet",
+      tipo_movimiento: "original",
+      importe: 100,
+      estado: "confirmado",
+      origen_tipo: "otro_gasto",
+      origen_id: 200
+    },
+    {
+      id_gasto_economico: 3,
+      fecha_economica: "2026-04-11",
+      id_etiqueta: 2,
+      concepto: "Servicio sin vinculo",
+      tipo_movimiento: "original",
+      importe: 50,
+      estado: "confirmado",
+      origen_tipo: "fixture_sin_vinculo",
+      origen_id: 999
+    },
+    {
+      id_gasto_economico: 4,
+      fecha_economica: "2026-04-12",
+      id_etiqueta: 2,
+      concepto: "Reversion servicio",
+      tipo_movimiento: "reversion",
+      motivo: "Correccion",
+      importe: -25,
+      estado: "confirmado",
+      origen_tipo: "fixture_sin_vinculo",
+      origen_id: 999
+    },
+    {
+      id_gasto_economico: 5,
+      fecha_economica: "2026-04-15",
+      id_etiqueta: 3,
+      concepto: "Interes financiero cuota",
+      tipo_movimiento: "original",
+      importe: 60,
+      estado: "confirmado",
+      origen_tipo: "plan_pago",
+      origen_id: 400
+    },
+    {
+      id_gasto_economico: 6,
+      fecha_economica: "2026-04-20",
+      id_etiqueta: 3,
+      concepto: "Interes resarcitorio cuota",
+      tipo_movimiento: "ajuste",
+      importe: 5,
+      estado: "confirmado",
+      origen_tipo: "plan_pago",
+      origen_id: 400
+    },
+    {
+      id_gasto_economico: 7,
+      fecha_economica: "2026-04-05",
+      id_etiqueta: 4,
+      concepto: "Comision venta",
+      tipo_movimiento: "original",
+      importe: 20,
+      estado: "confirmado",
+      origen_tipo: "comision_venta",
+      origen_id: 500
+    },
+    {
+      id_gasto_economico: 8,
+      fecha_economica: "2026-04-06",
+      id_etiqueta: 5,
+      concepto: "Logistica entrega",
+      tipo_movimiento: "original",
+      importe: 30,
+      estado: "confirmado",
+      origen_tipo: "logistica",
+      origen_id: 501
+    },
+    {
+      id_gasto_economico: 9,
+      fecha_economica: "2026-04-08",
+      id_etiqueta: 6,
+      concepto: "Comision bancaria",
+      tipo_movimiento: "original",
+      importe: 15,
+      estado: "confirmado",
+      origen_tipo: "movimiento_bancario",
+      origen_id: 1
+    },
+    {
+      id_gasto_economico: 10,
+      fecha_economica: "2026-04-09",
+      id_etiqueta: 6,
+      concepto: "Reversion comision bancaria",
+      tipo_movimiento: "reversion",
+      importe: -15,
+      estado: "confirmado",
+      origen_tipo: "movimiento_bancario",
+      origen_id: 2
+    }
+  );
+
+  const buildReport = reportHarness(tables);
+  const report = buildReport(2026, 3);
+  const detail = (key, pagination) => buildReport.buildDetail(2026, 3, key, pagination);
+
+  const salaries = detail("operating.salaries");
+  assert.equal(salaries.count, 1);
+  assert.equal(salaries.rows[0].counterparty, "Empleada Ana");
+  assert.equal(salaries.rows[0].date, "2026-04-30");
+  assert.equal(salaries.rows[0].amount, 1000);
+
+  const services = detail("operating.services");
+  assert.equal(services.count, 3);
+  assert.equal(services.rows[0].counterparty, "Proveedor Norte");
+  assert.equal(services.rows.some((row) => !row.counterparty), true);
+  assert.equal(services.rows.find((row) => row.amount < 0).amount, -25);
+
+  const interests = detail("nonOperating.interest");
+  assert.equal(interests.count, 2);
+  assert.equal(interests.rows.every((row) => row.counterparty === "AFIP"), true);
+  assert.equal(interests.total, report.nonOperatingExpenses.interest);
+
+  const commissions = detail("cost.commissions");
+  const logistics = detail("cost.logistics");
+  assert.equal(commissions.rows[0].counterparty, "Canal Online");
+  assert.equal(logistics.rows[0].counterparty, "Flete Sur");
+
+  const bankFees = detail("nonOperating.bankFees");
+  assert.equal(bankFees.count, 2);
+  assert.equal(bankFees.total, 0);
+  assert.equal(report.detailCounts["nonOperating.bankFees"], 2);
+
+  const sales = detail("sales.other");
+  assert.equal(sales.count, 1);
+  assert.equal(sales.rows[0].counterparty, "Cliente Entregado");
+  assert.equal(sales.rows[0].date, "2026-04-05");
+  assert.equal(sales.rows[0].amount, 200);
+  assert.match(sales.rows[0].reference, /A-500/);
+
+  [
+    ["operating.salaries", report.operatingExpenses.salaries],
+    ["operating.services", report.operatingExpenses.services],
+    ["nonOperating.interest", report.nonOperatingExpenses.interest],
+    ["cost.commissions", report.costOfSales.commissions],
+    ["cost.logistics", report.costOfSales.logistics],
+    ["nonOperating.bankFees", report.nonOperatingExpenses.bankFees],
+    ["sales.other", report.salesBuckets.other]
+  ].forEach(([key, expectedTotal]) => {
+    const result = detail(key);
+    assert.equal(
+      result.rows.reduce((sum, row) => sum + money.toCents(row.amount), 0),
+      money.toCents(expectedTotal),
+      key
+    );
+    assert.equal(result.reconciled, true);
+  });
+
+  const firstServicePage = detail("operating.services", { offset: 0, limit: 1 });
+  assert.equal(firstServicePage.rows.length, 1);
+  assert.equal(firstServicePage.count, 3);
+  assert.equal(firstServicePage.total, report.operatingExpenses.services);
+  assert.equal(firstServicePage.hasMore, true);
+});
+
+test("API de detalle rechaza conceptos no permitidos sin exponer filas", () => {
+  const buildReport = reportHarness(emptyReportTables());
+  const handlers = createCoreHandlers({
+    buildBackendIncomeStatementDetail: buildReport.buildDetail,
+    sendJson(response, status, payload) {
+      response.status = status;
+      response.payload = payload;
+    }
+  });
+  const response = {};
+  handlers.handleIncomeStatementDetail({
+    url: "/api/reports/income-statement/detail?year=2026&month=3&concept=Servicios%27%20OR%201%3D1",
+    headers: { host: "127.0.0.1" }
+  }, response);
+
+  assert.equal(response.status, 400);
+  assert.equal(response.payload.code, "INCOME_STATEMENT_CONCEPT_INVALID");
+  assert.equal(response.payload.detail, undefined);
+  assert.equal(response.payload.report, undefined);
+});
+
+test("UI del detalle es lazy, accesible y se cierra al cambiar periodo o comparacion", () => {
+  const reportSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/reports-cashflow.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const htmlSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  const stylesSource = fs.readFileSync(path.join(__dirname, "../assets/css/styles.css"), "utf8");
+
+  assert.match(reportSource, /\/api\/reports\/income-statement\/detail\?/);
+  assert.doesNotMatch(reportSource.slice(0, reportSource.indexOf("async function loadBackendCashflowReport")), /income-statement\/detail/);
+  assert.match(reportSource, /data-statement-concept=/);
+  assert.match(reportSource, /aria-controls="statement-detail-panel"/);
+  assert.match(reportSource, /aria-expanded="false"/);
+  assert.match(reportSource, /Sin contraparte vinculada/);
+  assert.match(reportSource, /displayNameLabel\(row\.counterparty\)/);
+  assert.match(reportSource, /visibleTotalCents !== moneyToCents\(detail\.total\)/);
+  assert.match(htmlSource, /id="statement-detail-panel"[^>]*aria-live="polite"[^>]*tabindex="-1"/);
+  assert.match(htmlSource, /id="statement-detail-close"/);
+  assert.match(appSource, /period-select"[\s\S]*?closeIncomeStatementDetail\(\{ restoreFocus: false \}\)[\s\S]*?render\(\)/);
+  assert.match(appSource, /comparison-select"[\s\S]*?closeIncomeStatementDetail\(\{ restoreFocus: false \}\)[\s\S]*?render\(\)/);
+  assert.match(appSource, /event\.key !== "Escape"/);
+  assert.match(stylesSource, /\.statement-concept-button:focus-visible/);
+  assert.match(stylesSource, /@media \(max-width: 760px\)[\s\S]*?\.statement-detail-header/);
 });
 
 test("cashflow cubre saldos parciales/completos, cheques, signos, centavos y cuatro semanas", () => {

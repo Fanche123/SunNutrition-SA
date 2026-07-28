@@ -30,9 +30,9 @@ El movimiento del fondo conserva el rendimiento positivo. En el mismo guardado a
 - `origen_tipo = fondo_inversion`;
 - `tipo_economico = interes_financiero`;
 - importe negativo;
-- periodo y etiqueta indicados por el usuario.
+- `fecha_economica` igual a la fecha del rendimiento, subclave mensual y etiqueta indicada por el usuario.
 
-El Estado de Resultados consume unicamente estos gastos economicos originados en el fondo y los presenta en `Rendimiento Fondo`/intereses. Al restar un gasto negativo, el rendimiento aumenta el resultado sin convertirse en venta, cobro o ingreso comercial.
+El Estado de Resultados consume el rendimiento junto con los demás gastos económicos confirmados en cualquier período y lo presenta en `Rendimiento Fondo`/intereses. Al restar un gasto negativo, el rendimiento aumenta el resultado sin convertirse en venta, cobro o ingreso comercial.
 
 ## API
 

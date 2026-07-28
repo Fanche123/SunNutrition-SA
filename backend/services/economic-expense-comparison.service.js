@@ -14,8 +14,13 @@ function createEconomicExpenseComparisonService({ backendId, backendNumber, buil
       const tables = cache.tables || {};
       const expenses = tables.gastos_economicos?.rows || [];
       const applications = tables.gastos_egresos?.rows || [];
-      const confirmed = expenses.filter((row) => row.estado === "confirmado" && row.periodo_economico === period);
-      const drafts = expenses.filter((row) => row.estado === "borrador" && (!row.periodo_economico || row.periodo_economico === period));
+      const confirmed = expenses.filter((row) => (
+        row.estado === "confirmado" && String(row.fecha_economica || "").startsWith(`${period}-`)
+      ));
+      const drafts = expenses.filter((row) => (
+        row.estado === "borrador"
+        && (!row.fecha_economica || String(row.fecha_economica).startsWith(`${period}-`))
+      ));
       const activeApplications = applications.filter((row) => row.estado === "vigente" && row.tipo_aplicacion !== "reversion");
       const appliedByExpense = new Map();
       activeApplications.forEach((row) => {
@@ -25,7 +30,7 @@ function createEconomicExpenseComparisonService({ backendId, backendNumber, buil
           (appliedByExpense.get(id) || 0) + Math.abs(toCents(backendNumber(row.importe_aplicado)))
         );
       });
-      const byPeriod = sumBy(confirmed, (row) => row.periodo_economico, backendNumber);
+      const byPeriod = sumBy(confirmed, (row) => String(row.fecha_economica || "").slice(0, 7), backendNumber);
       const byTag = sumBy(confirmed, (row) => backendId(row.id_etiqueta), backendNumber);
       const economicTotalCents = confirmed.reduce(
         (sum, row) => sum + toCents(backendNumber(row.importe)),
@@ -55,6 +60,12 @@ function createEconomicExpenseComparisonService({ backendId, backendNumber, buil
       const potentialDuplicates = [...functionalGroups.entries()]
         .filter(([, rows]) => rows.length > 1)
         .map(([functionalKey, rows]) => ({ functionalKey, rows }));
+      const sourcesNotIntegrated = sourceConfigs()
+        .filter((config) => (
+          (tables[config.table]?.rows || []).some((row) => sourcePeriod(config, row) === period)
+          && !confirmed.some((row) => row.origen_tipo === config.originType)
+        ))
+        .map((config) => config.originType);
       return sendJson(response, 200, {
         ok: true,
         diagnostic: true,
@@ -70,7 +81,7 @@ function createEconomicExpenseComparisonService({ backendId, backendNumber, buil
           potentialDuplicates
         },
         difference: fromCents(economicTotalCents - legacyExpenseTotalCents),
-        sourcesNotIntegrated: ["otros_gastos", "sueldos", "comisiones", "recepciones", "entregas", "planes_pagos"]
+        sourcesNotIntegrated
       });
     } catch (error) {
       return sendJson(response, 500, { ok: false, error: error.message });
@@ -78,6 +89,21 @@ function createEconomicExpenseComparisonService({ backendId, backendNumber, buil
   }
 
   return { handleComparison };
+}
+
+function sourceConfigs() {
+  return [
+    { table: "otros_gastos", originType: "otro_gasto", date: "fecha_otros_gastos" },
+    { table: "sueldos", originType: "sueldo", date: "fecha" },
+    { table: "comisiones", originType: "comision", date: "fecha" },
+    { table: "recepciones", originType: "recepcion", date: "fecha_recepcion" },
+    { table: "entregas", originType: "logistica", date: "fecha" },
+    { table: "cuotas_planes_pagos", originType: "plan_pago", date: "fecha_primer_vencimiento" }
+  ];
+}
+
+function sourcePeriod(config, row) {
+  return String(row?.[config.date] || "").trim().slice(0, 7);
 }
 
 function sumBy(rows, keyFor, backendNumber) {

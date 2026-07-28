@@ -89,6 +89,9 @@ function createRequestHandler(dependencies) {
       if (request.url.startsWith("/api/reports/income-statement/economic-comparison") && request.method === "GET") {
         return handlers.handleEconomicExpenseComparison(request, response);
       }
+      if (request.url.startsWith("/api/reports/income-statement/detail") && request.method === "GET") {
+        return handlers.handleIncomeStatementDetail(request, response);
+      }
       if (request.url.startsWith("/api/reports/income-statement") && request.method === "GET") {
         return await handlers.handleIncomeStatementReport(request, response);
       }
@@ -101,6 +104,9 @@ function createRequestHandler(dependencies) {
       ).pathname;
       if (bankReconciliationPath === "/api/bank-reconciliation/state" && request.method === "GET") {
         return await handlers.handleBankReconciliationState(request, response);
+      }
+      if (bankReconciliationPath === "/api/treasury/cash-boxes" && request.method === "GET") {
+        return await handlers.handleCashBoxesGet(request, response);
       }
       const paymentPlanRoute = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`).pathname
         .match(/^\/api\/treasury\/payment-plans\/[^/]+(?:\/quotas(?:\/[^/]+(?:\/delete)?)?)?$/);

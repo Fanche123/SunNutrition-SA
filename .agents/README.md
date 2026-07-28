@@ -50,9 +50,12 @@ El flujo cotidiano es:
 3. usa `create_thread` asociado al proyecto ERP con el prompt completo;
 4. responde inmediatamente y queda libre;
 5. el hilo visible trabaja, crea subagentes si los necesita y conserva su resultado;
-6. las correcciones se escriben directamente en ese hilo.
+6. las correcciones internas de pruebas o validación permanecen allí mientras la tarea está activa;
+7. después de declarar el objetivo completado y sin trabajo pendiente, cualquier defecto, ajuste o ampliación obtiene `taskId` e hilo visible nuevos, vinculados a la tarea cerrada.
 
 Coordinador no usa `spawn_agent` ni perfiles `jefe_tarea_*` en el flujo normal. Los hilos visibles pueden crear especialistas, `explorador_erp` y `revisor_erp`. No hay dos escritores simultáneos sobre la misma carpeta; la escritura paralela requiere worktrees. Ningún agente hace commit o push sin pedido expreso.
+
+Un hilo cerrado no se reabre. Un turno bloqueado esperando una decisión no está cerrado y puede reanudarse en el mismo hilo. La tarea posterior al cierre debe ser autosuficiente, declarar su `parentTaskId`, volver a evaluar dominio/riesgo/entorno y comprobar que el checkout contiene la implementación de origen. Si esa implementación continúa solo en un worktree no integrado, la integración o disponibilidad del mismo estado es una precondición.
 
 El progreso se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador responde con una fotografía inmediata y read-only basada en evidencia de los hilos visibles; no crea subagentes, watchers, timers ni automations para estimarlo.
 

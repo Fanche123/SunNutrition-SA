@@ -17,7 +17,8 @@ function createAdminTableService(dependencies) {
     readJsonBody,
     recordAllRowsRead,
     saveBackendCache,
-    sendJson
+    sendJson,
+    synchronizeEconomicExpenses = (cache) => cache
   } = dependencies;
 
   function handleAdminTablesOverview(_request, response) {
@@ -141,7 +142,10 @@ function createAdminTableService(dependencies) {
       cache.generatedAt = table.updatedAt;
 
       ensureAdminSessionBackup();
-      saveBackendCache(cache);
+      const cacheToSave = tableName === "egresos"
+        ? synchronizeEconomicExpenses(cache, tableName)
+        : cache;
+      saveBackendCache(cacheToSave);
       appendAdminAudit([{
         table: tableName,
         operation: "update",
@@ -296,7 +300,10 @@ function createAdminTableService(dependencies) {
       table.updatedAt = nextUpdatedAt(table.updatedAt);
       cache.generatedAt = table.updatedAt;
       ensureAdminSessionBackup();
-      saveBackendCache(cache);
+      const cacheToSave = tableName === "egresos"
+        ? synchronizeEconomicExpenses(cache, tableName)
+        : cache;
+      saveBackendCache(cacheToSave);
       appendAdminAudit(operations);
 
       const resultTable = backendTable(tableName, {
@@ -664,7 +671,7 @@ function columnType(column, sampleRows = []) {
 }
 
 function isDateColumn(column) {
-  return /(^fecha(?:_|$)|_fecha$|_en$|periodo_economico$)/i.test(column);
+  return /(^fecha(?:_|$)|_fecha$|_en$)/i.test(column);
 }
 
 function isValidDateValue(value, column) {

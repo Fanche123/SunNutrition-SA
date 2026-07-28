@@ -45,7 +45,7 @@ async function call(handler, url, body = {}) {
 
 function draftPayload(overrides = {}) {
   return {
-    periodo_economico: "2026-03",
+    fecha_economica: "2026-03-15",
     id_etiqueta: "1",
     concepto: "Servicio mensual",
     tipo_economico: "operativo",
@@ -105,8 +105,8 @@ async function main() {
 
   response = await call(expenses.handleDraftCreate, "/api/economic-expenses/drafts", draftPayload({
     clave_idempotencia: "draft-2",
-    origen_subclave: "periodo-2026-04",
-    periodo_economico: "2026-04"
+    origen_subclave: "fecha-2026-04",
+    fecha_economica: "2026-04-15"
   }));
   assert.equal(response.status, 201);
   const secondId = response.payload.expense.id_gasto_economico;
@@ -123,13 +123,13 @@ async function main() {
   assert.equal(response.status, 409);
 
   response = await call(expenses.handleDraftCreate, "/api/economic-expenses/drafts", draftPayload({
-    clave_idempotencia: "missing-period",
-    periodo_economico: "",
-    origen_subclave: "sin-periodo"
+    clave_idempotencia: "missing-date",
+    fecha_economica: "",
+    origen_subclave: "sin-fecha"
   }));
   assert.equal(response.status, 201);
   response = await call(expenses.handleConfirm, `/api/economic-expenses/${response.payload.expense.id_gasto_economico}/confirm`, {
-    clave_idempotencia: "missing-period-confirm"
+    clave_idempotencia: "missing-date-confirm"
   });
   assert.equal(response.status, 400);
 
@@ -174,6 +174,21 @@ async function main() {
     clave_idempotencia: "reverse-expense-1"
   }));
   assert.equal(response.status, 201);
+  response = await call(expenses.handleReversal, `/api/economic-expenses/${expenseId}/reversals`, draftPayload({
+    importe: -100,
+    motivo: "Reversion total",
+    origen_subclave: "reversion-1",
+    clave_idempotencia: "reverse-expense-1"
+  }));
+  assert.equal(response.status, 200);
+  assert.equal(response.payload.idempotent, true);
+  response = await call(expenses.handleReversal, `/api/economic-expenses/${expenseId}/reversals`, draftPayload({
+    importe: -100,
+    motivo: "Segunda reversion",
+    origen_subclave: "reversion-2",
+    clave_idempotencia: "reverse-expense-2"
+  }));
+  assert.equal(response.status, 409);
 
   const applicationPayload = {
     id_gasto_economico: expenseId,

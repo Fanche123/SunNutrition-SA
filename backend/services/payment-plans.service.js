@@ -48,6 +48,7 @@ function createPaymentPlansService({
   readJsonBody,
   saveBackendCache,
   sendJson,
+  synchronizeEconomicExpenses = (cache) => cache,
   currentDateIso,
   currentInstant = () => new Date(),
   failureInjector = () => {}
@@ -344,7 +345,7 @@ function createPaymentPlansService({
       validateRelations(cache);
       cache.generatedAt = new Date().toISOString();
       failureInjector("before-persist");
-      saveBackendCache(cache);
+      saveBackendCache(synchronizeEconomicExpenses(cache, "cuotas_planes_pagos"));
       return sendJson(response, 200, { ok: true, idempotent: false, ...result });
     } catch (error) {
       return failure(response, error, `No se pudo ${action}.`);

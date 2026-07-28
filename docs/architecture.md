@@ -103,7 +103,9 @@ La extraccion del markup a fragmentos requiere primero convertir el arranque en 
 - Proyecciones y aliases: `backend/config/backend-projections.js`.
 - Registro, modulo y clave primaria: `backend/table-registry.json`.
 - Persistencia de la base backend: `backend/data-store.js`.
-- `gastos_economicos` y `gastos_egresos` pertenecen a Contabilidad, no se siembran y son de solo lectura en Administración.
+- `gastos_economicos` y `gastos_egresos` pertenecen a Contabilidad. Reportes consume exclusivamente gastos confirmados por `fecha_economica` en cualquier período y nunca reconstruye gastos desde productores. El guardado genérico de `ventas`, `entregas` y `otros_gastos` ejecuta el materializador idempotente antes del único `saveBackendCache`; ventas produce IIBB y comisión por canal, y Otros gastos aporta su subtotal sin IVA cuando tiene etiqueta canónica. El alta integral de Otros gastos materializa dentro del mismo snapshot. La carga histórica y su backup verificable viven en `backend/migrations/20260727-economic-expenses-history.js`.
+
+`egresos.imp_internos` se materializa por `egresos.fecha_factura`, con clave funcional `id_egreso + impuestos_internos`; Recepciones, guardado genĂ©rico y Editor administrativo usan el hook compartido. Reportes lo agrupa desde `gastos_economicos` bajo `Otros Impuestos`.
 
 ## Ejecucion y validacion
 

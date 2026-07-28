@@ -32,7 +32,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/modules/sales-*.js` | Ventas | Inventario, Tesorería, Reportes | Pedidos y ventas; dominio | Alto | `ventas.md` |
 | `backend/services/sales-*.service.js`, `backend/services/sales-*.service.test.js` | Ventas | Inventario, Reportes, Arquitectura | Alta integral de pedidos y pruebas aisladas de integridad; dominio | Alto | `ventas.md` |
 | `assets/js/modules/collections-retentions.js` | Tesorería | Ventas, Reportes | Cobros/retenciones; dominio | Alto | `tesoreria.md` + `ventas.md` |
-| `assets/js/modules/bank-reconciliation-*.js` | Tesorería | Compras, Ventas | Conciliación; dominio | Alto | `tesoreria.md` |
+| `assets/js/modules/bank-reconciliation-*.js`, `assets/js/modules/cash-boxes.js` | Tesorería | Compras, Ventas, Reportes, UI/UX | Conciliación Banco → ERP y control de cajas ERP → Banco; dominio | Alto | `tesoreria.md` + consumidores |
 | `assets/js/modules/investment-fund.js`, `backend/services/investment-fund.service.js`, `docs/investment-fund.md`, `tests/investment-fund.test.js` | Tesorería | Contabilidad, Reportes, Base de datos, UI/UX | Libro mayor, asociaciones bancarias, rendimiento y UI del fondo de inversión | Alto | `tesoreria.md` + consumidores |
 | `assets/js/modules/*check*.js`, `payment-entry.js`, `payment-plans.js`, `partner-contributions-entry.js` | Tesorería | Compras, Ventas, Reportes (`dashboard.js` consume Planes de pago en solo lectura) | Pagos, cheques, planes y aportes; dominio | Alto | `tesoreria.md` |
 | `assets/js/modules/salary-*.js` | RRHH | Compras, Reportes | Sueldos y egreso salarial; dominio | Alto | `rrhh.md` |
@@ -44,6 +44,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `backend/services/purchase-*.service.js`, `reception-entry.service.js`, `other-expense-entry.service.js`, `creditor-*.service.js`, `attachments.service.js` | Compras | Inventario, Tesorería, Reportes, RRHH | Altas atómicas de compras/recepciones/otros gastos, acreedores y adjuntos; dominio | Alto | `compras.md` (+ RRHH si escala) |
 | `tests/purchase-integrity.test.js` | Compras | Arquitectura | Pruebas aisladas de integridad, compensación y reintentos del dominio | Medio | `compras.md` |
 | `backend/services/bank-*.service.js`, `backend/utils/bank.js`, `backend/bank-rules.js` | Tesorería | Compras, Ventas | Banco y conciliación; dominio | Alto | `tesoreria.md` |
+| `backend/services/cash-boxes.service.js`, `tests/cash-boxes.test.js` | Tesorería | Ventas, Compras, Reportes, Base de datos, Arquitectura, UI/UX | Regla única read-only de saldo y conciliación bidireccional de cajas; dominio/pruebas | Alto | `tesoreria.md` + consumidores |
 | `backend/services/collection-entry.service.js`, `payment-entry.service.js`, `payment-plans.service.js`, `partner-contributions.service.js` | Tesorería | Ventas, Compras, Reportes | Operaciones compuestas, planes y aportes; dominio | Alto | `tesoreria.md` |
 | `tests/treasury-safety.test.js` | Tesorería | Arquitectura | Regresión aislada de atomicidad e idempotencia financiera; pruebas | Alto | `tesoreria.md` |
 | `tests/payment-plans.test.js`, `docs/payment-plans.md` | Tesorería | Base de datos, Administración, UI/UX | Contrato y regresión aislada del módulo editable de planes; pruebas/documentación | Alto | `tesoreria.md` + consumidores |
@@ -52,8 +53,9 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `backend/migrations/20260727-investment-fund.js`, `tests/investment-fund-migration.test.js` | Base de datos | Tesorería, Contabilidad, Reportes | Migración, backup, rollback e inicialización idempotente del fondo | Alto | `base-de-datos.md` + consumidores |
 | `backend/services/payroll-*.service.js` | RRHH | Reportes | Normalización/resumen salarial; dominio | Alto | `rrhh.md` |
 | `tests/payroll-safety.test.js` | RRHH | Arquitectura, Reportes, Tesorería | Persistencia coordinada y reglas de seguridad salarial; pruebas | Alto | `rrhh.md` |
-| `backend/services/income-*.service.js`, `cashflow.service.js`, `expense-classification.service.js` | Reportes | Inventario, Compras, Ventas, Tesorería, RRHH | Cálculo/agregación; dominio consumidor | Alto | `reportes.md` + dueños de reglas alteradas |
+| `backend/services/income-*.service.js`, `cashflow.service.js`, `expense-classification.service.js` | Reportes | Inventario, Compras, Ventas, Tesorería, RRHH, Contabilidad, UI/UX | Cálculo/agregación; Estado de Resultados reconoce `ventas.subtotal` por `entregas.fecha` y expone detalle lazy conciliado mediante allowlist; dominio consumidor | Alto | `reportes.md` + dueños de reglas alteradas |
 | `backend/services/economic-expenses.service.js`, `economic-expense-applications.service.js`, `economic-expense-comparison.service.js` | Contabilidad | Compras, RRHH, Ventas, Tesorería, Reportes | Gastos económicos, aplicaciones, conciliación y diagnóstico paralelo; dominio | Alto | `contabilidad.md` + consumidores |
+| `backend/migrations/20260727-economic-expenses-history.js` | Contabilidad + Base de datos | Compras, RRHH, Ventas, Tesorería, Reportes | Esquema diario, backfill histórico idempotente, exclusiones y backup verificable de gastos económicos | Alto | `contabilidad.md` + `base-de-datos.md` + consumidores |
 | `tests/economic-expenses*.test.js`, `docs/economic-expenses.md` | Contabilidad | Base de datos, Administración, Reportes, Tesorería | Contrato, pruebas unitarias/HTTP y documentación del modelo económico paralelo | Alto | `contabilidad.md` + consumidores |
 | `tests/reports.test.js` | Reportes | Arquitectura | Fixtures y regresión focalizada de reportes; pruebas | Medio | `reportes.md` |
 | `backend/services/backend-*.service.js`, `sql.service.js` | Administración | Base de datos, Arquitectura | Tablas/mapa/SQL; dominio interno | Alto | `administracion.md` + `base-de-datos.md` |
@@ -91,11 +93,15 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 
 | `backend/services/received-checks.service.js`, `tests/received-checks.service.test.js` | Tesorería | Ventas, Compras, Reportes | Endoso atómico e idempotente de cheques recibidos y su regresión aislada; dominio | Alto | `tesoreria.md` |
 
+| `backend/migrations/20260727-economic-expenses-history.js` (rama `egresos.imp_internos`) | Contabilidad + Base de datos | Compras, TesorerĂ­a, Reportes, AdministraciĂłn | Reconocimiento append-only por fecha de factura bajo `Otros Impuestos` | Alto | `contabilidad.md` + consumidores |
+
 ## Regla para compartidos
 
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.
 
-El Coordinador recibe tareas nuevas y crea hilos principales visibles del proyecto ERP mediante `create_thread`. No crea Jefes anidados ni recibe informes. Cada hilo determina ownership y coordina sus propios subagentes. Las correcciones se escriben directamente en el hilo de tarea.
+El Coordinador recibe tareas nuevas y crea hilos principales visibles del proyecto ERP mediante `create_thread`. No crea Jefes anidados ni recibe informes. Cada hilo determina ownership y coordina sus propios subagentes. Una tarea activa conserva solo sus correcciones internas de pruebas o validación. Cuando declara el objetivo completado sin trabajo pendiente —o el usuario la cancela— queda cerrada; desde entonces cualquier defecto, ajuste o ampliación pertenece a una tarea nueva vinculada mediante `parentTaskId` y el hilo cerrado no se reabre. Un bloqueo pendiente de decisión no equivale a cierre.
+
+La tarea nueva debe verificar dónde vive la implementación de origen. Si continúa únicamente en un worktree no integrado, primero se integra de forma segura o la corrección parte de un checkout que contenga exactamente ese estado; Local o un worktree nuevo sin esos cambios no son destinos válidos.
 
 El progreso de los hilos se consulta bajo demanda mediante la skill personal `$estimar-progreso-hilos`. El Coordinador obtiene una fotografía read-only sin crear subagentes ni adquirir ownership funcional sobre las tareas inspeccionadas.
 

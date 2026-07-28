@@ -74,7 +74,7 @@ Endpoints confirmados:
 
 Los importes salariales y laborales dependen del contrato único `shared/money.js` / `docs/money-contract.md`: calcular y comparar en centavos, formatear siempre con dos decimales y mantener porcentajes/horas fuera del parser monetario.
 
-- Contabilidad posee el reconocimiento económico transversal. RRHH conserva sueldos y costos laborales; la primera etapa no crea gastos económicos automáticamente desde liquidaciones.
+- Contabilidad posee el reconocimiento económico transversal. La carga histórica y las escrituras futuras reconocen una sola fuente canónica de `sueldo_neto` por empleado/período con la etiqueta maestra `Sueldos`; copias con el mismo neto, egreso y etiqueta no crean otro gasto, y fuentes incompatibles bloquean la materialización. Los brutos confirmados previos se neutralizan mediante reversiones idempotentes y no se editan. RRHH dispara la sincronización al persistir sueldos, sin aplicar automáticamente el gasto contra el egreso.
 
 - No tocar `.env`, adjuntos ni cache real; no ejecutar escrituras salariales sobre datos reales. El backend es fuente de verdad; PDF/OCR solo interpreta el archivo aportado.
 - El egreso salarial usa idempotencia natural durable: si todos los sueldos ya apuntan al mismo egreso y éste coincide integralmente, responde idempotente; una asociación parcial o contradictoria responde `409` sin escribir. El alta/asociación usa un único `saveBackendCache`.

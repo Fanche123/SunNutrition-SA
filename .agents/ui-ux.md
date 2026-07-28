@@ -26,7 +26,7 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Estructura: `index.html`.
 - Estilos: `assets/css/styles.css`.
 - Iconos: `banco.svg`, `cheques.svg`, `cheques-a-cubrir.svg`, `costo-de-ventas.svg`, `deudas.svg`, `efectivo.svg`, `gastos-no-operativos.svg`, `gastos-operativos.svg`, `por-cobrar.svg`, `produccion.svg`, `purchase-invoice.svg`, `purchase-order.svg`, `purchase-quantities.svg`, `unidades-vendidas.svg`, `utilidad.svg`, `ventas-netas.svg` bajo `assets/icons/`.
-- Compartidos/consumidores: `assets/js/dom-utils.js`, `assets/js/core/formatters.js`, `assets/js/app.js` y los scripts actuales de `assets/js/modules/` que consultan IDs, clases o `data-*`.
+- Compartidos/consumidores: `assets/js/dom-utils.js`, `assets/js/core/formatters.js`, `assets/js/app.js`, `assets/js/modules/cash-boxes.js` y los scripts actuales de `assets/js/modules/` que consultan IDs, clases o `data-*`.
 
 ## Contratos DOM confirmados
 
@@ -35,12 +35,14 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Bootstrap: `cacheElements()` resuelve IDs; `bindEvents()` registra eventos durante `DOMContentLoaded`. Renombrar un ID exige actualizar todos sus consumidores.
 - `#dashboard-received-checks-widget` reutiliza `.dashboard-widget`, muestra filas compactas de fecha/cliente/monto y permite expandirlas con teclado o clic; permanece con `hidden` hasta que Reportes confirma al menos un pendiente y `.dashboard-widget[hidden]` debe retirarlo completamente de la grilla.
 - `#dashboard-inventory-purchases-widget` reutiliza el tamaño, foco y expansión canónicos; permanece con `hidden` sin alertas y muestra el detalle en tabla solo al expandirse, sin paneles internos adicionales.
+- En Estado de Resultados, las líneas con movimientos fuente usan botones `[data-statement-concept]` con `aria-expanded` y abren `#statement-detail-panel`. El panel conserva foco visible, cierre por botón o Escape, tabla horizontal desplazable y se descarta al cambiar período o comparación.
 - `#view-purchase-entry` muestra arriba una lista compacta de la misma fotografía de Inventario. La lista no crea compras ni filtra o limita el selector libre; su encabezado incluye el único editor de “Barritas producidas por día”, que guarda mediante el endpoint específico y actualiza la fotografía transversal.
 - Scripts clásicos, sin bundler: `assets/js/dom-utils.js`, `assets/js/modules/payment-plans.js`, `assets/js/modules/salary-entry.js`, `assets/js/core/formatters.js` y `assets/js/modules/data-editor.js` se cargan antes de `assets/js/app.js` por dependencias de evaluación; los demás módulos cargan después de `assets/js/app.js` pero antes de `DOMContentLoaded`.
 - El frontend consume `/api/...` en el mismo origen desde el que se sirve el ERP. Los módulos no deben codificar host, IP ni puerto.
 - Estados de formulario usan `.form-status`/`[data-status]`; contenido dinámico no confiable debe pasar por `escapeHtml`.
 - `view-payment-plans` conserva una grilla semántica compacta de cuotas en consulta y edición; la edición de una cuota reemplaza sus celdas por inputs dentro de la misma fila, y el borrador completo mantiene el guardado atómico del módulo sin reutilizar el Editor genérico.
 - `view-bank-reconciliation` integra el panel `investment-fund-panel`: distingue saldo bancario y saldo del fondo, ofrece alta de depósito/rescate/rendimiento y una tabla horizontal desplazable con saldos resultantes. En ancho reducido el formulario pasa a una columna sin ocultar campos ni acciones.
+- `view-cashbox` se presenta como `Cajas` y mantiene separado el control ICBC de Conciliación bancaria: resume fórmula/saldos/diferencia, enlaza Banco → ERP y muestra tablas ERP → Banco con estados de carga, vacío y error. En móvil las tarjetas pasan a una columna y las tablas conservan scroll horizontal.
 - `view-commissions-entry` usa `#commissions-select-all` como checkbox real dentro del encabezado de la primera columna y lo sincroniza con las filas visibles y elegibles mediante estados marcado, desmarcado e indeterminado, sin alterar cálculos ni persistencia.
 - `index.html` declara actualmente 27 secciones `.view`; 25 aparecen en navegación. `view-settings` y `view-deposited-checks-entry` no tienen botón directo. La pantalla histórica `view-imports` fue eliminada y `switchView("imports")` redirige a `data-editor`.
 - `view-data-editor` ocupa el espacio útil con una única grilla tipo planilla: barra compacta, scroll vertical continuo, encabezado fijo, selección mínima, filtros bajo encabezados y columnas redimensionables. No usa tarjetas, posiciones artificiales, paginación visible ni formularios permanentes por fila.

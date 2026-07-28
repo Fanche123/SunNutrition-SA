@@ -98,12 +98,13 @@ Endpoints específicos registrados:
 - `POST /api/reception-attachments` — `{ receptionId, fileName, dataBase64 }`; máximo 20 MB; devuelve ruta relativa.
 - `POST /api/reception-invoice/read` — `{ fileDataUrl|imageDataUrl, fileName?, mimeType? }`; acepta imagen/PDF y devuelve campos de factura/remito sin persistirlos.
 
-La UI de Compra, Recepción y Otros gastos usa los endpoints integrales especializados. El endpoint genérico `GET|POST /api/backend/tables/:tabla` se conserva para sus demás consumidores.
+La UI de Compra, Recepción y Otros gastos usa los endpoints integrales especializados. El alta integral de Otros gastos materializa su subtotal sin IVA en `gastos_economicos` dentro del mismo snapshot cuando existe una etiqueta canónica; IIBB se excluye porque lo produce Ventas. El endpoint genérico `GET|POST /api/backend/tables/:tabla` se conserva para sus demás consumidores y aplica la misma sincronización al guardar `otros_gastos`.
 
 ## Dependencias
 
 - **Inventario:** inicia alertas, centraliza su regla de consumo/umbral y consume proveedor/plazo desde compras para fijar la evaluación al cargar. Si falta el snapshot, el backend reconstruye la misma salida desde el último lote persistido. La lista superior de Compras lee ese contrato sin recalcularlo y no filtra ni limita el selector de insumos; su editor de “Barritas producidas por día” valida un entero de 1 a 1.000.000, usa `POST /api/inventory/purchase-snapshot/production-rate` y recibe la fotografía transversal recalculada. El valor único persiste como `inventoryPurchaseConfig.barsPerDay` en el caché backend, no en tablas operativas.
 - **Tesorería:** acreedores, etiquetas, `egresos`, pagos y conciliación; no cambiar su cancelación desde Compras.
+- **Cajas:** el control ICBC de Tesorería consume `pagos.fecha_pago`/`pagos.monto` una sola vez y usa `detalle_pagos`/`egresos` sólo para referencias y contrapartes; no recalcula importes desde aplicaciones.
 - **Reportes:** clasificación de egresos y costo de mercadería.
 - **RRHH:** empleados de recepción y rama salarial del servicio compartido de adjuntos.
 - **Administración/Base de datos:** endpoint genérico, columnas, claves y persistencia.
@@ -160,7 +161,7 @@ Precios, facturas, retenciones y egresos dependen de `shared/money.js` y `docs/m
 
 ## Gaps confirmados
 
-- Contabilidad posee gastos económicos, ajustes, reversiones y aplicaciones. Compras conserva recepciones y otros gastos como productores, sin integración automática en la primera etapa.
+- Contabilidad posee gastos económicos, ajustes, reversiones y aplicaciones. La carga histórica desde `2026-04-01` toma recepciones y otros gastos sólo con fecha, subtotal de egreso e `id_acreedor_etiqueta` resolubles; excluye IVA y documentos compartidos sin criterio de asignación. Compras no escribe automáticamente en Contabilidad.
 
 - El servicio especializado normaliza varios campos comerciales, pero persiste solo proveedor, fechas, vínculo insumo-proveedor y cantidad.
 - La relación vigente del egreso se resuelve mediante `recepciones.id_egreso` u `otros_gastos.id_egreso`; los lectores de `egresos.origen_tipo/origen_id` se conservan solo para caches históricos.
@@ -171,6 +172,8 @@ Precios, facturas, retenciones y egresos dependen de `shared/money.js` y `docs/m
 ## Mantenimiento del AGENT
 
 Crear un archivo permanente de Compras obliga, en la misma tarea, a actualizar este inventario, `.agents/file-ownership.md` y arquitectura/dependencias afectadas. Mover, renombrar o eliminar obliga a corregir referencias. Una integración nueva actualiza AGENT propietario, consumidor y ownership. No aplica a temporales, logs, outputs, backups, generados, adjuntos o caches. Es parte de terminado.
+
+La recepciĂłn integral sincroniza tambiĂ©n `egresos.imp_internos` dentro del mismo snapshot, siempre por fecha de factura y mediante el materializador compartido de Contabilidad.
 
 ## Trabajo directo
 

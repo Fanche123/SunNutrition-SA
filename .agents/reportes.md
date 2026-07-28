@@ -34,15 +34,17 @@ Reportes consume Ventas, Compras, Inventario, Tesorería y RRHH. No debe escribi
 
 Reportes no posee tablas ni endpoints de escritura. Lee, agrupadas por flujo:
 
-- Estado de Resultados: `ventas`, `clientes`, `canales`, `pedidos`, `detalle_pedidos`, `productos`, `items`, `inventarios`, `detalle_inventarios`, `sueldos`; clasificación desde `etiquetas`, `acreedores_etiquetas`, `egresos`, `recepciones`, `compras`, `entregas`, `otros_gastos`, `comisiones`, empleados/proveedores/fletes/acreedores. Consume además `gastos_economicos` confirmados únicamente cuando `origen_tipo = fondo_inversion`.
+- Estado de Resultados: las ventas netas usan `ventas.subtotal` y se imputan exclusivamente por `entregas.fecha`, vinculando `ventas.id_entrega = entregas.id_entrega`; una venta sin entrega fechada válida no usa `fecha_factura` como fallback. Inventarios y producción conservan sus fuentes. En todos los períodos, los gastos se clasifican exclusivamente desde `gastos_economicos` confirmados por `fecha_economica` e `id_etiqueta`; las tablas productoras no son fallback del reporte.
+- El detalle del Estado de Resultados se carga al activar un concepto con movimientos. Usa la misma selección mensual y allowlist de conceptos que construyen el total; para gastos resuelve la contraparte desde el origen canónico ya persistido y conserva ajustes/reversiones negativos. `Mercaderia` combina sus compras económicas individuales con componentes explícitos de inventario inicial y final; los demás subtotales derivados permanecen como composición visual y no simulan movimientos fuente.
 - Cashflow: `caja`, `egresos`, `detalle_pagos`, `ventas`, `cobros`, `cobros_detalle`, `cheques_recibidos`, `cheques_entregados`, `clientes`, `acreedores` y fuentes para resolver contraparte.
 - Dashboard: además lee compras/detalle/recepciones/insumos/proveedores, pedidos/detalle/entregas/productos, inventarios, cheques, tablas de deuda y el contrato de solo lectura de Planes de pago.
 
-Campos críticos: fecha y subtotal de venta; IDs de pedido/producto/cliente; cantidad de cajas/individual; valor y detalle de inventario; categoría/vínculo/total del egreso; horas y bruto salarial; cancelaciones de cobros/pagos; cuenta/monto de caja; fecha de uso, monto y estado de cheques. Ver definición exacta en `backend/config/backend-columns.js`.
+Campos críticos: `ventas.subtotal`, `ventas.id_entrega` y `entregas.fecha` para el período económico; IDs de pedido/producto/cliente; cantidad de cajas/individual; valor y detalle de inventario; categoría/vínculo/total del egreso; horas y bruto salarial; cancelaciones de cobros/pagos; cuenta/monto de caja; fecha de uso, monto y estado de cheques. Ver definición exacta en `backend/config/backend-columns.js`.
 
 Endpoints confirmados:
 
 - `GET /api/reports/income-statement?year=AAAA&month=0..11&comparison=none|previousMonth|previousYear` → `{ ok, report, comparisonReport }`. El mes es base cero.
+- `GET /api/reports/income-statement/detail?year=AAAA&month=0..11&concept=<clave>&offset=N&limit=N` → `{ ok, detail }` con período, cantidad total, total conciliado, paginación y filas `{ date, counterparty, reference, amount }`. `concept` pertenece a la allowlist interna del reporte; una clave arbitraria devuelve `400`.
 - `GET /api/reports/cashflow` → `{ ok, report }` con `cards`, `groups`, `visibleGroups` y cuatro `weeks`.
 - `GET /api/inventory/purchase-snapshot` → evaluación de solo lectura del último lote de inventario. Inventario la materializa al cargar y el backend la reconstruye determinísticamente desde tablas canónicas cuando falta o está obsoleta; Reportes presenta el contrato y no reconstruye la regla.
 - `GET /api/bank-reconciliation/summary` → resumen focalizado de última fecha conciliada global, días transcurridos y detalle por banco; Dashboard no carga la tabla bancaria completa.
@@ -71,7 +73,7 @@ Endpoints confirmados:
 ## Validaciones proporcionales
 
 - Frontend localizado: `node --check`, carga de scripts, vista, consola, período/comparación y estado vacío/error.
-- Endpoint: cache/fixture temporal, status y estructura JSON, mes base cero, límites de período y comparación.
+- Endpoint: cache/fixture temporal, status y estructura JSON, mes base cero, límites de período y comparación; para detalle, allowlist, paginación, contraparte y conciliación exacta de todas las páginas contra el segmento.
 - Estado de Resultados: sin datos; ventas A/no A; escuelas/otros; inventario inicial/final; compras de mercadería; categorías y no categorizados; comisiones; IIBB; nómina con/sin horas; redondeo y resultados intermedios/final.
 - Cashflow: caja inicial, pago/cobro parcial y total, fechas fallback, signos, estados de cheque, agrupación/deduplicación, corte de cuatro semanas, búsqueda y override visual sin mutar fuente.
 - Dashboard: tabla fuente vacía/faltante, vencidos/próximos, inventario por día hábil, evaluación histórica reconstruida, con/sin alertas, dependencias insuficientes y sustitución entre cargas, compra parcialmente recibida y pedido entregado/no entregado.
@@ -81,7 +83,9 @@ Endpoints confirmados:
 
 Las agregaciones monetarias de resultados, dashboard y cashflow usan `shared/money.js` / `docs/money-contract.md` y suman centavos. Unidades, horas, porcentajes e indicadores no monetarios no se fuerzan a dos decimales.
 
-- Contabilidad posee `gastos_economicos`, `gastos_egresos` y el diagnóstico paralelo. Reportes no crea gastos. El Estado de Resultados conserva el cálculo legado y agrega como excepción los rendimientos confirmados del fondo: un importe económico negativo reduce gastos no operativos y aumenta el resultado, sin ingreso comercial ni doble contabilización.
+- Contabilidad posee `gastos_economicos`, `gastos_egresos` y el diagnóstico. Reportes no crea gastos. En cualquier período, los gastos confirmados son la única fuente oficial; si no existen, el reporte informa cero gastos. Un rendimiento del fondo negativo reduce gastos no operativos sin ingreso comercial ni doble contabilización.
+- Intereses de cuotas y sueldos netos llegan ya materializados por Contabilidad. Estado de Resultados no consulta cuotas, pagos ni `sueldos` como fallback.
+- Ingresos Brutos llega como gasto económico por `1,5%` del subtotal de `Factura_A` y `Factura_B`; Comisiones usa el subtotal de cada venta por la tasa de su canal; Logística el subtotal del egreso asociado a la entrega; y Otros gastos aporta su subtotal sin IVA mediante su etiqueta canónica. Reportes solo agrega las filas ya materializadas.
 
 - Los endpoints de Reportes deben permanecer de lectura. No escribir ni “corregir” datos fuente desde un reporte; usar cache temporal y no tocar `.env`, adjuntos ni datos reales.
 - Arrancar `server.js` puede mutar la cache por servicios de Tesorería; para pruebas integradas usar copia aislada, aunque el endpoint consultado sea GET.
@@ -97,6 +101,8 @@ Las agregaciones monetarias de resultados, dashboard y cashflow usan `shared/mon
 Crear, mover, renombrar o eliminar un archivo permanente del sector obliga, en la misma tarea, a actualizar este AGENT, `.agents/file-ownership.md` y arquitectura/dependencias. Una integración nueva actualiza también el AGENT del dominio productor/consumidor. No aplica a temporales, logs, outputs, adjuntos, caches o generados. Es parte obligatoria del terminado.
 
 Entregá por defecto: **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
+
+La etiqueta maestra `Impuestos Internos` llega materializada desde Contabilidad y se agrega bajo el concepto visible `Otros Impuestos`; el detalle usa el contrato compartido.
 
 ## Trabajo directo
 

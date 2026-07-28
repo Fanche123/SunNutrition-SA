@@ -10,6 +10,7 @@ function createPaymentEntryService({
   readJsonBody,
   saveBackendCache,
   sendJson,
+  synchronizeEconomicExpenses = (cache) => cache,
   failureInjector = () => {}
 }) {
   async function handlePaymentFullEntry(request, response) {
@@ -79,7 +80,7 @@ function createPaymentEntryService({
       cache.tables.pagos.rowCount = cache.tables.pagos.rows.length;
       cache.tables.detalle_pagos.rowCount = cache.tables.detalle_pagos.rows.length;
       cache.generatedAt = timestamp;
-      saveBackendCache(cache);
+      saveBackendCache(synchronizeEconomicExpenses(cache, "pagos"));
       return sendJson(response, 200, { ok: true, idempotent: false, paymentId });
     } catch (error) {
       return sendJson(response, error.statusCode || 400, { ok: false, error: `No se guardó el pago completo: ${error.message}` });
