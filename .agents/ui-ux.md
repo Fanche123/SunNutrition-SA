@@ -30,6 +30,8 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 
 ## Contratos DOM confirmados
 
+- Las acciones por etapa de Conciliación bancaria permanecen deshabilitadas durante una petición, fuerzan una lectura canónica nueva después del POST y sólo vuelven a habilitarse si el estado persistido conserva filas elegibles; los errores quedan visibles en `.form-status`.
+
 - Navegación: `[data-view="x"]` activa `#view-x`; Dashboard es el acceso fijo y la vista inicial, y se alternan `.nav-item.active` y `.view.active` en `switchView`.
 - Grupos: seis acordeones funcionales usan `[data-nav-toggle]`, `.nav-group.is-collapsed`, `.nav-group.is-active` y `aria-expanded`; solo uno puede permanecer abierto, la navegación programática abre el correspondiente y Dashboard contrae todos.
 - Bootstrap: `cacheElements()` resuelve IDs; `bindEvents()` registra eventos durante `DOMContentLoaded`. Renombrar un ID exige actualizar todos sus consumidores.
@@ -52,6 +54,7 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Solo el encabezado de la PK muestra y alterna el orden ascendente/descendente. No existen `Desde`, `Hasta`, `Mostrar`, tamaños 100/300/500, `Últimas 300`, columna `Pos.`, `Agregar fila` ni `Guardar cambios`.
 - Una fila vacía permanente aparece al final. Al recibir contenido genera otro borrador vacío debajo; no participa de filtros, búsqueda ni conteos hasta persistirse.
 - Las relaciones se muestran en la misma celda como `ID · nombre`; el ID real permanece visible. Estados discretos de celda/fila comunican foco, guardado, error, alta y selección sin ocultar el valor rechazado.
+- Para `egresos`, el diálogo `Eliminar filas` solicita primero el plan persistido y enumera conexiones eliminadas, campos desvinculados, registros conservados y bloqueos. La confirmación permanece deshabilitada mientras carga o si el plan no es aplicable.
 
 UI/UX no posee tablas ni endpoints. Un cambio que altere nombres de campos, payloads o secuencia de carga deja de ser puramente visual.
 

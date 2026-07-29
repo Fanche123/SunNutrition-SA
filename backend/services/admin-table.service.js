@@ -1,4 +1,5 @@
 const { adminRelationsForTable } = require("../config/admin-table-relations");
+const { applyExpenseDeletion, previewExpenseDeletion } = require("./expense-deletion.service");
 
 const RELATION_OPTION_LIMIT = 500;
 
@@ -49,6 +50,25 @@ function createAdminTableService(dependencies) {
       sendJson(response, 200, { ok: true, table });
     } catch (error) {
       sendJson(response, 400, { ok: false, code: error.code || "ADMIN_QUERY_INVALID", error: error.message });
+    }
+  }
+
+  async function handleAdminTableDeletePreview(request, response) {
+    try {
+      const { tableName } = requestDeletePreviewTable(request);
+      if (tableName !== "egresos") {
+        throw adminError("ADMIN_DELETE_PREVIEW_UNAVAILABLE", "La vista previa especial sólo está disponible para egresos.");
+      }
+      const body = await readJsonBody(request);
+      const plan = previewExpenseDeletion(loadCache(), body.deletedIds);
+      sendJson(response, 200, { ok: true, plan });
+    } catch (error) {
+      sendJson(response, 400, {
+        ok: false,
+        code: error.code || "ADMIN_VALIDATION_ERROR",
+        error: error.message,
+        plan: error.plan || null
+      });
     }
   }
 
@@ -204,7 +224,24 @@ function createAdminTableService(dependencies) {
         throw adminError("ADMIN_PRIMARY_KEY_INVALID", `La tabla ${tableName} no tiene una clave primaria editable valida.`);
       }
       const resultOptions = adminMutationResultOptions(body, columns, primaryKey);
-      if (body.tableVersion && body.tableVersion !== tableVersion(table)) {
+      const pureExpenseDelete = tableName === "egresos"
+        && deletedIds.length > 0
+        && updatedRows.length === 0
+        && insertedRows.length === 0;
+      let expenseDeletionResult = null;
+      if (pureExpenseDelete) {
+        expenseDeletionResult = applyExpenseDeletion(cache, deletedIds, body.deletePlanToken);
+        if (expenseDeletionResult.idempotent) {
+          sendJson(response, 200, {
+            ok: true,
+            idempotent: true,
+            deleted: 0,
+            deletedIds: [],
+            deletionSummary: expenseDeletionResult.plan
+          });
+          return;
+        }
+      } else if (body.tableVersion && body.tableVersion !== tableVersion(table)) {
         throw adminError("ADMIN_CONFLICT", "La tabla cambio desde que fue abierta. Recargala antes de guardar.");
       }
       const legacyInserts = updatedRows.filter((row) => !stringId(row?.[primaryKey]));
@@ -265,7 +302,14 @@ function createAdminTableService(dependencies) {
         }
       }
 
-      for (const [inputIndex, deletedId] of deletedIds.entries()) {
+      if (tableName === "egresos" && deletedIds.length) {
+        if (!expenseDeletionResult) applyExpenseDeletion(cache, deletedIds, body.deletePlanToken);
+        operations.push(...deletedIds.map((primaryKeyValue) => ({
+          table: tableName,
+          operation: "delete",
+          primaryKey: primaryKeyValue
+        })));
+      } else for (const [inputIndex, deletedId] of deletedIds.entries()) {
         try {
           const existingIndex = byId.get(deletedId);
           if (existingIndex === undefined) {
@@ -287,11 +331,11 @@ function createAdminTableService(dependencies) {
           throw rowError(error, inputIndex, deletedId);
         }
       }
-      if (deletedIds.length) {
+      if (deletedIds.length && tableName !== "egresos") {
         const deletedSet = new Set(deletedIds);
         table.rows = currentRows.filter((row) => !deletedSet.has(stringId(row[primaryKey])));
         deletedIds.forEach((id) => operations.push({ table: tableName, operation: "delete", primaryKey: id }));
-      } else {
+      } else if (tableName !== "egresos") {
         table.rows = currentRows;
       }
 
@@ -300,7 +344,7 @@ function createAdminTableService(dependencies) {
       table.updatedAt = nextUpdatedAt(table.updatedAt);
       cache.generatedAt = table.updatedAt;
       ensureAdminSessionBackup();
-      const cacheToSave = tableName === "egresos"
+      const cacheToSave = tableName === "egresos" && !deletedIds.length
         ? synchronizeEconomicExpenses(cache, tableName)
         : cache;
       saveBackendCache(cacheToSave);
@@ -326,16 +370,21 @@ function createAdminTableService(dependencies) {
         updated: updatedRows.length,
         inserted: insertedRows.length,
         deleted: deletedIds.length,
-        deletedIds
+        deletedIds,
+        ...(tableName === "egresos" && deletedIds.length
+          ? { deletionSummary: previewExpenseDeletion(original, deletedIds) }
+          : {})
       });
     } catch (error) {
-      sendJson(response, error.code === "ADMIN_CONFLICT" ? 409 : 400, {
+      const conflict = error.code === "ADMIN_CONFLICT" || error.code === "ADMIN_DELETE_PLAN_CONFLICT";
+      sendJson(response, conflict ? 409 : 400, {
         ok: false,
         code: error.code || "ADMIN_VALIDATION_ERROR",
         error: error.message,
         field: error.field || "",
         rowIndex: Number.isInteger(error.rowIndex) ? error.rowIndex : null,
-        rowKey: error.rowKey || ""
+        rowKey: error.rowKey || "",
+        plan: error.plan || null
       });
     }
   }
@@ -351,6 +400,7 @@ function createAdminTableService(dependencies) {
 
   return {
     handleAdminTableCellUpdate,
+    handleAdminTableDeletePreview,
     handleAdminTableRequest,
     handleAdminTableSave,
     handleAdminTablesOverview
@@ -367,6 +417,13 @@ function requestCellTable(request) {
   const url = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`);
   const match = url.pathname.match(/^\/api\/admin\/tables\/([^/]+)\/cell$/);
   if (!match) throw adminError("ADMIN_ENDPOINT_INVALID", "Ruta administrativa invalida.");
+  return { tableName: decodeURIComponent(match[1]).trim(), url };
+}
+
+function requestDeletePreviewTable(request) {
+  const url = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`);
+  const match = url.pathname.match(/^\/api\/admin\/tables\/([^/]+)\/delete-preview$/);
+  if (!match) throw adminError("ADMIN_ENDPOINT_INVALID", "Ruta administrativa inválida.");
   return { tableName: decodeURIComponent(match[1]).trim(), url };
 }
 

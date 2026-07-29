@@ -146,7 +146,23 @@ function createBankParserService(dependencies) {
     bank = "",
     assignedPaymentIds = new Set()
   ) {
-    const identified = identifyBankCounterparty(movement, identityIndex);
+    const manualIdentity = movement.manualClassification?.idAcreedor
+      ? (identityIndex || []).find((identity) => (
+        identity.type === "acreedor"
+        && String(identity.id || "") === String(movement.manualClassification.idAcreedor)
+      ))
+      : null;
+    const identified = manualIdentity
+      ? {
+        ...manualIdentity,
+        idAcreedor: movement.manualClassification.idAcreedor,
+        idEtiqueta: movement.manualClassification.idEtiqueta,
+        idAcreedorEtiqueta: movement.manualClassification.idAcreedorEtiqueta,
+        tagLabel: (manualIdentity.tagOptionDetails || []).find((tag) => (
+          String(tag.idEtiqueta || "") === String(movement.manualClassification.idEtiqueta)
+        ))?.name || manualIdentity.tagLabel
+      }
+      : identifyBankCounterparty(movement, identityIndex);
     const identifiedName = compactBankText(identified?.name || "");
     const checkKey = normalizeBankCheckNumber(movement.checkNumber);
     const checkMatch = checkKey
@@ -198,11 +214,16 @@ function createBankParserService(dependencies) {
       const availablePayments = paymentCandidates.filter((candidate) => (
         candidate.direction !== "credito" && !assignedPaymentIds.has(String(candidate.id ?? "").trim())
       ));
-      const paymentMatch = bestBankMatch(enrichedMovement, availablePayments, absoluteMoney(movement.amount), {
+      const lineagePaymentMatch = availablePayments.find((candidate) => (
+        candidate.movementKey && candidate.movementKey === enrichedMovement.movementKey
+        && Math.abs(toCents(backendNumber(candidate.amount)) - Math.abs(toCents(movement.amount))) <= 1
+      ));
+      const unlineagedPayments = availablePayments.filter((candidate) => !candidate.movementKey);
+      const paymentMatch = lineagePaymentMatch || bestBankMatch(enrichedMovement, unlineagedPayments, absoluteMoney(movement.amount), {
         requireExactDate: true,
         requireIdentity: true,
         rejectTies: true
-      }) || uniqueExactBankMatch(enrichedMovement, availablePayments, absoluteMoney(movement.amount));
+      }) || uniqueExactBankMatch(enrichedMovement, unlineagedPayments, absoluteMoney(movement.amount));
       if (paymentMatch) {
         assignedPaymentIds.add(String(paymentMatch.id ?? "").trim());
         return {
@@ -244,11 +265,16 @@ function createBankParserService(dependencies) {
         };
       }
   
-      const payableMatch = bestBankMatch(enrichedMovement, payableCandidates, absoluteMoney(movement.amount), {
+      const lineagePayableMatch = payableCandidates.find((candidate) => (
+        candidate.movementKey && candidate.movementKey === enrichedMovement.movementKey
+        && Math.abs(toCents(backendNumber(candidate.amount)) - Math.abs(toCents(movement.amount))) <= 1
+      ));
+      const unlineagedPayables = payableCandidates.filter((candidate) => !candidate.movementKey);
+      const payableMatch = lineagePayableMatch || bestBankMatch(enrichedMovement, unlineagedPayables, absoluteMoney(movement.amount), {
         requireExactDate: false,
         requireIdentity: true,
         maxDateDifference: 365
-      }) || exactPendingExpenseMatch(enrichedMovement, payableCandidates, absoluteMoney(movement.amount));
+      }) || exactPendingExpenseMatch(enrichedMovement, unlineagedPayables, absoluteMoney(movement.amount));
       if (payableMatch) {
         return {
           ...enrichedMovement,
@@ -258,7 +284,15 @@ function createBankParserService(dependencies) {
         };
       }
   
-      const sourceMatch = bestBankSourceMatch(enrichedMovement, sourceCandidates);
+      const lineageSourceMatch = sourceCandidates.find((candidate) => (
+        candidate.movementKey
+        && candidate.movementKey === enrichedMovement.movementKey
+        && Math.abs(toCents(backendNumber(candidate.amount)) - Math.abs(toCents(movement.amount))) <= 1
+      ));
+      const sourceMatch = lineageSourceMatch || bestBankSourceMatch(
+        enrichedMovement,
+        sourceCandidates.filter((candidate) => !candidate.movementKey)
+      );
       if (sourceMatch) {
         return {
           ...enrichedMovement,

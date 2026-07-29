@@ -2767,8 +2767,9 @@
           <p>Tabla: <strong id="data-editor-delete-table"></strong></p>
           <p>Cantidad: <strong id="data-editor-delete-count"></strong></p>
           <p>Claves primarias: <strong id="data-editor-delete-primary"></strong></p>
-          <p id="data-editor-delete-summary"></p>
-          <p class="notice warn">No se ejecutan cascadas implícitas. El backend bloqueará el guardado completo si encuentra referencias dependientes.</p>
+          <p id="data-editor-delete-summary" role="status" aria-live="polite"></p>
+          <div id="data-editor-delete-details"></div>
+          <p class="notice warn">Esta acción puede eliminar o desvincular relaciones financieras. Si alguna conexión no tiene una regla segura, no se guardará ningún cambio.</p>
           <div class="data-editor-dialog-actions">
             <button type="submit" class="secondary">Cancelar</button>
             <button type="button" class="danger" id="data-editor-delete-confirm">Eliminar filas</button>

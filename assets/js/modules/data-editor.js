@@ -5,6 +5,7 @@ const DATA_EDITOR_SAVED_INDICATOR_MS = 1400;
 
 let dataEditorGridBound = false;
 let dataEditorLoadSequence = 0;
+let dataEditorDeletePreviewSequence = 0;
 
 function createDataEditorViewState() {
   return {
@@ -52,6 +53,9 @@ function setupDataEditorGrid() {
   dataEditorElement("data-editor-reload")?.addEventListener("click", refreshDataEditorTable);
   dataEditorElement("data-editor-delete-selected")?.addEventListener("click", openDataEditorDeleteDialog);
   dataEditorElement("data-editor-delete-confirm")?.addEventListener("click", confirmDataEditorDelete);
+  dataEditorElement("data-editor-delete-dialog")?.addEventListener("close", () => {
+    dataEditorDeletePreviewSequence += 1;
+  });
 
   const grid = dataEditorElement("data-editor-body");
   grid?.addEventListener("click", handleDataEditorGridClick);
@@ -1205,6 +1209,7 @@ function dataEditorRequestError(payload, status) {
   const error = new Error(payload.error || `HTTP ${status}`);
   error.code = payload.code || "";
   error.field = payload.field || "";
+  error.payload = payload;
   return error;
 }
 
@@ -1465,7 +1470,7 @@ function syncDataEditorSelectionUi() {
   if (count) count.textContent = `${view.selectedRowKeys.size} seleccionada(s)`;
 }
 
-function openDataEditorDeleteDialog() {
+async function openDataEditorDeleteDialog() {
   const view = dataEditorViewState();
   const rows = [...view.selectedRowKeys].map(dataEditorRowByKey).filter(Boolean);
   if (!rows.length) return;
@@ -1477,9 +1482,72 @@ function openDataEditorDeleteDialog() {
   dataEditorElement("data-editor-delete-primary").textContent = keys.length ? keys.join(", ") : "(solo borradores locales)";
   dataEditorElement("data-editor-delete-summary").textContent =
     "El backend verificará referencias antes de eliminar y no ejecutará cascadas implícitas.";
+  dataEditorElement("data-editor-delete-details")?.replaceChildren();
   const dialog = dataEditorElement("data-editor-delete-dialog");
-  dialog.dataset.rowKeys = JSON.stringify(rows.map((row) => row._editorRowKey));
+  const previewSequence = ++dataEditorDeletePreviewSequence;
+  const requestedRowKeys = JSON.stringify(rows.map((row) => row._editorRowKey));
+  dialog.dataset.rowKeys = requestedRowKeys;
+  delete dialog.dataset.planToken;
+  dialog.dataset.planApplicable = "false";
+  const confirmButton = dataEditorElement("data-editor-delete-confirm");
+  if (confirmButton) confirmButton.disabled = view.table?.name === "egresos" && keys.length > 0;
   dialog.showModal();
+  if (view.table?.name !== "egresos" || !keys.length) return;
+  dataEditorElement("data-editor-delete-summary").textContent = "Calculando las conexiones persistidas actuales…";
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/admin/tables/egresos/delete-preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ deletedIds: keys })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw dataEditorRequestError(payload, response.status);
+    if (
+      previewSequence !== dataEditorDeletePreviewSequence
+      || !dialog.open
+      || dialog.dataset.rowKeys !== requestedRowKeys
+    ) return;
+    renderDataEditorDeletionPlan(payload.plan);
+    dialog.dataset.planApplicable = String(Boolean(payload.plan.canApply));
+    if (payload.plan.canApply) dialog.dataset.planToken = payload.plan.token;
+    else delete dialog.dataset.planToken;
+    if (confirmButton) confirmButton.disabled = !payload.plan.canApply;
+  } catch (error) {
+    if (previewSequence !== dataEditorDeletePreviewSequence || !dialog.open) return;
+    dataEditorElement("data-editor-delete-summary").textContent = error.message;
+    dialog.dataset.planApplicable = "false";
+    delete dialog.dataset.planToken;
+    if (confirmButton) confirmButton.disabled = true;
+  }
+}
+
+function renderDataEditorDeletionPlan(plan) {
+  const summary = dataEditorElement("data-editor-delete-summary");
+  const details = dataEditorElement("data-editor-delete-details");
+  if (!summary || !details) return;
+  details.replaceChildren();
+  summary.textContent = plan.canApply
+    ? "También se eliminarán o desvincularán estas conexiones financieras:"
+    : "No se puede eliminar porque existen conexiones sin una regla segura:";
+  const list = document.createElement("ul");
+  const addItem = (text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    list.appendChild(item);
+  };
+  (plan.deleted || []).forEach((item) => addItem(`${item.table}: ${item.count} conexión(es) se eliminarán.`));
+  (plan.unlinked || []).forEach((item) => addItem(
+    `${item.table}.${item.column}: ${item.count} campo(s) se pondrán en blanco.`
+  ));
+  (plan.updated || []).forEach((item) => addItem(`${item.table}: ${item.count} registro(s) recalcularán sus totales.`));
+  (plan.preserved || []).forEach((item) => addItem(
+    `${item.table}: ${item.count} registro(s) se conservarán. ${item.reason}`
+  ));
+  (plan.blocked || []).forEach((item) => addItem(
+    `${item.table}.${item.column}: ${item.count} referencia(s) bloquean la operación. ${item.reason}`
+  ));
+  if (!list.children.length) addItem("No hay conexiones adicionales.");
+  details.appendChild(list);
 }
 
 async function confirmDataEditorDelete() {
@@ -1524,7 +1592,8 @@ async function confirmDataEditorDelete() {
         filters: dataEditorActiveFilters(),
         orderBy: dataEditorOrderColumn(),
         orderDir: view.orderDir,
-        tableVersion: view.table.version
+        tableVersion: view.table.version,
+        ...(view.table.name === "egresos" ? { deletePlanToken: dialog?.dataset.planToken || "" } : {})
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -1539,9 +1608,18 @@ async function confirmDataEditorDelete() {
     setDataEditorSummary();
   } catch (error) {
     dataEditorElement("data-editor-delete-summary").textContent = error.message;
+    if (error.payload?.plan) {
+      renderDataEditorDeletionPlan(error.payload.plan);
+      if (dialog) {
+        dialog.dataset.planApplicable = String(Boolean(error.payload.plan.canApply));
+        if (error.payload.plan.canApply) dialog.dataset.planToken = error.payload.plan.token || "";
+        else delete dialog.dataset.planToken;
+      }
+    }
   } finally {
     if (confirmButton) {
-      confirmButton.disabled = false;
+      confirmButton.disabled = view.table?.name === "egresos"
+        && (dialog?.dataset.planApplicable !== "true" || !dialog?.dataset.planToken);
       confirmButton.textContent = "Eliminar filas";
     }
   }

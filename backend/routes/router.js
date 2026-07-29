@@ -77,6 +77,9 @@ function createRequestHandler(dependencies) {
         return handlers.handleAdminTablesOverview(request, response);
       }
       const adminPath = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`).pathname;
+      if (/^\/api\/admin\/tables\/[^/]+\/delete-preview$/.test(adminPath) && request.method === "POST") {
+        return await handlers.handleAdminTableDeletePreview(request, response);
+      }
       if (/^\/api\/admin\/tables\/[^/]+\/cell$/.test(adminPath) && request.method === "PATCH") {
         return await handlers.handleAdminTableCellUpdate(request, response);
       }

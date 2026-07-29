@@ -708,13 +708,27 @@ async function testBankReconciliationActionSequenceRefreshesCanonicalState() {
   Object.assign(seed.tables, {
     acreedores: {
       headers: ["id_acreedor", "acuerdo_de_pago"],
-      rows: [{ id_acreedor: 10, acuerdo_de_pago: "Proveedor secuencia" }],
-      rowCount: 1
+      rows: [
+        { id_acreedor: 10, acuerdo_de_pago: "Proveedor secuencia" },
+        { id_acreedor: 20, acuerdo_de_pago: "Acreedor corregido" }
+      ],
+      rowCount: 2
     },
     acreedores_etiquetas: {
       headers: ["id_acreedor_etiqueta", "id_acreedor", "id_etiqueta"],
-      rows: [{ id_acreedor_etiqueta: 100, id_acreedor: 10, id_etiqueta: 5 }],
-      rowCount: 1
+      rows: [
+        { id_acreedor_etiqueta: 100, id_acreedor: 10, id_etiqueta: 5 },
+        { id_acreedor_etiqueta: 200, id_acreedor: 20, id_etiqueta: 6 }
+      ],
+      rowCount: 2
+    },
+    etiquetas: {
+      headers: ["id_etiqueta", "etiqueta"],
+      rows: [
+        { id_etiqueta: 5, etiqueta: "Administrativos" },
+        { id_etiqueta: 6, etiqueta: "Servicios" }
+      ],
+      rowCount: 2
     },
     otros_gastos: { headers: [], rows: [], rowCount: 0 },
     detalle_pagos: { headers: [], rows: [], rowCount: 0 }
@@ -740,7 +754,7 @@ async function testBankReconciliationActionSequenceRefreshesCanonicalState() {
       description: row.detalle
     }));
   const payableCandidates = (tables) => (tables.egresos?.rows || [])
-    .filter((row) => backendId(row.id_acreedor_etiqueta) === "100")
+    .filter((row) => ["100", "200"].includes(backendId(row.id_acreedor_etiqueta)))
     .filter((row) => !(tables.detalle_pagos?.rows || []).some(
       (detail) => backendId(detail.id_egreso) === backendId(row.id_egreso)
     ))
@@ -815,22 +829,91 @@ async function testBankReconciliationActionSequenceRefreshesCanonicalState() {
   const state = async () => invokeRequest(service.handleBankReconciliationState, {
     url: "/api/bank-reconciliation/state?bank=ICBC"
   });
-  const apply = (applyMode, report, movementKeys = report.movements.map((movement) => movement.movementKey)) => (
-    invoke(service.handleBankReconciliationApply, { bank: "ICBC", applyMode, movementKeys, reviewRows: {} })
-  );
+  const apply = (
+    applyMode,
+    report,
+    movementKeys = report.movements.map((movement) => movement.movementKey),
+    selection = { idAcreedor: "10", idAcreedorEtiqueta: "100" }
+  ) => {
+    const selected = report.movements.filter((movement) => movementKeys.includes(movement.movementKey));
+    const reviewRows = applyMode === "createExpenses"
+      ? Object.fromEntries(selected.map((movement) => [movement.movementKey, {
+        idAcreedor: selection.idAcreedor,
+        idAcreedorEtiqueta: selection.idAcreedorEtiqueta,
+        canonicalMovementId: movement.canonicalMovementId,
+        expectedDate: movement.date,
+        expectedAmount: movement.amount,
+        date: movement.date,
+        detail: movement.detail
+      }]))
+      : {};
+    return invoke(service.handleBankReconciliationApply, { bank: "ICBC", applyMode, movementKeys, reviewRows });
+  };
 
   let report = (await invoke(service.handleBankReconciliationAnalyze, { bank: "ICBC", csvText: "fixture" })).payload.report;
   assert.deepStrictEqual(report.movements.map((movement) => movement.status), ["agregar_gasto", "agregar_gasto"]);
 
   const firstKey = report.movements[0].movementKey;
-  await apply("createExpenses", report, [firstKey]);
+  const beforeDraftConfirmation = store.value();
+  assert.deepStrictEqual(store.value(), beforeDraftConfirmation);
+  await apply("createExpenses", report, [firstKey], { idAcreedor: "20", idAcreedorEtiqueta: "200" });
+  assert.strictEqual(store.value().tables.otros_gastos.rows[0].id_acreedor, "20");
+  assert.strictEqual(store.value().tables.otros_gastos.rows[0].id_acreedor_etiqueta, "200");
+  const firstBankRow = store.value().tables.movimientos_bancarios.rows.find((row) => row._bankMovementKey === firstKey);
+  assert.strictEqual(firstBankRow._bankManualCreditorId, "20");
+  assert.strictEqual(firstBankRow._bankManualTagId, "6");
+  assert.strictEqual(firstBankRow._bankManualCreditorTagRelationId, "200");
+  assert.strictEqual(firstBankRow._bankManualClassificationSource, "bank-reconciliation:createExpenses");
+  const contradictoryReplay = await apply(
+    "createExpenses",
+    report,
+    [firstKey],
+    { idAcreedor: "10", idAcreedorEtiqueta: "100" }
+  );
+  assert.strictEqual(contradictoryReplay.status, 409);
+  assert.strictEqual(store.value().tables.otros_gastos.rows.length, 1);
   report = (await state()).payload.report;
   assert.strictEqual(report.movements.find((movement) => movement.movementKey === firstKey).status, "agregar_egreso");
   assert.strictEqual(report.movements.filter((movement) => movement.status === "agregar_gasto").length, 1);
-  const remainingExpensesResult = await apply("createExpenses", report);
+  const remainingKey = report.movements.find((movement) => movement.status === "agregar_gasto").movementKey;
+  const expensesBeforeInvalid = store.value().tables.otros_gastos.rows.length;
+  const invalidResult = await apply(
+    "createExpenses",
+    report,
+    [remainingKey],
+    { idAcreedor: "20", idAcreedorEtiqueta: "100" }
+  );
+  assert.strictEqual(invalidResult.payload.result.expensesCreated, 0);
+  assert.strictEqual(invalidResult.payload.result.skipped, 1);
+  assert.strictEqual(store.value().tables.otros_gastos.rows.length, expensesBeforeInvalid);
+  assert.strictEqual(
+    store.value().tables.movimientos_bancarios.rows.find((row) => row._bankMovementKey === remainingKey)._bankManualCreditorId,
+    undefined
+  );
+  const remainingMovement = report.movements.find((movement) => movement.movementKey === remainingKey);
+  const staleResult = await invoke(service.handleBankReconciliationApply, {
+    bank: "ICBC",
+    applyMode: "createExpenses",
+    movementKeys: [remainingKey],
+    reviewRows: {
+      [remainingKey]: {
+        idAcreedor: "10",
+        idAcreedorEtiqueta: "100",
+        canonicalMovementId: remainingMovement.canonicalMovementId,
+        expectedDate: "2026-07-27",
+        expectedAmount: remainingMovement.amount,
+        date: remainingMovement.date,
+        detail: remainingMovement.detail
+      }
+    }
+  });
+  assert.strictEqual(staleResult.payload.result.expensesCreated, 0);
+  assert.match(staleResult.payload.result.notes[0], /cambio desde el analisis/i);
+  assert.strictEqual(store.value().tables.otros_gastos.rows.length, expensesBeforeInvalid);
+  const remainingExpensesResult = await apply("createExpenses", report, [remainingKey]);
   assert.strictEqual(remainingExpensesResult.status, 200, remainingExpensesResult.payload.error);
   assert.strictEqual(remainingExpensesResult.payload.result.expensesCreated, 1);
-  await apply("createExpenses", report);
+  await apply("createExpenses", report, [remainingKey]);
   report = (await state()).payload.report;
   assert.strictEqual(
     report.movements.every((movement) => movement.status === "agregar_egreso"),
@@ -843,7 +926,7 @@ async function testBankReconciliationActionSequenceRefreshesCanonicalState() {
   await apply("createEgresses", report);
   report = (await state()).payload.report;
   assert.strictEqual(report.movements.every((movement) => movement.status === "agregar_pago"), true);
-  assert.strictEqual(store.value().tables.egresos.rows.filter((row) => backendId(row.id_acreedor_etiqueta) === "100").length, 2);
+  assert.strictEqual(store.value().tables.egresos.rows.filter((row) => ["100", "200"].includes(backendId(row.id_acreedor_etiqueta))).length, 2);
 
   await apply("createPayments", report);
   await apply("createPayments", report);
@@ -879,6 +962,9 @@ function testBankReconciliationNextActionDom() {
     bankCheckDepositDraft: null,
     els: {
       "bank-reconciliation-bank": { value: "ICBC" },
+      "bank-reconciliation-file": { disabled: false },
+      "bank-reconciliation-file-clear": { disabled: false },
+      "bank-reconciliation-analyze": { disabled: false },
       "bank-expense-stage-count": { textContent: "" },
       "bank-expense-stage-body": { innerHTML: "" },
       "bank-create-expenses": { disabled: false },
@@ -907,6 +993,99 @@ function testBankReconciliationNextActionDom() {
   assert.match(context.els["bank-payment-stage-body"].innerHTML, /next-payment/);
   assert.match(context.els["bank-payment-stage-body"].innerHTML, /Egreso #501/);
   assert.doesNotMatch(context.els["bank-expense-stage-body"].innerHTML, /next-payment/);
+
+  context.bankReconciliationReport = {
+    movements: [
+      {
+        canonicalMovementId: "77",
+        movementKey: "editable-expense",
+        status: "agregar_gasto",
+        date: "2026-07-22",
+        detail: "Gasto bancario",
+        amount: -55,
+        providerMatch: {
+          type: "datos_bancarios",
+          idAcreedor: "10",
+          idAcreedorEtiqueta: "100"
+        },
+        sourceDestination: { table: "otros_gastos", label: "Otros gastos" }
+      },
+      {
+        canonicalMovementId: "78",
+        movementKey: "bank-rule-expense",
+        status: "agregar_gasto",
+        date: "2026-07-22",
+        detail: "Lodiser",
+        amount: -65,
+        providerMatch: {
+          type: "datos_bancarios",
+          idAcreedor: "20",
+          idAcreedorEtiqueta: "200"
+        },
+        sourceDestination: { table: "otros_gastos", label: "Otros gastos" }
+      },
+      {
+        canonicalMovementId: "79",
+        movementKey: "no-valid-suggestion",
+        status: "agregar_gasto",
+        date: "2026-07-22",
+        detail: "Sin sugerencia",
+        amount: -75,
+        providerMatch: null,
+        sourceDestination: { table: "otros_gastos", label: "Otros gastos" }
+      }
+    ],
+    lookupOptions: {
+      creditors: [{ id: "10", name: "Benjamin" }, { id: "20", name: "Acreedor alternativo" }],
+      creditorTags: [
+        { idAcreedorEtiqueta: "100", idAcreedor: "10", idEtiqueta: "5", tagName: "Administrativos" },
+        { idAcreedorEtiqueta: "200", idAcreedor: "20", idEtiqueta: "6", tagName: "Servicios" }
+      ]
+    }
+  };
+  context.renderBankReconciliationStages();
+  const expenseMarkup = context.els["bank-expense-stage-body"].innerHTML;
+  assert.match(expenseMarkup, /data-bank-expense-creditor/);
+  assert.match(expenseMarkup, /data-bank-expense-tag/);
+  assert.doesNotMatch(expenseMarkup, /<label[^>]*>Acreedor<\/label>/);
+  assert.doesNotMatch(expenseMarkup, /<label[^>]*>Etiqueta<\/label>/);
+  assert.match(expenseMarkup, /<select aria-label="Acreedor"[^>]*data-bank-expense-creditor>/);
+  assert.match(expenseMarkup, /<select aria-label="Etiqueta"[^>]*data-bank-expense-tag>/);
+  const html = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const expenseStageMarkup = html.slice(
+    html.indexOf('id="bank-expense-stage"'),
+    html.indexOf('id="bank-egress-stage"')
+  );
+  assert.strictEqual((expenseStageMarkup.match(/<th>Acreedor<\/th>/g) || []).length, 1);
+  assert.strictEqual((expenseStageMarkup.match(/<th>Etiqueta<\/th>/g) || []).length, 1);
+  assert.match(expenseMarkup, /data-bank-canonical-movement-id="77"/);
+  assert.match(expenseMarkup, /value="10" selected/);
+  assert.match(expenseMarkup, /value="100" selected/);
+  assert.match(expenseMarkup, /value="20" selected/);
+  assert.match(expenseMarkup, /value="200" selected/);
+  assert.strictEqual(context.els["bank-create-expenses"].disabled, false);
+  vm.runInContext(`bankExpenseReviewDrafts.set("editable-expense", {
+    idAcreedor: "", idAcreedorEtiqueta: "", date: "2026-07-21", detail: ""
+  })`, context);
+  context.renderBankReconciliationStages();
+  const preservedDraftMarkup = context.els["bank-expense-stage-body"].innerHTML;
+  assert.match(preservedDraftMarkup, /type="date" value="2026-07-21"/);
+  assert.doesNotMatch(preservedDraftMarkup, /value="10" selected/);
+  assert.doesNotMatch(preservedDraftMarkup, />Gasto bancario<\/option>/);
+  assert.match(preservedDraftMarkup, /value="20" selected/);
+  assert.match(preservedDraftMarkup, /value="200" selected/);
+  context.bankReconciliationReport.movements = [
+    context.bankReconciliationReport.movements.find((movement) => movement.movementKey === "no-valid-suggestion")
+  ];
+  context.renderBankReconciliationStages();
+  const noSuggestionMarkup = context.els["bank-expense-stage-body"].innerHTML;
+  assert.match(noSuggestionMarkup, /data-bank-movement-key="no-valid-suggestion"/);
+  assert.doesNotMatch(noSuggestionMarkup, / selected/);
+  context.setBankReconciliationActionButtonsDisabled(true);
+  assert.strictEqual(context.els["bank-reconciliation-bank"].disabled, true);
+  assert.strictEqual(context.els["bank-reconciliation-file"].disabled, true);
+  assert.strictEqual(context.els["bank-reconciliation-file-clear"].disabled, true);
+  assert.strictEqual(context.els["bank-reconciliation-analyze"].disabled, true);
 }
 
 function testLegacyBankEgressRecoversCreditorFromLinkedSource() {
@@ -925,7 +1104,8 @@ function testLegacyBankEgressRecoversCreditorFromLinkedSource() {
         fecha_factura: "2026-07-28",
         fecha_prevista_pago: "2026-07-28",
         total: 120.5,
-        id_acreedor_etiqueta: ""
+        id_acreedor_etiqueta: "",
+        _bankOperationKey: "createEgresses:fingerprint:movement-key:1"
       }]
     },
     otros_gastos: {
@@ -940,6 +1120,131 @@ function testLegacyBankEgressRecoversCreditorFromLinkedSource() {
   const candidate = matching.backendBankPayableCandidates(tables)[0];
   assert.strictEqual(candidate.id, "501");
   assert.strictEqual(candidate.idAcreedor, "10");
+  assert.strictEqual(candidate.movementKey, "movement-key:1");
+}
+
+function testBankLineageSelectsRepeatedExpenseOneToOne() {
+  const parser = createBankParserService({
+    backendIsoDate,
+    backendNormalizeText: (value) => cleanBackendText(value).toLowerCase(),
+    backendNumber,
+    bankManualCheckDepositMatch: () => null,
+    bankMovementBackendCreditorId: () => "10",
+    bankSourceDestinationForOriginType: () => ({ table: "otros_gastos", label: "Otros gastos" }),
+    bestBankMatch: () => null,
+    bestBankSourceMatch: (_movement, candidates) => candidates[0] || null,
+    cleanBackendText,
+    compactBankText,
+    consumePersistedBankMovement: () => null,
+    exactPendingExpenseMatch: () => null,
+    extractBankCheckNumber,
+    extractBankCuit,
+    identifyBankCounterparty: () => ({
+      name: "ICBC",
+      tagLabel: "Gastos Bancarios",
+      idEtiqueta: "5",
+      idAcreedor: "10",
+      sourceDestination: { table: "otros_gastos", label: "Otros gastos" }
+    }),
+    normalizeBankCheckNumber,
+    normalizeBankCuit,
+    uniqueExactBankMatch: () => null
+  });
+  const dates = ["2026-07-21", "2026-07-22", "2026-07-23", "2026-07-24"];
+  const repeated = dates.flatMap((date, dayIndex) => [126, 600].map((amount, amountIndex) => ({
+    date,
+    amount: -amount,
+    movementKey: `repeated-${dayIndex}-${amountIndex}:1`
+  })));
+  const distinct = Array.from({ length: 7 }, (_, index) => ({
+    date: `2026-07-${21 + index}`,
+    amount: -(700 + index),
+    movementKey: `distinct-${index}:1`
+  }));
+  const movements = [...repeated, ...distinct];
+  const payables = [...movements].reverse().map((movement, index) => ({
+    type: "egreso",
+    id: String(8000 + index),
+    amount: Math.abs(movement.amount),
+    date: movement.date,
+    idAcreedor: "10",
+    movementKey: movement.movementKey
+  }));
+
+  movements.forEach((movement) => {
+    const analyzed = parser.analyzeBankMovement(
+      movement,
+      [],
+      [],
+      payables,
+      [],
+      [],
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      [],
+      "ICBC",
+      new Set()
+    );
+    assert.strictEqual(analyzed.status, "agregar_pago");
+    assert.strictEqual(analyzed.match.movementKey, movement.movementKey);
+  });
+
+  const alteredLineage = parser.analyzeBankMovement(
+    repeated[0],
+    [],
+    [],
+    [{ ...payables.find((candidate) => candidate.movementKey === repeated[0].movementKey), amount: 100 }],
+    [],
+    [],
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    [],
+    "ICBC",
+    new Set()
+  );
+  assert.strictEqual(alteredLineage.status, "agregar_gasto");
+
+  const partial = parser.analyzeBankMovement(
+    repeated[0],
+    [],
+    [],
+    [],
+    [],
+    [{
+      type: "gasto_origen",
+      table: "otros_gastos",
+      label: "Otro gasto",
+      idColumn: "id_otros_gastos",
+      id: "9001",
+      date: repeated[0].date,
+      amount: 126,
+      idAcreedor: "10",
+      movementKey: "other-movement:1"
+    }, {
+      type: "gasto_origen",
+      table: "otros_gastos",
+      label: "Otro gasto",
+      idColumn: "id_otros_gastos",
+      id: "9002",
+      date: repeated[0].date,
+      amount: 126,
+      idAcreedor: "10",
+      movementKey: repeated[0].movementKey
+    }],
+    new Map(),
+    new Map(),
+    new Map(),
+    new Map(),
+    [],
+    "ICBC",
+    new Set()
+  );
+  assert.strictEqual(partial.status, "agregar_egreso");
+  assert.strictEqual(partial.sourceMatch.id, "9002");
 }
 
 async function testDepositRollbackAndRetry() {
@@ -1277,6 +1582,7 @@ async function main() {
   await testBankReconciliationActionSequenceRefreshesCanonicalState();
   testBankReconciliationNextActionDom();
   testLegacyBankEgressRecoversCreditorFromLinkedSource();
+  testBankLineageSelectsRepeatedExpenseOneToOne();
   await testAnalyzeAndApply();
   await testIdenticalReconciledOccurrenceDoesNotReappear();
   await testAdditionalIdenticalOccurrenceUsesMultisetCounts();

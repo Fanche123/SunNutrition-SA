@@ -3,9 +3,11 @@ const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/
 const { investmentFundCandidates } = require("./investment-fund.service");
 
 function createBankReconciliationService(dependencies) {
-  const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, bankMovementAssociation, bankMovementFingerprint, canonicalPendingBankMovements, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, importBankMovements, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
+  const { analyzeBankMovement, backendBankCollectionCandidates, backendBankCreditPayableCandidates, backendBankIdentityIndex, backendBankPayableCandidates, backendBankPaymentCandidates, backendBankSourceCandidates, backendCreditorDisplayName, backendId, backendIssuedChecksByNumber, backendNormalizeText, backendNumber, backendReceivedCheckDepositGroups, backendReceivedChecksByNumber, backendTagNameForId, bankMovementAssociation, bankMovementFingerprint, canonicalPendingBankMovements, cleanBackendText, createBankEgressForSource, createBankPaymentForExpense, createBankSourceExpense, ensureBackendTable, importBankMovements, loadCache, normalizeBackendBankDetails, parseBankMovements, persistBankMovement, readJsonBody, saveBackendCache, seedDefaultBankDetails, sendJson, updateIssuedCheckFromBankMovement, updateReceivedCheckFromBankMovement } = dependencies;
   const failureInjector = dependencies.failureInjector || (() => {});
   const now = dependencies.now || (() => new Date());
+  const creditorDisplayName = backendCreditorDisplayName || ((creditor) => cleanBackendText(creditor?.acuerdo_de_pago));
+  const tagNameForId = backendTagNameForId || ((id, names) => names.get(backendId(id)) || "");
 
   async function handleBankReconciliationAnalyze(request, response) {
     try {
@@ -261,7 +263,19 @@ function createBankReconciliationService(dependencies) {
       reviewRows: body.reviewRows && typeof body.reviewRows === "object" ? body.reviewRows : {},
       lookupOptions: {
         invoiceTypes: backendBankLookupValues(tables.egresos?.rows, "tipo_factura", ["Factura A", "Factura B", "Factura C", "Remito X"]),
-        paymentMethods: backendBankLookupValues(tables.pagos?.rows, "metodo", ["Transferencia", "Cheque", "Debito", "Movimiento bancario"])
+        paymentMethods: backendBankLookupValues(tables.pagos?.rows, "metodo", ["Transferencia", "Cheque", "Debito", "Movimiento bancario"]),
+        creditors: (tables.acreedores?.rows || []).map((creditor) => ({
+          id: backendId(creditor.id_acreedor),
+          name: creditorDisplayName(creditor, tables)
+        })).filter((creditor) => creditor.id && creditor.name),
+        creditorTags: (tables.acreedores_etiquetas?.rows || []).map((relation) => ({
+          idAcreedorEtiqueta: backendId(relation.id_acreedor_etiqueta),
+          idAcreedor: backendId(relation.id_acreedor),
+          idEtiqueta: backendId(relation.id_etiqueta),
+          tagName: tagNameForId(relation.id_etiqueta, new Map(
+            (tables.etiquetas?.rows || []).map((tag) => [backendId(tag.id_etiqueta), tag.etiqueta])
+          ))
+        })).filter((relation) => relation.idAcreedorEtiqueta && relation.idAcreedor && relation.idEtiqueta && relation.tagName)
       },
       investmentFundCandidates: investmentFundCandidates(
         analyzedMovements.map((movement) => ({ ...movement, bank })),
@@ -419,20 +433,59 @@ function createBankReconciliationService(dependencies) {
         return;
       }
       const operationKey = `${report.applyMode}:${bankMovementFingerprint(movement, report.bank)}:${movement.movementKey || ""}`;
+      const operationMovement = report.applyMode === "createExpenses"
+        ? {
+          canonicalMovementId: movement.canonicalMovementId,
+          movementKey: movement.movementKey,
+          date: movement.date,
+          amount: movement.amount,
+          detail: movement.detail,
+          concept: movement.concept
+        }
+        : movement;
       const operationPayload = stableSerialize({
         applyMode: report.applyMode,
         bank: report.bank,
-        movement,
+        movement: operationMovement,
         reviewRow: report.reviewRows?.[movement.movementKey] || {}
       });
       const existingOperation = bankOperationRow(tables, operationKey);
       if (existingOperation) {
+        assertSameOperation(existingOperation._bankOperationPayload, operationPayload);
         assertBankOperationRelations(tables, report.applyMode, operationKey);
         return skipBankMovement(counters);
       }
       if (report.applyMode === "createExpenses") {
         if (movement.status !== "agregar_gasto") return skipBankMovement(counters);
-        const created = createBankSourceExpense(tables, movement, report.reviewRows?.[movement.movementKey], operationKey, operationPayload);
+        const reviewRow = report.reviewRows?.[movement.movementKey] || {};
+        if (!backendId(reviewRow.idAcreedor) || !backendId(reviewRow.idAcreedorEtiqueta)) {
+          counters.skipped += 1;
+          notes.push(`${movement.date} · ${movement.detail || movement.concept}: elegi un acreedor y una etiqueta validos.`);
+          return;
+        }
+        const selectedCreditorId = backendId(reviewRow.idAcreedor);
+        const selectedRelationId = backendId(reviewRow.idAcreedorEtiqueta);
+        const creditorExists = (tables.acreedores?.rows || []).some((row) => (
+          backendId(row.id_acreedor) === selectedCreditorId
+        ));
+        const validRelation = (tables.acreedores_etiquetas?.rows || []).some((row) => (
+          backendId(row.id_acreedor_etiqueta) === selectedRelationId
+          && backendId(row.id_acreedor) === selectedCreditorId
+          && backendId(row.id_etiqueta)
+        ));
+        if (!creditorExists || !validRelation) {
+          counters.skipped += 1;
+          notes.push(`${movement.date} · ${movement.detail || movement.concept}: la combinacion acreedor-etiqueta no existe o ya no es valida.`);
+          return;
+        }
+        let created;
+        try {
+          created = createBankSourceExpense(tables, movement, reviewRow, operationKey, operationPayload);
+        } catch (error) {
+          counters.skipped += 1;
+          notes.push(`${movement.date} · ${movement.detail || movement.concept}: ${error.message}`);
+          return;
+        }
         if (!created) {
           counters.skipped += 1;
           notes.push(`${movement.date} · ${movement.detail || movement.concept}: debe completarse en ${movement.sourceDestination?.label || "su modulo operativo"}.`);
@@ -539,6 +592,23 @@ function createBankReconciliationService(dependencies) {
   }
 
   function assertBankOperationRelations(tables, applyMode, operationKey) {
+    if (applyMode === "createExpenses") {
+      const source = (tables.otros_gastos?.rows || []).find((row) => row._bankOperationKey === operationKey);
+      if (!source) throwConflict("La conciliacion existente no conserva el gasto creado.");
+      const payload = JSON.parse(source._bankOperationPayload || "{}");
+      const movementKey = cleanBackendText(payload.movement?.movementKey);
+      const reviewRow = payload.reviewRow || {};
+      const bankRows = (tables.movimientos_bancarios?.rows || []).filter((row) => (
+        cleanBackendText(row._bankMovementKey) === movementKey
+      ));
+      if (
+        bankRows.length !== 1
+        || backendId(bankRows[0]._bankManualCreditorId) !== backendId(reviewRow.idAcreedor)
+        || backendId(bankRows[0]._bankManualCreditorTagRelationId) !== backendId(reviewRow.idAcreedorEtiqueta)
+      ) {
+        throwConflict("La conciliacion existente no conserva la clasificacion manual del movimiento.");
+      }
+    }
     if (applyMode === "createPayments") {
       const payment = (tables.pagos?.rows || []).find((row) => row._bankOperationKey === operationKey);
       const detail = (tables.detalle_pagos?.rows || []).find((row) => row._bankOperationKey === operationKey);

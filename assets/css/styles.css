@@ -999,6 +999,11 @@ textarea {
   font-size: 12px;
 }
 
+.bank-stage-table select.bank-stage-input {
+  width: 100%;
+  min-width: 190px;
+}
+
 .bank-stage-detail-input {
   width: min(360px, 100%);
   min-width: 220px;

@@ -63,6 +63,7 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `tests/reports.test.js` | Reportes | Arquitectura | Fixtures y regresión focalizada de reportes; pruebas | Medio | `reportes.md` |
 | `backend/services/backend-*.service.js`, `sql.service.js` | Administración | Base de datos, Arquitectura | Tablas/mapa/SQL; dominio interno | Alto | `administracion.md` + `base-de-datos.md` |
 | `backend/services/admin-table.service.js`, `table-read-metrics.service.js`, `backend/config/{admin-table-policy,admin-table-relations,query-limits}.js` | Administración | Base de datos, Arquitectura | CRUD, PATCH atómico de celda y metadata relacional del editor; límites SQL y métricas de lectura completa | Alto | `administracion.md` + `base-de-datos.md` |
+| `backend/services/expense-deletion.service.js`, `tests/expense-deletion.test.js` | Administración | Base de datos, Tesorería, Contabilidad, Arquitectura, UI/UX | Preview firmado y baja atómica allowlisted de egresos con desvinculación financiera | Alto | `administracion.md` + consumidores |
 | `tests/administration-hardening.test.js` | Administración | Base de datos, Arquitectura, UI/UX | Regresión aislada de acceso local, lectura completa, orden por PK, edición universal, selección/entrada de celda, relaciones, SQL y contratos estáticos del Editor | Alto | `administracion.md` + consumidores afectados |
 | `backend/config/access.js`, `backend/services/access-control.service.js` | Arquitectura | Todos | Bind, CORS y punto futuro de autenticación/autorización | Alto | `arquitectura.md` |
 | `backend/services/core-handlers.service.js` | Arquitectura | Administración, Reportes | Handlers transversales; infraestructura | Medio | `arquitectura.md` + consumidor |
@@ -99,6 +100,8 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `backend/migrations/20260727-economic-expenses-history.js` (rama `egresos.imp_internos`) | Contabilidad + Base de datos | Compras, TesorerĂ­a, Reportes, AdministraciĂłn | Reconocimiento append-only por fecha de factura bajo `Otros Impuestos` | Alto | `contabilidad.md` + consumidores |
 
 ## Regla para compartidos
+
+| `backend/migrations/20260728-last-bank-batch-reset.js`, `tests/last-bank-batch-reset.test.js` | Base de datos + Tesorería | Contabilidad, Arquitectura, UI/UX | Reversión puntual, atómica e idempotente del último lote ICBC por linaje persistido, con backup/dry-run/restore | Alto | `base-de-datos.md` + `tesoreria.md` + consumidores |
 
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.
 

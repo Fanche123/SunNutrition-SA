@@ -41,6 +41,11 @@ function collectBankReconciliationReviewRows(status) {
     row.querySelectorAll("[data-bank-review-field]").forEach((input) => {
       reviewRows[movementKey][input.dataset.bankReviewField] = input.value;
     });
+    if (status === "agregar_gasto") {
+      reviewRows[movementKey].canonicalMovementId = row.dataset.bankCanonicalMovementId || "";
+      reviewRows[movementKey].expectedDate = row.dataset.bankExpectedDate || "";
+      reviewRows[movementKey].expectedAmount = row.dataset.bankExpectedAmount || "";
+    }
   });
   return reviewRows;
 }
@@ -59,7 +64,9 @@ function renderBankReconciliation() {
     .map((movement, index) => ({ movement, index }))
     .filter(({ movement }) => movement.status !== "conciliado");
   const readyMovements = bankReconciliationMovementsByStatus("listo");
-  if (els["bank-reconciliation-apply"]) els["bank-reconciliation-apply"].disabled = !readyMovements.length;
+  if (els["bank-reconciliation-apply"]) {
+    els["bank-reconciliation-apply"].disabled = bankReconciliationApplyInFlight || !readyMovements.length;
+  }
   renderBankReconciliationStages();
   renderBankCheckDepositReview();
   if (!movements.length) {
@@ -120,28 +127,81 @@ function renderBankReconciliationOptionLists() {
   renderOptions("bank-payment-method-options", options.paymentMethods);
 }
 
+function bankExpenseCreditorOptions(selectedId) {
+  return (bankReconciliationReport?.lookupOptions?.creditors || []).map((creditor) => (
+    `<option value="${escapeHtml(creditor.id)}"${String(creditor.id) === String(selectedId) ? " selected" : ""}>${escapeHtml(creditor.name)}</option>`
+  )).join("");
+}
+
+function bankExpenseTagOptions(creditorId, selectedRelationId) {
+  return (bankReconciliationReport?.lookupOptions?.creditorTags || [])
+    .filter((relation) => String(relation.idAcreedor) === String(creditorId))
+    .map((relation) => (
+      `<option value="${escapeHtml(relation.idAcreedorEtiqueta)}"${String(relation.idAcreedorEtiqueta) === String(selectedRelationId) ? " selected" : ""}>${escapeHtml(relation.tagName)}</option>`
+    )).join("");
+}
+
+function bankExpenseInitialSelection(movement, savedDraft, hasDraft) {
+  if (hasDraft) {
+    return {
+      creditorId: savedDraft.idAcreedor,
+      relationId: savedDraft.idAcreedorEtiqueta
+    };
+  }
+  const manual = movement.manualClassification;
+  if (manual && (Object.prototype.hasOwnProperty.call(manual, "idAcreedor")
+    || Object.prototype.hasOwnProperty.call(manual, "idAcreedorEtiqueta"))) {
+    return {
+      creditorId: manual.idAcreedor,
+      relationId: manual.idAcreedorEtiqueta
+    };
+  }
+  return {
+    creditorId: movement.providerMatch?.idAcreedor
+      ?? (movement.providerMatch?.type === "acreedor" ? movement.providerMatch.id : ""),
+    relationId: movement.providerMatch?.idAcreedorEtiqueta ?? movement.idAcreedorEtiqueta ?? ""
+  };
+}
+
 function renderBankExpenseStage(movements) {
   if (els["bank-expense-stage-count"]) els["bank-expense-stage-count"].textContent = String(movements.length);
-  if (els["bank-create-expenses"]) els["bank-create-expenses"].disabled = !movements.length;
+  if (els["bank-create-expenses"]) {
+    els["bank-create-expenses"].disabled = bankReconciliationApplyInFlight || !movements.length;
+  }
   if (!els["bank-expense-stage-body"]) return;
   els["bank-expense-stage-body"].innerHTML = movements.length
-    ? movements.map((movement) => `
-      <tr data-bank-movement-key="${escapeHtml(movement.movementKey || "")}">
-        <td><input class="bank-stage-input" type="date" value="${escapeHtml(movement.date || "")}" data-bank-review-field="date"></td>
-        <td>${escapeHtml(bankReconciliationCreditorLabel(movement))}</td>
-        <td>${escapeHtml(bankReconciliationTagLabel(movement))}</td>
+    ? movements.map((movement) => {
+      const movementKey = String(movement.movementKey || "");
+      const savedDraft = bankExpenseReviewDrafts.get(movementKey) || {};
+      const hasDraft = bankExpenseReviewDrafts.has(movementKey);
+      const { creditorId, relationId } = bankExpenseInitialSelection(movement, savedDraft, hasDraft);
+      return `
+      <tr data-bank-movement-key="${escapeHtml(movementKey)}"
+          data-bank-canonical-movement-id="${escapeHtml(movement.canonicalMovementId || "")}"
+          data-bank-expected-date="${escapeHtml(movement.date || "")}"
+          data-bank-expected-amount="${escapeHtml(String(movement.amount ?? ""))}">
+        <td><input class="bank-stage-input" type="date" value="${escapeHtml(hasDraft ? savedDraft.date : (movement.date || ""))}" data-bank-review-field="date"></td>
+        <td><select aria-label="Acreedor" id="bank-expense-creditor-${escapeHtml(movementKey)}" class="bank-stage-input" data-bank-review-field="idAcreedor" data-bank-expense-creditor>
+          <option value="">Elegir acreedor</option>${bankExpenseCreditorOptions(creditorId)}
+        </select></td>
+        <td><select aria-label="Etiqueta" id="bank-expense-tag-${escapeHtml(movementKey)}" class="bank-stage-input" data-bank-review-field="idAcreedorEtiqueta" data-bank-expense-tag>
+          <option value="">Elegir etiqueta</option>${bankExpenseTagOptions(creditorId, relationId)}
+        </select></td>
         <td>${escapeHtml(movement.sourceDestination?.label || "Otros gastos")}</td>
-        <td><input class="bank-stage-input bank-stage-detail-input" value="${escapeHtml(movement.detail || movement.concept || "")}" data-bank-review-field="detail"></td>
+        <td><input class="bank-stage-input bank-stage-detail-input" value="${escapeHtml(hasDraft ? savedDraft.detail : (movement.detail || movement.concept || ""))}" data-bank-review-field="detail"></td>
         <td class="num">${formatBankMoney(Math.abs(movement.amount || 0))}</td>
         <td><button type="button" class="bank-stage-remove" data-bank-stage-remove="${escapeHtml(movement.movementKey || "")}">Quitar</button></td>
       </tr>
-    `).join("")
+    `;
+    }).join("")
     : emptyRow(7, "No hay gastos para agregar.");
 }
 
 function renderBankEgressStage(movements) {
   if (els["bank-egress-stage-count"]) els["bank-egress-stage-count"].textContent = String(movements.length);
-  if (els["bank-create-egresses"]) els["bank-create-egresses"].disabled = !movements.length;
+  if (els["bank-create-egresses"]) {
+    els["bank-create-egresses"].disabled = bankReconciliationApplyInFlight || !movements.length;
+  }
   if (!els["bank-egress-stage-body"]) return;
   els["bank-egress-stage-body"].innerHTML = movements.length
     ? movements.map((movement) => `
@@ -159,7 +219,9 @@ function renderBankEgressStage(movements) {
 
 function renderBankPaymentStage(movements) {
   if (els["bank-payment-stage-count"]) els["bank-payment-stage-count"].textContent = String(movements.length);
-  if (els["bank-create-payments"]) els["bank-create-payments"].disabled = !movements.length;
+  if (els["bank-create-payments"]) {
+    els["bank-create-payments"].disabled = bankReconciliationApplyInFlight || !movements.length;
+  }
   if (!els["bank-payment-stage-body"]) return;
   els["bank-payment-stage-body"].innerHTML = movements.length
     ? movements.map((movement) => `

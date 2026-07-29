@@ -107,7 +107,13 @@ function createBankPersistenceService(dependencies) {
           debit,
           credit,
           balance: normalizeMoney(backendNumber(row.saldo)),
-          channel: cleanBackendText(row._bankChannel)
+          channel: cleanBackendText(row._bankChannel),
+          manualClassification: cleanBackendText(row._bankManualClassificationSource) ? {
+            idAcreedor: backendId(row._bankManualCreditorId),
+            idEtiqueta: backendId(row._bankManualTagId),
+            idAcreedorEtiqueta: backendId(row._bankManualCreditorTagRelationId),
+            source: cleanBackendText(row._bankManualClassificationSource)
+          } : null
         };
       })
       .sort((left, right) => (
@@ -277,9 +283,37 @@ function createBankPersistenceService(dependencies) {
     const destination = movement.sourceDestination || bankSourceDestinationForOriginType("");
     if (destination.table !== "otros_gastos") return null;
   
-    const creditorId = bankMovementBackendCreditorId(movement);
-    if (!creditorId) return null;
-    const relationId = backendCreditorTagRelationId(creditorId, movement.idEtiqueta, tables);
+    const creditorId = backendId(reviewRow.idAcreedor) || bankMovementBackendCreditorId(movement);
+    const relationId = backendId(reviewRow.idAcreedorEtiqueta)
+      || backendCreditorTagRelationId(creditorId, movement.idEtiqueta, tables);
+    const relation = (tables.acreedores_etiquetas?.rows || []).find((row) => (
+      backendId(row.id_acreedor_etiqueta) === relationId
+      && backendId(row.id_acreedor) === creditorId
+    ));
+    if (!creditorId || !relation) return null;
+    const movementRows = (tables.movimientos_bancarios?.rows || []).filter((row) => (
+      cleanBackendText(row._bankMovementKey) === cleanBackendText(movement.movementKey)
+    ));
+    if (movementRows.length !== 1) {
+      const error = new Error("La clave bancaria no identifica un unico movimiento pendiente.");
+      error.statusCode = 409;
+      throw error;
+    }
+    const bankRow = movementRows[0];
+    if (
+      backendId(bankRow.id_movimiento_bancario) !== backendId(reviewRow.canonicalMovementId)
+      || backendIsoDate(bankRow.fecha) !== backendIsoDate(reviewRow.expectedDate)
+      || toCents(backendNumber(bankRow.importe)) !== toCents(backendNumber(reviewRow.expectedAmount))
+    ) {
+      const error = new Error("El movimiento bancario cambio desde el analisis. Actualiza la conciliacion y reintenta.");
+      error.statusCode = 409;
+      throw error;
+    }
+    if (backendId(bankRow.id_pago) || backendId(bankRow.id_cobro) || backendId(bankRow.id_movimiento_fondo)) {
+      const error = new Error("El movimiento bancario ya no esta pendiente.");
+      error.statusCode = 409;
+      throw error;
+    }
     const table = tables.otros_gastos;
     const sourceId = backendNextNumericId(table.rows, "id_otros_gastos");
     table.rows.push({
@@ -296,6 +330,12 @@ function createBankPersistenceService(dependencies) {
       _editedLocallyAt: new Date().toISOString()
     });
     table.rowCount = table.rows.length;
+    bankRow._bankManualCreditorId = creditorId;
+    bankRow._bankManualTagId = backendId(relation.id_etiqueta);
+    bankRow._bankManualCreditorTagRelationId = relationId;
+    bankRow._bankManualClassificationSource = "bank-reconciliation:createExpenses";
+    bankRow._bankManualClassificationAt = new Date().toISOString();
+    bankRow._editedLocallyAt = new Date().toISOString();
     return { sourceId, label: destination.label };
   }
   

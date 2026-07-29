@@ -39,9 +39,12 @@ La integración del fondo es una excepción explícita: cada rendimiento crea en
 - Reportes consume todos los confirmados dentro del Estado de Resultados oficial en cualquier período. Si no existen filas confirmadas, informa cero gastos; no reconstruye productores ni vuelve a sumar el fondo por otra fuente.
 - La migración/materializador `20260727-economic-expenses-history.js` reconoce recepciones, otros gastos, logística, comisiones, Ingresos Brutos, sueldo neto e intereses de planes únicamente con fecha, importe y etiqueta canónicos. Para sueldos conserva una sola fuente por empleado/período cuando neto, egreso y etiqueta coinciden; prioriza la fila con datos de liquidación y luego el menor ID, y falla ante fuentes incompatibles. El financiero se anticipa por cuota; el resarcitorio requiere que pagos y aplicaciones completen `capital + interes_financiero` después del primer vencimiento y hasta el segundo. Capital, aportes y movimientos del fondo no económicos quedan excluidos. Los confirmados históricos se corrigen con ajustes/reversiones.
 - Toda escritura valida, clona el cache y ejecuta un único `saveBackendCache`.
+- La eliminación explícita de un `egreso` desde Administración elimina físicamente sus filas puente `gastos_egresos`, porque una reversión seguiría apuntando al egreso inexistente; conserva íntegros los `gastos_economicos` confirmados y no vuelve a materializarlos.
 - La reparación puntual `20260728-icbc-duplicate-repair.js` neutraliza el gasto confirmado duplicado `467` mediante reversión económica y de aplicación append-only; no borra confirmados.
 
 ## Validación y seguridad
+
+La reparación puntual `20260728-last-bank-batch-reset.js` debe abortar si detecta gastos económicos o aplicaciones derivados del lote, porque cualquier neutralización de confirmados exige el contrato append-only de Contabilidad.
 
 Usá fixtures y caches temporales para validar. Una carga real autorizada exige dry-run, backup verificable y reintento idempotente. Cubrí estados, fecha diaria, identidad funcional, idempotencia/409, precedentes, sobreaplicación, conciliación, exclusiones y consumo por Reportes.
 

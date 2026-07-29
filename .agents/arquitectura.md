@@ -37,6 +37,7 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; el ejecutor realiza sus pruebas proporcionales. En alto riesgo usa secuencialmente `watchdog_tarea`, tres instancias paralelas de `validador_tarea` y `consolidador_validacion`, todos read-only.
 - Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`; `shared/inventory-purchase-evaluation.js` centraliza la regla operativa de alerta para frontend y backend bajo ownership de Inventario. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
 - Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js` y `server-runtime.js`.
+- Administración compone `expense-deletion.service.js` exclusivamente para la baja allowlisted de `egresos`; router expone el preview específico y el POST administrativo confirma con la firma del mismo plan, sin cascada genérica.
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
 - Referencias/validación: `docs/architecture.md`, `docs/refactor-architecture-plan.md`, `backend/README.md`, `tools/check-js.ps1`. `.codex-snippet.txt` es un snippet no cargado por runtime y queda bajo revisión arquitectónica, no como fuente funcional.
 
@@ -94,6 +95,8 @@ El progreso de tareas Codex se consulta bajo demanda mediante la skill personal 
 La coordinación v2 basada en archivos se conserva únicamente para recuperación manual y nunca se combina con el flujo nativo de una misma tarea.
 
 ## Entrega
+
+La reparación real `backend/migrations/20260728-last-bank-batch-reset.js` comparte el contrato de hash, backup verificable, dry-run/restore y reemplazo atómico de las reparaciones ICBC existentes.
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
 

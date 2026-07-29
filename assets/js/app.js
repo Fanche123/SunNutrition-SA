@@ -1148,10 +1148,18 @@ function bindEvents() {
     });
   });
   setupBankReconciliationFileDropZone();
-  els["bank-reconciliation-file"]?.addEventListener("change", () => readBankReconciliationFile());
-  els["bank-reconciliation-file-clear"]?.addEventListener("click", () => clearBankReconciliationFile());
-  els["bank-reconciliation-bank"]?.addEventListener("change", () => refreshBankReconciliationFromBackend());
-  els["bank-reconciliation-analyze"]?.addEventListener("click", () => analyzeBankReconciliation());
+  els["bank-reconciliation-file"]?.addEventListener("change", () => {
+    if (!bankReconciliationApplyInFlight) readBankReconciliationFile();
+  });
+  els["bank-reconciliation-file-clear"]?.addEventListener("click", () => {
+    if (!bankReconciliationApplyInFlight) clearBankReconciliationFile();
+  });
+  els["bank-reconciliation-bank"]?.addEventListener("change", () => {
+    if (!bankReconciliationApplyInFlight) refreshBankReconciliationFromBackend();
+  });
+  els["bank-reconciliation-analyze"]?.addEventListener("click", () => {
+    if (!bankReconciliationApplyInFlight) analyzeBankReconciliation();
+  });
   els["bank-reconciliation-apply"]?.addEventListener("click", () => applyBankReconciliation("reconcile"));
   els["bank-create-expenses"]?.addEventListener("click", () => applyBankReconciliation("createExpenses"));
   els["bank-create-egresses"]?.addEventListener("click", () => applyBankReconciliation("createEgresses"));
@@ -1186,6 +1194,24 @@ function bindEvents() {
     if (!removeButton) return;
     bankReconciliationExcludedMovementKeys.add(removeButton.dataset.bankStageRemove || "");
     renderBankReconciliationStages();
+  });
+  els["bank-expense-stage-body"]?.addEventListener("change", (event) => {
+    const creditorSelect = event.target.closest("[data-bank-expense-creditor]");
+    const row = event.target.closest("[data-bank-movement-key]");
+    if (!row) return;
+    if (creditorSelect) {
+      const tagSelect = row.querySelector("[data-bank-expense-tag]");
+      if (!tagSelect) return;
+      tagSelect.innerHTML = `<option value="">Elegir etiqueta</option>${bankExpenseTagOptions(creditorSelect.value, "")}`;
+    }
+    const draft = collectBankReconciliationReviewRows("agregar_gasto")[row.dataset.bankMovementKey];
+    if (draft) bankExpenseReviewDrafts.set(row.dataset.bankMovementKey, draft);
+  });
+  els["bank-expense-stage-body"]?.addEventListener("input", (event) => {
+    const row = event.target.closest("[data-bank-movement-key]");
+    if (!row) return;
+    const draft = collectBankReconciliationReviewRows("agregar_gasto")[row.dataset.bankMovementKey];
+    if (draft) bankExpenseReviewDrafts.set(row.dataset.bankMovementKey, draft);
   });
   els["bank-reconciliation-body"]?.addEventListener("click", (event) => {
     const depositReviewButton = event.target.closest("[data-bank-review-check-deposit]");

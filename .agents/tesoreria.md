@@ -64,6 +64,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 - `POST /api/treasury/payments`: guarda pago y detalles en una única persistencia idempotente.
 - `GET|POST /api/treasury/investment-fund`: devuelve el libro mayor derivado o registra atómicamente depósitos, rescates y rendimientos con idempotencia durable.
 - `POST /api/treasury/partner-contributions`: guarda aporte/retiro y egreso relacionado en una única persistencia idempotente.
+- La baja administrativa de un `egreso` elimina sus `detalle_pagos`, recalcula el encabezado compartido conservado y limpia las asociaciones del pago modificado en movimientos bancarios, cheques y fondo; el movimiento bancario sobrevive sin asociación y vuelve a pendiente.
 - `GET|POST /api/treasury/payment-plans` y rutas específicas por plan/cuota: lectura y edición compuesta de planes sobre una copia del cache, con una única persistencia e idempotencia durable.
 - `POST /api/creditors/create`: alta integral usada por borradores bancarios; contrato implementado en `creditor-entry.service.js`.
 - `GET /api/reports/cashflow`: consumidor posterior a escrituras, propiedad de Reportes.
@@ -119,6 +120,8 @@ Pagos, cobros, cheques y planes dependen del contrato único `shared/money.js` /
 - El endpoint/UI de endoso siguen pendientes. Al implementarlos, rechazar cheques no pendientes o ya usados, exigir suma exacta y reforzar ambos caminos de depósito para que no acepten cheques con `id_pago_endoso` ni estado `Endosado`. No reinterpretar los estados históricos ya persistidos.
 
 ## Mantenimiento y entrega
+
+La reparación puntual `backend/migrations/20260728-last-bank-batch-reset.js`, validada por `tests/last-bank-batch-reset.test.js`, conserva el último lote ICBC importado y elimina únicamente sus cadenas trazadas por `_bankMovementKey`/`_bankOperationKey`, con firma exacta, backup, dry-run, restore e idempotencia.
 
 Crear, mover, renombrar o eliminar un archivo permanente del sector obliga, en la misma tarea, a actualizar este AGENT, `.agents/file-ownership.md` y arquitectura/dependencias. Una integración nueva actualiza también el AGENT consumidor. No aplica a temporales, logs, outputs, adjuntos, caches o generados. Es parte obligatoria del terminado.
 

@@ -39,8 +39,32 @@ function clearBankReconciliationFile() {
   renderBankReconciliation();
 }
 
-function refreshBankReconciliationFromBackend() {
-  if (bankReconciliationRefreshPromise) return bankReconciliationRefreshPromise;
+let bankReconciliationApplyInFlight = false;
+const bankExpenseReviewDrafts = new Map();
+
+function setBankReconciliationActionButtonsDisabled(disabled) {
+  [
+    "bank-create-expenses",
+    "bank-create-egresses",
+    "bank-create-payments",
+    "bank-reconciliation-apply",
+    "bank-reconciliation-bank",
+    "bank-reconciliation-file",
+    "bank-reconciliation-file-clear",
+    "bank-reconciliation-analyze"
+  ].forEach((id) => {
+    if (els[id]) els[id].disabled = disabled;
+  });
+  document.querySelectorAll?.(
+    "#bank-expense-stage-body input, #bank-expense-stage-body select, #bank-egress-stage-body input, #bank-payment-stage-body input"
+  )?.forEach((control) => { control.disabled = disabled; });
+}
+
+async function refreshBankReconciliationFromBackend({ force = false } = {}) {
+  if (bankReconciliationRefreshPromise) {
+    if (!force) return bankReconciliationRefreshPromise;
+    await bankReconciliationRefreshPromise;
+  }
 
   const bank = els["bank-reconciliation-bank"]?.value || "ICBC";
   bankReconciliationRefreshPromise = fetch(
@@ -111,6 +135,10 @@ async function analyzeBankReconciliation({ preserveExcludedMovements = false } =
 }
 
 async function applyBankReconciliation(applyMode) {
+  if (bankReconciliationApplyInFlight) {
+    setBankReconciliationStatus("Ya hay una accion de conciliacion en curso.", "warn");
+    return;
+  }
   if (!bankReconciliationReport?.movements?.length) {
     setBankReconciliationStatus("No hay movimientos pendientes para procesar.", "warn");
     return;
@@ -148,12 +176,20 @@ async function applyBankReconciliation(applyMode) {
 
   const button = stageConfig.button;
   const originalText = button?.textContent || "Ejecutar";
+  let finalStatus = null;
+  bankReconciliationApplyInFlight = true;
+  setBankReconciliationActionButtonsDisabled(true);
   if (button) {
-    button.disabled = true;
     button.textContent = stageConfig.progressText;
   }
 
   try {
+    const reviewRows = collectBankReconciliationReviewRows(stageConfig.status);
+    if (applyMode === "createExpenses") {
+      Object.entries(reviewRows).forEach(([movementKey, reviewRow]) => {
+        bankExpenseReviewDrafts.set(movementKey, { ...reviewRow });
+      });
+    }
     const response = await fetch(`${API_BASE_URL}/api/bank-reconciliation/apply`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -161,13 +197,16 @@ async function applyBankReconciliation(applyMode) {
         bank: els["bank-reconciliation-bank"]?.value || "ICBC",
         applyMode,
         movementKeys: stageMovements.map((movement) => movement.movementKey),
-        reviewRows: collectBankReconciliationReviewRows(stageConfig.status)
+        reviewRows
       })
     });
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo conciliar el banco.");
     const result = payload.result || {};
-    await refreshBankReconciliationFromBackend();
+    const refreshedReport = await refreshBankReconciliationFromBackend({ force: true });
+    if (!refreshedReport) {
+      throw new Error("La accion se guardo, pero no se pudo refrescar el estado. Volve a cargar la conciliacion antes de continuar.");
+    }
     const stageMessage = {
       createExpenses: `${result.expensesCreated || 0} gasto(s) agregado(s)`,
       createEgresses: `${result.egressesCreated || 0} egreso(s) agregado(s)`,
@@ -175,17 +214,21 @@ async function applyBankReconciliation(applyMode) {
       reconcile: `${result.movementsReconciled || 0} movimiento(s) conciliado(s)`
     }[applyMode];
     const note = Array.isArray(result.notes) && result.notes.length ? ` ${result.notes[0]}` : "";
-    setBankReconciliationStatus(
-      `${stageMessage}.${result.skipped ? ` ${result.skipped} movimiento(s) requieren revision.` : ""}${note}`,
-      result.skipped && !result.expensesCreated && !result.egressesCreated && !result.paymentsCreated && !result.movementsReconciled ? "warn" : "ok"
-    );
+    finalStatus = {
+      message: `${stageMessage}.${result.skipped ? ` ${result.skipped} movimiento(s) requieren revision.` : ""}${note}`,
+      type: result.skipped && !result.expensesCreated && !result.egressesCreated
+        && !result.paymentsCreated && !result.movementsReconciled ? "warn" : "ok"
+    };
     loadBackendCashflowReport();
   } catch (error) {
-    setBankReconciliationStatus(error.message, "warn");
+    console.error("No se pudo aplicar la accion de conciliacion bancaria.", error);
+    finalStatus = { message: error.message, type: "warn" };
   } finally {
+    bankReconciliationApplyInFlight = false;
     if (button) {
-      button.disabled = false;
       button.textContent = originalText;
     }
+    renderBankReconciliation();
+    if (finalStatus) setBankReconciliationStatus(finalStatus.message, finalStatus.type);
   }
 }

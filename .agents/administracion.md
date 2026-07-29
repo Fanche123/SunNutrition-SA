@@ -26,7 +26,7 @@ Fuera de alcance: definir columnas, claves o migraciones (Base de datos); cambia
 
 - Frontend: `assets/js/modules/data-editor.js`, `data-map.js`, `sql-console.js`.
 - El Editor usa una única grilla compacta y virtualizada. Solicita todas las filas filtradas, mantiene un único scroll continuo y solo materializa en el DOM la ventana visible. No expone posiciones internas, rangos, páginas ni tamaños de bloque; la selección para borrado ocupa una columna mínima.
-- Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `sql.service.js`.
+- Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `admin-table.service.js`, `expense-deletion.service.js`, `sql.service.js`.
 - Compartidos relevantes: `index.html`, `assets/css/styles.css`, `assets/js/app.js`, `assets/js/core/formatters.js`, `backend/services/core-handlers.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`, `backend/routes/router.js`, `tools/backend-sqlite-query.py`.
 
 ## Tablas y contratos confirmados
@@ -43,6 +43,7 @@ Administración no posee tablas de negocio: opera las definiciones registradas e
 - `GET /api/admin/tables/:tabla?all=true&search&filter&orderBy&orderDir` → todas las filas coincidentes, schema y metadata de relaciones. El Editor solicita `all=true`; el windowing es exclusivamente frontend.
 - `PATCH /api/admin/tables/:tabla/cell` recibe `{ primaryKey, column, value, originalValue, tableVersion }` y devuelve `{ ok, row, tableVersion }`; valida y persiste una sola celda de forma atómica, con conflicto por versión/valor original.
 - `POST /api/admin/tables/:tabla` conserva altas y bajas administrativas. Las filas nuevas se validan completas antes de persistir; una fila vacía o incompleta permanece como borrador local.
+- `POST /api/admin/tables/egresos/delete-preview` calcula desde el cache persistido un plan firmado de eliminación/desvinculación. La confirmación de esos IDs exige el token vigente, aplica una allowlist financiera sobre una copia y persiste una sola vez; ninguna otra tabla obtiene cascadas.
 
 Todas las tablas registradas tienen una única política administrativa con lectura, alta, modificación y baja habilitadas; no existen categorías de solo lectura ni de operación. El Editor presenta el mismo comportamiento editable para cada tabla expuesta. Las tablas ocultas no se muestran y las no registradas permanecen denegadas.
 

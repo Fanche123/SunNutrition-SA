@@ -302,6 +302,7 @@ const backendColumnsMap = createBackendMapService({
 });
 const {
   handleAdminTableCellUpdate,
+  handleAdminTableDeletePreview,
   handleAdminTableRequest,
   handleAdminTableSave,
   handleAdminTablesOverview
@@ -511,12 +512,14 @@ const {
   backendBankPayableCandidates,
   backendBankPaymentCandidates,
   backendBankSourceCandidates,
+  backendCreditorDisplayName,
   backendId,
   backendIssuedChecksByNumber,
   backendNormalizeText,
   backendNumber,
   backendReceivedCheckDepositGroups,
   backendReceivedChecksByNumber,
+  backendTagNameForId,
   bankMovementAssociation,
   bankMovementFingerprint,
   canonicalPendingBankMovements,
@@ -761,6 +764,7 @@ const server = http.createServer(createRequestHandler({
     handleAppStateSave,
     handleBackendSqlQuery,
     handleAdminTableCellUpdate,
+    handleAdminTableDeletePreview,
     handleAdminTableRequest,
     handleAdminTableSave,
     handleAdminTablesOverview,

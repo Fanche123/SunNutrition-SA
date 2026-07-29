@@ -3,6 +3,14 @@ const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/
 function createBankMatchingService(dependencies) {
   const { backendBankMatches, backendCreditorDisplayName, backendCreditorTagNames, backendCreditorTagRelationId, backendExpenseCounterpartyInfo, backendGroupRowsById, backendId, backendIsoDate, backendNormalizeText, backendNumber, backendRowsById, backendTagIdForName, backendTagNameForId, backendTagNameMap, bankDateDistance, bankMovementBackendCreditorId, bankSourceDestinationForOriginType, bankTextOverlapScore, cleanBackendText, compactBankText, normalizeBankCheckNumber, normalizeBankCuit } = dependencies;
 
+  function bankMovementKeyFromOperation(row, stage) {
+    const operationKey = String(row?._bankOperationKey ?? "").trim();
+    const prefix = `${stage}:`;
+    if (!operationKey.startsWith(prefix)) return "";
+    const fingerprintEnd = operationKey.indexOf(":", prefix.length);
+    return fingerprintEnd >= 0 ? operationKey.slice(fingerprintEnd + 1) : "";
+  }
+
   function backendReceivedChecksByNumber(tables) {
     const checksByNumber = new Map();
     (tables.cheques_recibidos?.rows || []).forEach((check) => {
@@ -189,6 +197,7 @@ function createBankMatchingService(dependencies) {
         return {
           type: "pago",
           id: paymentId,
+          movementKey: bankMovementKeyFromOperation(payment, "createPayments"),
           date: backendIsoDate(payment.fecha_pago),
           amount: fromCents(Math.abs(signedAmountCents)),
           direction: signedAmountCents < 0 ? "credito" : "debito",
@@ -276,6 +285,7 @@ function createBankMatchingService(dependencies) {
         return {
           type: "egreso",
           id: backendId(expense.id_egreso),
+          movementKey: bankMovementKeyFromOperation(expense, "createEgresses"),
           date: backendIsoDate(expense.fecha_prevista_pago) || backendIsoDate(expense.fecha_factura),
           amount: fromCents(Math.abs(toCents(pendingAmount))),
           planPayment: planExpenseIds.has(backendId(expense.id_egreso)),
@@ -310,6 +320,7 @@ function createBankMatchingService(dependencies) {
         label: config.label,
         idColumn: config.idColumn,
         id: backendId(row[config.idColumn]),
+        movementKey: bankMovementKeyFromOperation(row, "createExpenses"),
         date: backendIsoDate(details.date),
         invoiceDate: backendIsoDate(row._fecha_factura),
         invoiceType: row._tipo_factura || "",
@@ -449,8 +460,16 @@ function createBankMatchingService(dependencies) {
     };
   
     (tables.acreedores?.rows || []).forEach((creditor) => {
-      const tagOptions = backendCreditorTagNames(creditor.id_acreedor, tables);
-      const firstTag = tagOptions[0] || "";
+      const tagNames = backendCreditorTagNames(creditor.id_acreedor, tables);
+      const tagOptionDetails = (tables.acreedores_etiquetas?.rows || [])
+        .filter((relation) => backendId(relation.id_acreedor) === backendId(creditor.id_acreedor))
+        .map((relation) => ({
+          idAcreedorEtiqueta: backendId(relation.id_acreedor_etiqueta),
+          idEtiqueta: backendId(relation.id_etiqueta),
+          name: backendTagNameForId(relation.id_etiqueta, tagNameById)
+        }))
+        .filter((tag) => tag.idAcreedorEtiqueta && tag.idEtiqueta && tag.name);
+      const firstTag = tagNames[0] || "";
       const firstTagId = backendTagIdForName(firstTag, tables);
       addIdentity({
         type: "acreedor",
@@ -459,7 +478,8 @@ function createBankMatchingService(dependencies) {
         cuit: creditor.cuit_cuil,
         cbuAlias: creditor.cbu_alias,
         detail: "",
-        tagOptions,
+        tagOptions: tagNames,
+        tagOptionDetails,
         idEtiqueta: firstTagId,
         idAcreedorEtiqueta: backendCreditorTagRelationId(creditor.id_acreedor, firstTagId, tables),
         tagLabel: firstTag,
@@ -507,6 +527,11 @@ function createBankMatchingService(dependencies) {
         id: backendId(bankData.id_dato_bancario),
         idAcreedor: backendId(bankData.id_acreedor),
         idEtiqueta: backendId(bankData.id_etiqueta),
+        idAcreedorEtiqueta: backendCreditorTagRelationId(
+          bankData.id_acreedor,
+          bankData.id_etiqueta,
+          tables
+        ),
         invoiceType: cleanBackendText(bankData.tipo_factura),
         expenseType: tagLabel,
         tagLabel,
