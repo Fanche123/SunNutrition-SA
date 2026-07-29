@@ -1,6 +1,16 @@
 const { parseInput: parseMoneyInput } = require("../../shared/money");
 
-function createAttachmentsService({ childProcess, fs, path, pythonExecutable, readJsonBody, rootDir, sendJson }) {
+function createAttachmentsService({
+  childProcess,
+  fetchImpl = globalThis.fetch,
+  fs,
+  invoiceReadTimeoutMs = 45_000,
+  path,
+  pythonExecutable,
+  readJsonBody,
+  rootDir,
+  sendJson
+}) {
   async function handleReceptionAttachmentSave(request, response) {
     try {
       const body = await readJsonBody(request);
@@ -42,23 +52,123 @@ function createAttachmentsService({ childProcess, fs, path, pythonExecutable, re
       const isImage = fileDataUrl.startsWith("data:image/");
       const isPdf = fileDataUrl.startsWith("data:application/pdf");
       if (!isImage && !isPdf) {
-        sendJson(response, 400, { ok: false, error: "Falta una imagen o PDF valido de factura o remito." });
+        sendInvoiceReadError(response, 400, "INVALID_FILE");
+        return;
+      }
+
+      const fileBuffer = dataUrlBuffer(fileDataUrl);
+      if (!fileBuffer.length || fileBuffer.length > 20 * 1024 * 1024 || (isPdf && !isPdfBuffer(fileBuffer))) {
+        sendInvoiceReadError(response, 400, "INVALID_FILE");
         return;
       }
   
       const apiKey = process.env.OPENAI_API_KEY;
       if (!apiKey) {
-        sendJson(response, 400, { ok: false, error: "Falta configurar OPENAI_API_KEY para leer facturas." });
+        sendInvoiceReadError(response, 503, "SERVICE_NOT_CONFIGURED");
         return;
       }
   
-      const invoice = isPdf
+      const extractedInvoice = isPdf
         ? await extractReceptionInvoiceFromPdf(apiKey, fileDataUrl, fileName, mimeType)
         : await extractReceptionInvoiceFromImage(apiKey, fileDataUrl);
-      sendJson(response, 200, { ok: true, invoice });
+      const { invoice, missingFields } = normalizeReceptionInvoice(extractedInvoice);
+      if (!Object.values(invoice).some((value) => (
+        (typeof value === "string" && value !== "")
+        || (typeof value === "number" && value > 0)
+      ))) {
+        throw invoiceReadError("UNREADABLE_RESPONSE");
+      }
+      sendJson(response, 200, { ok: true, invoice, missingFields });
     } catch (error) {
-      sendJson(response, 400, { ok: false, error: error.message });
+      const code = classifyInvoiceReadError(error);
+      const status = code === "SERVICE_TIMEOUT"
+        ? 504
+        : code === "INVALID_FILE"
+          ? 400
+          : code === "SERVICE_NOT_CONFIGURED"
+            ? 503
+            : 502;
+      sendInvoiceReadError(response, status, code, error?.invoiceReadDetails);
     }
+  }
+
+  function sendInvoiceReadError(response, status, code, details) {
+    const messages = {
+      INVALID_FILE: "El archivo no es un PDF o imagen valido, esta vacio o supera 20 MB.",
+      SERVICE_NOT_CONFIGURED: "El servicio de lectura automatica no esta configurado. Completa los datos manualmente o consulta al administrador.",
+      PROVIDER_AUTHENTICATION: "La credencial del servicio de lectura no es valida o no tiene permiso. Consulta al administrador.",
+      PROVIDER_QUOTA: "El servicio de lectura alcanzo su limite de uso. Intenta mas tarde o consulta al administrador.",
+      PROVIDER_MODEL: "El modelo configurado no esta disponible para leer este archivo. Consulta al administrador.",
+      PROVIDER_REQUEST: "El servicio rechazo la solicitud de lectura. Consulta al administrador o completa los datos manualmente.",
+      SERVICE_TIMEOUT: "El servicio de lectura automatica demoro demasiado. Intenta nuevamente en unos minutos o completa los datos manualmente.",
+      SERVICE_UNAVAILABLE: "El servicio de lectura automatica no esta disponible temporalmente. Intenta nuevamente en unos minutos o completa los datos manualmente.",
+      UNREADABLE_RESPONSE: "El servicio respondio, pero no devolvio datos de factura legibles. Revisa el archivo o completa los datos manualmente."
+    };
+    const payload = {
+      ok: false,
+      code,
+      error: messages[code] || messages.SERVICE_UNAVAILABLE
+    };
+    if (details) payload.details = details;
+    sendJson(response, status, payload);
+  }
+
+  function invoiceReadError(code, cause, details) {
+    const error = new Error(code);
+    error.invoiceReadCode = code;
+    if (cause) error.cause = cause;
+    if (details) error.invoiceReadDetails = details;
+    return error;
+  }
+
+  function classifyInvoiceReadError(error) {
+    if (error?.invoiceReadCode) return error.invoiceReadCode;
+    if (error?.name === "AbortError" || error?.cause?.code === "ABORT_ERR") return "SERVICE_TIMEOUT";
+    if (error instanceof SyntaxError) return "UNREADABLE_RESPONSE";
+    return "SERVICE_UNAVAILABLE";
+  }
+
+  function providerInvoiceReadError(response, payload) {
+    const status = Number(response?.status) || 0;
+    const type = String(payload?.error?.type || "").toLowerCase();
+    const code = String(payload?.error?.code || "").toLowerCase();
+    const param = String(payload?.error?.param || "").toLowerCase();
+    const details = {
+      stage: "provider_response",
+      providerStatus: status,
+      providerType: safeProviderMetadata(type),
+      providerCode: safeProviderMetadata(code),
+      providerParam: safeProviderMetadata(param)
+    };
+    if (status === 401 || status === 403 || type.includes("authentication") || code.includes("api_key")) {
+      return invoiceReadError("PROVIDER_AUTHENTICATION", null, details);
+    }
+    if (status === 429 || type.includes("rate_limit") || code.includes("quota")) {
+      return invoiceReadError("PROVIDER_QUOTA", null, details);
+    }
+    if (param === "model" || code.includes("model") || type.includes("model")) {
+      return invoiceReadError("PROVIDER_MODEL", null, details);
+    }
+    if (status === 400 || status === 422) return invoiceReadError("PROVIDER_REQUEST", null, details);
+    return invoiceReadError("SERVICE_UNAVAILABLE", null, details);
+  }
+
+  function safeProviderMetadata(value) {
+    return String(value || "").replace(/[^a-z0-9_.-]/g, "").slice(0, 80);
+  }
+
+  function dataUrlBuffer(dataUrl) {
+    const separatorIndex = String(dataUrl).indexOf(",");
+    if (separatorIndex < 0 || !/;base64$/i.test(String(dataUrl).slice(0, separatorIndex))) return Buffer.alloc(0);
+    try {
+      return Buffer.from(String(dataUrl).slice(separatorIndex + 1), "base64");
+    } catch {
+      return Buffer.alloc(0);
+    }
+  }
+
+  function isPdfBuffer(buffer) {
+    return buffer.subarray(0, 5).toString("ascii") === "%PDF-";
   }
   
   async function handlePayrollScaleRead(request, response) {
@@ -217,11 +327,12 @@ function createAttachmentsService({ childProcess, fs, path, pythonExecutable, re
     "imp_internos": numero,
     "total": numero
   }
-  Si un dato no aparece, usa string vacio o 0. No inventes importes.`;
+  Si un texto no aparece, usa string vacio. Si un importe no aparece, usa null.
+  Conserva 0 solo cuando el comprobante muestre explicitamente ese importe. No inventes datos.`;
   }
   
   async function extractReceptionInvoiceFromImage(apiKey, imageDataUrl) {
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    const response = await fetchInvoiceProvider("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -249,13 +360,13 @@ function createAttachmentsService({ childProcess, fs, path, pythonExecutable, re
       })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error?.message || "No se pudo leer la factura.");
+    if (!response.ok) throw providerInvoiceReadError(response, payload);
     const content = payload.choices?.[0]?.message?.content || "{}";
     return JSON.parse(content);
   }
   
   async function extractReceptionInvoiceFromPdf(apiKey, pdfDataUrl, fileName, mimeType) {
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetchInvoiceProvider("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -281,8 +392,54 @@ function createAttachmentsService({ childProcess, fs, path, pythonExecutable, re
       })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error?.message || "No se pudo leer el PDF de la factura.");
+    if (!response.ok) throw providerInvoiceReadError(response, payload);
     return JSON.parse(extractResponseText(payload) || "{}");
+  }
+
+  async function fetchInvoiceProvider(url, options) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), invoiceReadTimeoutMs);
+    try {
+      return await fetchImpl(url, { ...options, signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) throw invoiceReadError("SERVICE_TIMEOUT", error);
+      throw invoiceReadError("SERVICE_UNAVAILABLE", error, { stage: "provider_transport" });
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  function normalizeReceptionInvoice(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw invoiceReadError("UNREADABLE_RESPONSE");
+    }
+    const allowedTypes = new Set(["Factura_A", "Factura_B", "Factura_C", "Remito_X"]);
+    const text = (input, maxLength = 120) => typeof input === "string" ? input.trim().slice(0, maxLength) : "";
+    const isoDate = (input) => {
+      const candidate = text(input, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return "";
+      const date = new Date(`${candidate}T00:00:00Z`);
+      return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== candidate ? "" : candidate;
+    };
+    const money = (input) => {
+      const parsed = parseMoneyInput(input);
+      return parsed.ok && !parsed.empty && parsed.amount >= 0 ? parsed.amount : null;
+    };
+    const invoice = {
+      tipo_factura: allowedTypes.has(value.tipo_factura) ? value.tipo_factura : "",
+      nro_factura: text(value.nro_factura),
+      fecha_factura: isoDate(value.fecha_factura),
+      subtotal: money(value.subtotal),
+      iva: money(value.iva),
+      per_ret_iva: money(value.per_ret_iva),
+      per_ret_iibb: money(value.per_ret_iibb),
+      imp_internos: money(value.imp_internos),
+      total: money(value.total)
+    };
+    const missingFields = Object.entries(invoice)
+      .filter(([, fieldValue]) => fieldValue === "" || fieldValue === null)
+      .map(([field]) => field);
+    return { invoice, missingFields };
   }
   
   function extractResponseText(payload) {

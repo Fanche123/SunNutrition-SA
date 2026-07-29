@@ -272,6 +272,8 @@ function setLogisticsExpenseReferenceLabels(subtotal = "-", iva = "-", total = "
 }
 
 async function autofillLogisticsExpenseFromAttachment() {
+  const readButton = els["logistics-invoice-read"];
+  if (readButton?.disabled) return;
   const selectedDeliveryIds = selectedLogisticsExpenseDeliveryIds();
   const file = els["logistics-file"]?.files?.[0];
   if (!selectedDeliveryIds.length) {
@@ -293,6 +295,7 @@ async function autofillLogisticsExpenseFromAttachment() {
 
   const requestId = logisticsInvoiceReadRequestId + 1;
   logisticsInvoiceReadRequestId = requestId;
+  setCommercialButtonLoading(readButton, true, "Leyendo...");
   setCommercialStatus("logistics-expense-status", "Leyendo factura/remito para precargar egreso logistico...", "pending");
   try {
     const fileDataUrl = await receptionAttachmentToDataUrl(file);
@@ -307,12 +310,41 @@ async function autofillLogisticsExpenseFromAttachment() {
     });
     const payload = await response.json().catch(() => ({}));
     if (requestId !== logisticsInvoiceReadRequestId) return;
-    if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    if (!response.ok || !payload.ok) {
+      throw new Error(logisticsInvoiceReadErrorMessage(payload, response.status));
+    }
     applyLogisticsInvoiceRead(payload.invoice || {});
-    setCommercialStatus("logistics-expense-status", "Factura/remito leido. Revisa y corrige los datos antes de guardar.", "success");
+    const missing = Array.isArray(payload.missingFields) ? payload.missingFields : [];
+    const message = missing.length
+      ? "Factura/remito leido parcialmente. Revisa los campos vacios antes de guardar."
+      : "Factura/remito leido. Revisa y corrige los datos antes de guardar.";
+    setCommercialStatus("logistics-expense-status", message, missing.length ? "pending" : "success");
   } catch (error) {
-    setCommercialStatus("logistics-expense-status", `No se pudo leer automaticamente: ${error.message}. Completa o corrige los datos manualmente.`, "error");
+    const message = error instanceof TypeError
+      ? "No se pudo contactar al servidor del ERP. Verifica que siga disponible e intenta nuevamente."
+      : error.message;
+    setCommercialStatus("logistics-expense-status", message, "error");
+  } finally {
+    setCommercialButtonLoading(readButton, false);
   }
+}
+
+function logisticsInvoiceReadErrorMessage(payload, status) {
+  const messages = {
+    INVALID_FILE: "El archivo no es un PDF o imagen valido. Selecciona otro archivo o completa los datos manualmente.",
+    SERVICE_NOT_CONFIGURED: "La lectura automatica no esta configurada. Completa los datos manualmente o consulta al administrador.",
+    PROVIDER_AUTHENTICATION: "La credencial de lectura no es valida o no tiene permiso. Consulta al administrador.",
+    PROVIDER_QUOTA: "La lectura automatica alcanzo su limite de uso. Intenta mas tarde o consulta al administrador.",
+    PROVIDER_MODEL: "El modelo configurado no esta disponible para leer este archivo. Consulta al administrador.",
+    PROVIDER_REQUEST: "El servicio rechazo la solicitud de lectura. Consulta al administrador o completa los datos manualmente.",
+    SERVICE_TIMEOUT: "La lectura automatica demoro demasiado. Intenta nuevamente en unos minutos o completa los datos manualmente.",
+    SERVICE_UNAVAILABLE: "La lectura automatica no esta disponible temporalmente. Intenta nuevamente en unos minutos o completa los datos manualmente.",
+    UNREADABLE_RESPONSE: "El servicio no pudo interpretar los datos de la factura. Revisa el archivo o completa los datos manualmente."
+  };
+  return messages[payload?.code]
+    || (status >= 500
+      ? messages.SERVICE_UNAVAILABLE
+      : "No se pudo completar la lectura automatica. Intenta nuevamente o completa los datos manualmente.");
 }
 
 function applyLogisticsInvoiceRead(invoice) {
@@ -331,14 +363,16 @@ function applyLogisticsInvoiceRead(invoice) {
     ["logistics-expense-total", invoice.total]
   ].forEach(([id, value]) => {
     const number = parseMoney(value);
-    if (els[id] && Number.isFinite(number) && number > 0) {
+    if (els[id] && value !== null && value !== "" && Number.isFinite(number) && number >= 0) {
       els[id].value = decimalPurchaseDisplay(number);
       els[id].dataset.touched = "true";
     }
   });
   setLogisticsExpenseReferenceLabels("-", "-", "-");
   autofillLogisticsPaymentDateFromAgreement();
-  updateLogisticsExpenseTotalFromInputs();
+  if (!(invoice.total !== null && invoice.total !== "" && Number.isFinite(parseMoney(invoice.total)))) {
+    updateLogisticsExpenseTotalFromInputs();
+  }
 }
 
 
@@ -359,15 +393,11 @@ async function createDeliveryForSelectedOrders() {
   setCommercialStatus("logistics-status", "Creando entrega...", "pending");
 
   try {
-    const deliveryId = await nextBackendPrimaryId("entregas", "id_entrega");
-    const firstDetailId = await nextBackendPrimaryId("entregas_detalle", "id_entregas_detalle");
-    const deliveryDetails = selectedOrderIds.map((orderId, index) => ({
-      id_entregas_detalle: Number(firstDetailId) + index,
-      id_entrega: deliveryId,
-      id_pedido: orderId
-    }));
-    await saveBackendEntryRows("entregas", [{ id_entrega: deliveryId, fecha: deliveryDate, id_flete: fleetId }]);
-    await saveBackendEntryRows("entregas_detalle", deliveryDetails);
+    const result = await requestBackendApi("/api/sales/deliveries/full-entry", {
+      method: "POST",
+      body: JSON.stringify({ orderIds: selectedOrderIds, fleetId, deliveryDate })
+    });
+    const deliveryId = result.deliveryId;
     setCommercialStatus("logistics-status", `Entrega #${deliveryId} creada con ${selectedOrderIds.length} pedido(s).`, "success");
     commercialEntryData.loaded = false;
     await loadCommercialEntryData(true);

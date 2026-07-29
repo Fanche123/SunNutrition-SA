@@ -11,6 +11,8 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - Pantallas, reportes, SQL y procesos leen exclusivamente `loadCache()` o los endpoints `/api/backend/tables/*`.
 - Las operaciones escriben mediante `saveBackendCache()` y servicios de dominio.
 - El alta canónica de pedidos usa `POST /api/sales/orders/full-entry`: valida referencias y contenido, genera IDs en backend y persiste encabezado y detalles con un único `saveBackendCache()`.
+- La facturación canónica usa `GET /api/sales/unbilled-orders` y `POST /api/sales/invoices/full-entry`: la elegibilidad se basa exclusivamente en `ventas.id_pedido`, el alta revalida carrera/duplicado fiscal y persiste una venta por pedido en un único snapshot.
+- La creación canónica de entregas usa `POST /api/sales/deliveries/full-entry`; persiste encabezado/detalles y completa el vínculo económico de ventas previamente facturadas en el mismo snapshot.
 - No existen endpoints de fuentes, refresh ni imports externos.
 - `inventoryPurchaseConfig.barsPerDay` es el único parámetro persistente de producción diaria. Vive como metadato superior del cache, no en una tabla, y se guarda atómicamente con el snapshot recalculado mediante `POST /api/inventory/purchase-snapshot/production-rate`.
 - Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
@@ -70,6 +72,7 @@ Antes del despacho, `access-control.service.js` valida el origen y concentra el 
 - `inventory-valuation.service.js`: valuacion de inventarios y mapa de costos por item.
 - `income-calculation.service.js`: fechas, numeros y calculos reutilizados por inventario y resultados.
 - `income-statement.service.js`: composicion del Estado de Resultados backend.
+- `sales-invoice-entry.service.js`: consulta de pedidos sin factura y alta atómica de ventas vinculadas a pedido/cliente/entrega.
 - `expense-classification.service.js`: origen, categoria, acreedor y etiquetas contables de egresos.
 - `payroll-summary.service.js`: agregacion salarial para el Estado de Resultados.
 - `payroll-normalization.service.js`: IDs, orden, merge y etiquetas de filas salariales.

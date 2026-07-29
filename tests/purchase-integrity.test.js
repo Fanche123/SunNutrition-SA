@@ -3,13 +3,206 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const { EXPECTED_BACKEND_COLUMNS } = require("../backend/config/backend-columns");
 const { backendId } = require("../backend/utils/ids");
+const { createAttachmentsService } = require("../backend/services/attachments.service");
 const { createCreditorEntryService } = require("../backend/services/creditor-entry.service");
 const { createOtherExpenseEntryService } = require("../backend/services/other-expense-entry.service");
 const { createPurchaseEntryService } = require("../backend/services/purchase-entry.service");
 const { createReceptionEntryService } = require("../backend/services/reception-entry.service");
+
+function createInvoiceReadHarness(fetchImpl, options = {}) {
+  let result;
+  const service = createAttachmentsService({
+    childProcess: {},
+    fetchImpl,
+    fs,
+    invoiceReadTimeoutMs: options.invoiceReadTimeoutMs,
+    path,
+    pythonExecutable: "python",
+    readJsonBody: async (request) => request.body,
+    rootDir: "C:\\isolated",
+    sendJson: (_response, status, payload) => {
+      result = { status, payload };
+    }
+  });
+  return {
+    invoke: async (body) => {
+      await service.handleReceptionInvoiceRead({ body }, {});
+      return result;
+    }
+  };
+}
+
+function syntheticPdfDataUrl() {
+  return `data:application/pdf;base64,${Buffer.from("%PDF-1.4\n%%EOF").toString("base64")}`;
+}
+
+test("lector de facturas normaliza exito y marca campos no reconocidos", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    const harness = createInvoiceReadHarness(async () => ({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          tipo_factura: "Factura_A",
+          nro_factura: "0001-00000001",
+          fecha_factura: "2026-07-17",
+          subtotal: "240000,00",
+          iva: 50400,
+          total: 290400,
+          per_ret_iva: "no reconocido"
+        })
+      })
+    }));
+    const result = await harness.invoke({
+      fileDataUrl: syntheticPdfDataUrl(),
+      fileName: "factura.pdf",
+      mimeType: "application/pdf"
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.payload.invoice.total, 290400);
+    assert.equal(result.payload.invoice.per_ret_iva, null);
+    assert(result.payload.missingFields.includes("per_ret_iva"));
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("lector distingue configuracion, archivo invalido, red y respuesta ilegible", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  try {
+    delete process.env.OPENAI_API_KEY;
+    const unconfigured = await createInvoiceReadHarness(async () => {
+      throw new Error("no debe llamarse");
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
+    assert.equal(unconfigured.status, 503);
+    assert.equal(unconfigured.payload.code, "SERVICE_NOT_CONFIGURED");
+
+    const invalid = await createInvoiceReadHarness(async () => ({})).invoke({
+      fileDataUrl: `data:application/pdf;base64,${Buffer.from("not-a-pdf").toString("base64")}`,
+      fileName: "factura.pdf"
+    });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.payload.code, "INVALID_FILE");
+
+    process.env.OPENAI_API_KEY = "test-key";
+    const unavailable = await createInvoiceReadHarness(async () => {
+      throw new TypeError("fetch failed");
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
+    assert.equal(unavailable.status, 502);
+    assert.equal(unavailable.payload.code, "SERVICE_UNAVAILABLE");
+    assert(!unavailable.payload.error.includes("fetch failed"));
+
+    const timeout = await createInvoiceReadHarness((_url, options) => new Promise((_resolve, reject) => {
+      options.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    }), { invoiceReadTimeoutMs: 5 }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
+    assert.equal(timeout.status, 504);
+    assert.equal(timeout.payload.code, "SERVICE_TIMEOUT");
+
+    const unreadable = await createInvoiceReadHarness(async () => ({
+      ok: true,
+      json: async () => ({ output_text: "respuesta no JSON" })
+    })).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
+    assert.equal(unreadable.status, 502);
+    assert.equal(unreadable.payload.code, "UNREADABLE_RESPONSE");
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("lector clasifica rechazos del proveedor sin atribuirlos al PDF", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    const cases = [
+      [401, { type: "authentication_error", code: "invalid_api_key" }, "PROVIDER_AUTHENTICATION"],
+      [429, { type: "rate_limit_error", code: "insufficient_quota" }, "PROVIDER_QUOTA"],
+      [400, { type: "invalid_request_error", code: "model_not_found", param: "model" }, "PROVIDER_MODEL"],
+      [400, { type: "invalid_request_error", code: "invalid_value", param: "input" }, "PROVIDER_REQUEST"]
+    ];
+    for (const [status, providerError, expectedCode] of cases) {
+      const result = await createInvoiceReadHarness(async () => ({
+        ok: false,
+        status,
+        json: async () => ({ error: providerError })
+      })).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
+      assert.equal(result.status, 502);
+      assert.equal(result.payload.code, expectedCode);
+      assert.notEqual(result.payload.code, "INVALID_FILE");
+      assert.equal(result.payload.details.stage, "provider_response");
+      assert.equal(result.payload.details.providerStatus, status);
+    }
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("lector logistico evita doble envio, restaura el boton y conserva carga manual ante error", async () => {
+  const button = { disabled: false, textContent: "Leer factura", dataset: {} };
+  const manualNumber = { value: "MANUAL-1" };
+  let fetchCalls = 0;
+  let releaseFetch;
+  const pendingFetch = new Promise((resolve) => {
+    releaseFetch = resolve;
+  });
+  const context = {
+    API_BASE_URL: "",
+    document: {
+      querySelectorAll: () => [{ dataset: { logisticsExpenseDelivery: "1" } }],
+      activeElement: null
+    },
+    els: {
+      "logistics-invoice-read": button,
+      "logistics-file": { files: [{ name: "factura.pdf", type: "application/pdf" }] },
+      "logistics-without-file": { checked: false },
+      "logistics-expense-invoice-number": manualNumber,
+      "logistics-expense-status": { textContent: "", dataset: {} }
+    },
+    backendId: (value) => String(value ?? "").trim(),
+    isReceptionReadableAttachment: () => true,
+    receptionAttachmentToDataUrl: async () => syntheticPdfDataUrl(),
+    setCommercialStatus: (id, message, status) => {
+      context.els[id].textContent = message;
+      context.els[id].dataset.status = status;
+    },
+    setCommercialButtonLoading: (target, loading, text) => {
+      if (loading) {
+        target.dataset.originalText = target.textContent;
+        target.textContent = text;
+        target.disabled = true;
+      } else {
+        target.textContent = target.dataset.originalText;
+        target.disabled = false;
+      }
+    },
+    fetch: async () => {
+      fetchCalls += 1;
+      return pendingFetch;
+    },
+    logisticsInvoiceReadRequestId: 0,
+    console
+  };
+  vm.createContext(context);
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/logistics-entry.js"), "utf8"), context);
+  const first = vm.runInContext("autofillLogisticsExpenseFromAttachment()", context);
+  await new Promise((resolve) => setImmediate(resolve));
+  await vm.runInContext("autofillLogisticsExpenseFromAttachment()", context);
+  assert.equal(fetchCalls, 1);
+  assert.equal(button.disabled, true);
+  releaseFetch({ ok: false, status: 503, json: async () => ({ ok: false, code: "SERVICE_UNAVAILABLE" }) });
+  await first;
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, "Leer factura");
+  assert.equal(manualNumber.value, "MANUAL-1");
+  assert.equal(context.els["logistics-expense-status"].dataset.status, "error");
+});
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));

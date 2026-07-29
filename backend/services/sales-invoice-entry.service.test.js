@@ -1,0 +1,268 @@
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const { createSalesInvoiceEntryService } = require("./sales-invoice-entry.service");
+
+function baseCache() {
+  return {
+    tables: {
+      pedidos: { rows: [
+        { id_pedido: 1, id_cliente: 10, fecha_pedido: "2026-07-01", fecha_entrega: "2026-07-03" },
+        { id_pedido: 2, id_cliente: 10, fecha_pedido: "2026-07-02", fecha_entrega: "2026-07-04" },
+        { id_pedido: 3, id_cliente: 11, fecha_pedido: "2026-07-02", fecha_entrega: "2026-07-04" }
+      ], rowCount: 3 },
+      clientes: { rows: [
+        { id_cliente: 10, nombre_cliente: "Cliente_A", cuit: "30-1" },
+        { id_cliente: 11, nombre_cliente: "Cliente_B", cuit: "30-2" }
+      ], rowCount: 2 },
+      productos: { rows: [{ id_producto: 20, nombre_producto: "Barra" }], rowCount: 1 },
+      detalle_pedidos: { rows: [
+        { id_detalle_pedido: 1, id_pedido: 1, id_producto: 20, cantidad_cajas: 2 },
+        { id_detalle_pedido: 2, id_pedido: 2, id_producto: 20, cantidad_cajas: 3 }
+      ], rowCount: 2 },
+      entregas: { rows: [{ id_entrega: 30, fecha: "2026-07-05" }], rowCount: 1 },
+      entregas_detalle: { rows: [{ id_entregas_detalle: 1, id_entrega: 30, id_pedido: 1 }], rowCount: 1 },
+      fletes: { rows: [{ id_flete: 40, nombre: "Flete" }], rowCount: 1 },
+      ventas: { rows: [], rowCount: 0 }
+    }
+  };
+}
+
+function validBody(orderId = 1) {
+  return {
+    orderIds: [orderId],
+    invoice: {
+      tipoFactura: "Factura_A",
+      nroFactura: "0001-000001",
+      fechaFactura: "2026-07-06",
+      fechaAcordada: "2026-08-06",
+      subtotal: 100,
+      iva: 21,
+      total: 121
+    }
+  };
+}
+
+function fixture(options = {}) {
+  let source = options.source || baseCache();
+  let saved = null;
+  let saves = 0;
+  let synchronized = false;
+  const responses = [];
+  const service = createSalesInvoiceEntryService({
+    backendId: (value) => value === null || value === undefined || value === "" ? "" : String(value),
+    backendNextNumericId: (rows, key) => rows.reduce((max, row) => Math.max(max, Number(row[key]) || 0), 0) + 1,
+    ensureBackendTable: (tables, name) => { tables[name] ||= { rows: [], rowCount: 0 }; },
+    isIsoDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")),
+    loadCache: () => source,
+    readJsonBody: async (request) => request.body,
+    saveBackendCache: (cache) => {
+      if (options.failSave) throw new Error("fallo de persistencia");
+      saves += 1;
+      saved = cache;
+      source = cache;
+    },
+    sendJson: (_response, status, payload) => {
+      responses.push({ status, payload });
+      return payload;
+    },
+    synchronizeEconomicExpenses: (cache) => {
+      synchronized = true;
+      cache.economicSync = true;
+      return cache;
+    },
+    failureInjector: options.failureInjector
+  });
+  return {
+    service,
+    responses,
+    saved: () => saved,
+    saves: () => saves,
+    synchronized: () => synchronized,
+    source: () => source
+  };
+}
+
+async function submit(ctx, body = validBody()) {
+  await ctx.service.handleSalesInvoiceFullEntry({ body }, {});
+  return ctx.responses.at(-1);
+}
+
+test("consulta sólo pedidos sin relación canónica en ventas", () => {
+  const source = baseCache();
+  source.tables.ventas.rows.push({ id_venta: 9, id_pedido: 2, id_cliente: 10 });
+  const rows = fixture({ source }).service.unbilledOrders();
+  assert.deepEqual(rows.map((row) => row.id_pedido), ["1", "3"]);
+  assert.equal(rows[0].id_entrega, "30");
+  assert.equal(rows[0].fecha_entrega, "2026-07-05");
+  assert.equal(rows[0].cantidad_cajas, 2);
+});
+
+test("no aplica heurísticas de cobro, entrega, cliente, fecha o monto", () => {
+  const source = baseCache();
+  source.tables.cobros = { rows: [{ id_cobro: 1, id_cliente: 10, monto: 121 }] };
+  const rows = fixture({ source }).service.unbilledOrders();
+  assert.deepEqual(rows.map((row) => row.id_pedido), ["1", "2", "3"]);
+});
+
+test("navegación conserva Saldos Pendientes y agrega Ventas con rutas separadas", () => {
+  const root = path.resolve(__dirname, "../..");
+  const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const app = fs.readFileSync(path.join(root, "assets/js/app.js"), "utf8");
+  assert.match(html, /data-view="sales-invoice-entry"[^>]*>Ventas</);
+  assert.match(html, /data-view="sales-entry"[^>]*>Saldos Pendientes</);
+  assert.match(app, /"sales-invoice-entry": \["Ventas"/);
+  assert.match(app, /"sales-entry": \["Saldos Pendientes"/);
+});
+
+test("la lectura OCR sólo propone campos y el guardado exige submit explícito", () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "../../assets/js/modules/sales-invoice-entry.js"),
+    "utf8"
+  );
+  assert.match(source, /applySalesInvoiceProposal\(payload\.invoice/);
+  assert.match(source, /form\.addEventListener\("submit", submitSalesInvoice\)/);
+  assert.doesNotMatch(source, /applySalesInvoiceProposal[\s\S]{0,300}submitSalesInvoice\(/);
+  assert.match(source, /Podés completar la venta manualmente/);
+});
+
+test("guarda una venta con relación canónica y fecha económica por entrega", async () => {
+  const ctx = fixture();
+  const response = await submit(ctx);
+  assert.equal(response.status, 200);
+  assert.equal(ctx.saves(), 1);
+  assert.equal(ctx.synchronized(), true);
+  assert.deepEqual(ctx.saved().tables.ventas.rows[0], {
+    _rowNumber: 2,
+    id_venta: 1,
+    id_pedido: "1",
+    id_cliente: "10",
+    id_entrega: "30",
+    tipo_factura: "Factura_A",
+    nro_factura: "0001-000001",
+    fecha_factura: "2026-07-06",
+    fecha_acordada: "2026-08-06",
+    iva: 21,
+    subtotal: 100,
+    total: 121,
+    _editedLocallyAt: ctx.saved().tables.ventas.rows[0]._editedLocallyAt
+  });
+  assert.equal(ctx.service.unbilledOrders(ctx.saved()).some((row) => row.id_pedido === "1"), false);
+});
+
+test("rechaza selección múltiple sin inventar reparto contable", async () => {
+  const ctx = fixture();
+  const response = await submit(ctx, { ...validBody(), orderIds: [1, 2] });
+  assert.equal(response.status, 400);
+  assert.match(response.payload.error, /un solo pedido/);
+  assert.equal(ctx.saves(), 0);
+});
+
+test("rechaza una carrera cuando el pedido ya fue facturado con otro comprobante", async () => {
+  const source = baseCache();
+  source.tables.ventas.rows.push({
+    id_venta: 8, id_pedido: 1, id_cliente: 10, tipo_factura: "Factura_A",
+    nro_factura: "0001-OTRA", fecha_factura: "2026-07-06", fecha_acordada: "",
+    subtotal: 100, iva: 21, total: 121
+  });
+  const ctx = fixture({ source });
+  const response = await submit(ctx);
+  assert.equal(response.status, 409);
+  assert.match(response.payload.error, /otra operación/);
+  assert.equal(ctx.saves(), 0);
+});
+
+test("serializa dos intentos concurrentes y sólo persiste una venta", async () => {
+  const ctx = fixture();
+  const competingBody = validBody();
+  competingBody.invoice.nroFactura = "0001-COMPITE";
+  await Promise.all([
+    ctx.service.handleSalesInvoiceFullEntry({ body: validBody() }, {}),
+    ctx.service.handleSalesInvoiceFullEntry({ body: competingBody }, {})
+  ]);
+  assert.deepEqual(ctx.responses.map((response) => response.status), [200, 409]);
+  assert.equal(ctx.saves(), 1);
+  assert.equal(ctx.source().tables.ventas.rows.length, 1);
+});
+
+test("factura sin entrega adquiere el vínculo económico al crear la entrega posterior", async () => {
+  const ctx = fixture();
+  assert.equal((await submit(ctx, validBody(3))).status, 200);
+  assert.equal(ctx.source().tables.ventas.rows[0].id_entrega, "");
+
+  await ctx.service.handleSalesDeliveryFullEntry({
+    body: { orderIds: [3], fleetId: 40, deliveryDate: "2026-07-20" }
+  }, {});
+  const deliveryResponse = ctx.responses.at(-1);
+  assert.equal(deliveryResponse.status, 200);
+  assert.equal(ctx.saves(), 2);
+  assert.equal(ctx.source().tables.ventas.rows[0].id_entrega, deliveryResponse.payload.deliveryId);
+  assert.equal(
+    ctx.source().tables.entregas.rows.find((row) => row.id_entrega === deliveryResponse.payload.deliveryId).fecha,
+    "2026-07-20"
+  );
+  assert.equal(
+    ctx.source().tables.entregas_detalle.rows.find((row) => row.id_pedido === "3").id_entrega,
+    deliveryResponse.payload.deliveryId
+  );
+});
+
+test("rechaza factura fiscal duplicada para otro pedido del mismo cliente", async () => {
+  const source = baseCache();
+  source.tables.ventas.rows.push({
+    id_venta: 8, id_pedido: 2, id_cliente: 10,
+    tipo_factura: "Factura_A", nro_factura: "0001-000001"
+  });
+  const ctx = fixture({ source });
+  const response = await submit(ctx);
+  assert.equal(response.status, 409);
+  assert.match(response.payload.error, /factura ya está registrada/);
+});
+
+test("reintento idéntico es idempotente y no vuelve a persistir", async () => {
+  const ctx = fixture();
+  const first = await submit(ctx);
+  const second = await submit(ctx);
+  assert.equal(first.status, 200);
+  assert.equal(second.status, 200);
+  assert.equal(second.payload.idempotent, true);
+  assert.equal(ctx.saves(), 1);
+  assert.equal(ctx.source().tables.ventas.rows.length, 1);
+});
+
+test("fallo antes del guardado conserva el snapshot original", async () => {
+  const ctx = fixture({
+    failureInjector: (stage) => {
+      if (stage === "before-save") throw new Error("fallo controlado");
+    }
+  });
+  const response = await submit(ctx);
+  assert.equal(response.status, 400);
+  assert.equal(ctx.source().tables.ventas.rows.length, 0);
+  assert.equal(ctx.saves(), 0);
+});
+
+test("fallo de persistencia no muta el snapshot original", async () => {
+  const ctx = fixture({ failSave: true });
+  const response = await submit(ctx);
+  assert.equal(response.status, 400);
+  assert.equal(ctx.source().tables.ventas.rows.length, 0);
+  assert.equal(ctx.saves(), 0);
+});
+
+for (const [label, mutate, pattern] of [
+  ["importe negativo", (body) => { body.invoice.iva = -1; }, /no puede ser negativo/],
+  ["total incoherente", (body) => { body.invoice.total = 120; }, /debe coincidir/],
+  ["fecha inválida", (body) => { body.invoice.fechaFactura = ""; }, /fecha de factura/]
+]) {
+  test(`valida ${label}`, async () => {
+    const ctx = fixture();
+    const body = validBody();
+    mutate(body);
+    const response = await submit(ctx, body);
+    assert.equal(response.status, 400);
+    assert.match(response.payload.error, pattern);
+    assert.equal(ctx.saves(), 0);
+  });
+}

@@ -4942,6 +4942,59 @@ button.danger {
   padding: 0 10px;
 }
 
+.catalog-combobox {
+  position: relative;
+  display: block;
+}
+
+.commercial-form .catalog-combobox > input[role="combobox"] {
+  width: 100%;
+}
+
+.catalog-combobox-list {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  left: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid #cad6e2;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 10px 24px rgba(15, 34, 55, 0.16);
+}
+
+.catalog-combobox-list[hidden] {
+  display: none;
+}
+
+.catalog-combobox-option,
+.catalog-combobox-empty {
+  display: block;
+  width: 100%;
+  padding: 9px 10px;
+  color: #0d1f33;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+}
+
+.catalog-combobox-option {
+  cursor: pointer;
+}
+
+.catalog-combobox-option:hover,
+.catalog-combobox-option.is-active {
+  background: rgba(15, 118, 110, 0.1);
+  color: #075e5a;
+}
+
+.catalog-combobox-empty {
+  color: var(--muted);
+}
+
 .commercial-entry-panel table input[type="checkbox"] {
   width: 18px;
   height: 18px;
@@ -7964,5 +8017,46 @@ button.danger {
 
   .payment-plan-quota-table tfoot th:first-child {
     background: #f4f7fa;
+  }
+}
+.sales-invoice-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.sales-invoice-panel .panel-heading {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sales-invoice-panel .panel-heading h2,
+.sales-invoice-panel .panel-heading p {
+  margin: 0;
+}
+
+.sales-invoice-panel .panel-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.sales-invoice-form {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+}
+
+.sales-invoice-actions {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 760px) {
+  .sales-invoice-panel .panel-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sales-invoice-panel .panel-heading button {
+    width: 100%;
   }
 }

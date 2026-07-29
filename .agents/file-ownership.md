@@ -29,8 +29,8 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 | `assets/js/modules/logistics-entry.js` | Ventas | Compras, Tesorería, Reportes | Entregas comerciales y rama compartida de egreso logístico; dominio | Alto | `ventas.md` + consumidores |
 | `assets/js/modules/commissions-entry.js` | Ventas | Tesorería, Reportes | Comisión comercial derivada de cobros; dominio | Alto | `ventas.md` + consumidores |
 | `assets/js/modules/other-expense-entry.js` | Compras | Tesorería, Reportes | Alta de otros gastos como fuente de egresos; dominio | Alto | `compras.md` + consumidores |
-| `assets/js/modules/sales-*.js` | Ventas | Inventario, Tesorería, Reportes | Pedidos y ventas; dominio | Alto | `ventas.md` |
-| `backend/services/sales-*.service.js`, `backend/services/sales-*.service.test.js` | Ventas | Inventario, Reportes, Arquitectura | Alta integral de pedidos y pruebas aisladas de integridad; dominio | Alto | `ventas.md` |
+| `assets/js/modules/sales-*.js` | Ventas | Inventario, Tesorería, Reportes, UI/UX | Pedidos, saldos pendientes y carga de facturas desde pedidos; dominio | Alto | `ventas.md` |
+| `backend/services/sales-*.service.js`, `backend/services/sales-*.service.test.js` | Ventas | Inventario, Reportes, Arquitectura | Altas integrales de pedidos/ventas y pruebas aisladas de integridad; dominio | Alto | `ventas.md` |
 | `assets/js/modules/collections-retentions.js` | Tesorería | Ventas, Reportes | Cobros/retenciones; dominio | Alto | `tesoreria.md` + `ventas.md` |
 | `assets/js/modules/bank-reconciliation-*.js`, `assets/js/modules/cash-boxes.js` | Tesorería | Compras, Ventas, Reportes, UI/UX | Conciliación Banco → ERP y control de cajas ERP → Banco; dominio | Alto | `tesoreria.md` + consumidores |
 | `assets/js/modules/investment-fund.js`, `backend/services/investment-fund.service.js`, `docs/investment-fund.md`, `tests/investment-fund.test.js` | Tesorería | Contabilidad, Reportes, Base de datos, UI/UX | Libro mayor, asociaciones bancarias, rendimiento y UI del fondo de inversión | Alto | `tesoreria.md` + consumidores |

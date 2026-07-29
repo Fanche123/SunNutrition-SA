@@ -34,7 +34,8 @@
           </button>
           <div class="nav-group-items" inert>
             <button class="nav-item nav-subitem" data-view="orders-entry" type="button">Pedidos</button>
-            <button class="nav-item nav-subitem" data-view="sales-entry" type="button">Ventas</button>
+            <button class="nav-item nav-subitem" data-view="sales-invoice-entry" type="button">Ventas</button>
+            <button class="nav-item nav-subitem" data-view="sales-entry" type="button">Saldos Pendientes</button>
             <button class="nav-item nav-subitem" data-view="logistics-entry" type="button">Logística</button>
             <button class="nav-item nav-subitem" data-view="commissions-entry" type="button">Comisiones</button>
           </div>
@@ -2292,6 +2293,82 @@
         </section>
       </section>
 
+      <section class="view" id="view-sales-invoice-entry">
+        <section class="panel commercial-entry-panel sales-invoice-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Pedidos sin factura</h2>
+              <p>Seleccioná un pedido. El modelo actual registra una venta por pedido y no reparte importes entre varios.</p>
+            </div>
+            <button type="button" class="secondary" onclick="loadUnbilledSalesOrders()">Actualizar</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Elegir</th>
+                  <th scope="col">Pedido</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">Fecha</th>
+                  <th scope="col">Entrega</th>
+                  <th scope="col">Productos</th>
+                  <th scope="col" class="num">Cajas</th>
+                </tr>
+              </thead>
+              <tbody id="sales-invoice-orders-body">
+                <tr><td class="empty" colspan="7">Cargando pedidos sin factura.</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <form id="sales-invoice-form" class="commercial-form sales-invoice-form">
+            <label>
+              Factura (PDF o imagen)
+              <input type="file" id="sales-invoice-file" accept="application/pdf,image/*">
+            </label>
+            <div class="actions">
+              <button type="button" id="sales-invoice-read" class="secondary">Leer factura</button>
+            </div>
+            <label>
+              Tipo de factura *
+              <select id="sales-invoice-type" required>
+                <option value="">Seleccionar</option>
+                <option value="Factura_A">Factura A</option>
+                <option value="Factura_B">Factura B</option>
+                <option value="Factura_C">Factura C</option>
+              </select>
+            </label>
+            <label>
+              Punto y número *
+              <input type="text" id="sales-invoice-number" maxlength="120" autocomplete="off" required>
+            </label>
+            <label>
+              Fecha de factura *
+              <input type="date" id="sales-invoice-date" required>
+            </label>
+            <label>
+              Fecha acordada
+              <input type="date" id="sales-invoice-due-date">
+            </label>
+            <label>
+              Subtotal *
+              <input type="text" id="sales-invoice-subtotal" inputmode="decimal" data-money-input required>
+            </label>
+            <label>
+              IVA *
+              <input type="text" id="sales-invoice-iva" inputmode="decimal" data-money-input required>
+            </label>
+            <label>
+              Total *
+              <input type="text" id="sales-invoice-total" inputmode="decimal" data-money-input required>
+            </label>
+            <div class="actions sales-invoice-actions">
+              <button type="submit" id="sales-invoice-submit">Guardar venta</button>
+              <p class="form-status" id="sales-invoice-status" role="status" aria-live="polite"></p>
+            </div>
+          </form>
+        </section>
+      </section>
+
       <section class="view" id="view-sales-entry">
         <section class="panel commercial-entry-panel">
           <div class="commercial-filter-row">
@@ -2335,7 +2412,12 @@
           <form id="orders-form" class="commercial-form">
             <label>
               Cliente *
-              <select id="order-client" required></select>
+              <span class="catalog-combobox">
+                <input type="text" id="order-client" role="combobox" aria-autocomplete="list"
+                  aria-expanded="false" aria-controls="order-client-listbox" autocomplete="off" required>
+                <input type="hidden" id="order-client-id">
+                <span id="order-client-listbox" class="catalog-combobox-list" role="listbox" hidden></span>
+              </span>
             </label>
             <label>
               Fecha pedido *
@@ -2351,7 +2433,12 @@
             </label>
             <label>
               Producto *
-              <select id="order-product" required></select>
+              <span class="catalog-combobox">
+                <input type="text" id="order-product" role="combobox" aria-autocomplete="list"
+                  aria-expanded="false" aria-controls="order-product-listbox" autocomplete="off" required>
+                <input type="hidden" id="order-product-id">
+                <span id="order-product-listbox" class="catalog-combobox-list" role="listbox" hidden></span>
+              </span>
             </label>
             <label>
               Cantidad cajas *
@@ -2885,7 +2972,7 @@
   <script src="assets/js/modules/salary-entry.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/core/formatters.js?v=20260722-architecture-final"></script>
   <script src="assets/js/modules/data-editor.js?v=20260725-continuous-grid"></script>
-  <script src="assets/js/app.js?v=20260727-inventory-purchase-history"></script>
+  <script src="assets/js/app.js?v=20260729-searchable-comboboxes"></script>
 <script src="assets/js/core/api.js?v=20260723-same-origin"></script>
 <script src="assets/js/core/files.js?v=20260722-architecture-stage3"></script>
 <script src="assets/js/modules/cash-boxes.js?v=20260728-icbc-control"></script>
@@ -2907,7 +2994,8 @@
   <script src="assets/js/modules/payment-entry.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/modules/operational-shared.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/operational-data-coordinator.js?v=20260722-architecture-final"></script>
-  <script src="assets/js/modules/sales-orders.js?v=20260722-architecture-stage4"></script>
+  <script src="assets/js/modules/sales-orders.js?v=20260729-searchable-comboboxes-v2"></script>
+  <script src="assets/js/modules/sales-invoice-entry.js?v=20260729-unbilled-orders"></script>
   <script src="assets/js/modules/collections-retentions.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/received-check-entry.js?v=20260726-pending-received-checks"></script>
   <script src="assets/js/modules/issued-check-entry.js?v=20260722-architecture-stage4"></script>

@@ -48,6 +48,7 @@ Cambiar una relación comercial que afecte cobros, reportes o inventario requier
 Propios de frontend:
 
 - `assets/js/modules/sales-orders.js`
+- `assets/js/modules/sales-invoice-entry.js`
 - `assets/js/modules/logistics-entry.js`
 - `assets/js/modules/commissions-entry.js`
 
@@ -55,6 +56,8 @@ Backend propio:
 
 - `backend/services/sales-order-entry.service.js`
 - `backend/services/sales-order-entry.service.test.js`
+- `backend/services/sales-invoice-entry.service.js`
+- `backend/services/sales-invoice-entry.service.test.js`
 
 No existe actualmente un servicio backend específico de Ventas o Clientes.
 
@@ -91,6 +94,8 @@ El flujo actual usa:
 - `GET /api/backend/tables/:tabla?all=true` para cargar tablas comerciales.
 - `POST /api/backend/tables/:tabla` con `{ rows, deletedIds?, search?, limit?, offset? }` para altas/ediciones.
 - `POST /api/sales/orders/full-entry` para validar y persistir atómicamente un pedido con uno o varios detalles.
+- `GET /api/sales/unbilled-orders` lista pedidos sin `ventas.id_pedido`; `POST /api/sales/invoices/full-entry` vuelve a validar la relación y crea atómicamente una venta por pedido.
+- `POST /api/sales/deliveries/full-entry` crea entrega y detalle en un snapshot y completa `ventas.id_entrega` para pedidos ya facturados, conservando la fecha económica por entrega.
 - `GET /api/reports/income-statement?...` y `GET /api/reports/cashflow` son contratos consumidores de Reportes, no propiedad de Ventas.
 
 Los contratos de filas están centralizados en `backend-columns.js`/`backend-projections.js`; no duplicarlos dentro de un nuevo handler.
@@ -159,7 +164,7 @@ Precios, ventas, cobros y comisiones monetarias dependen de `shared/money.js` y 
 - Contabilidad posee gastos económicos, aplicaciones, ajustes y reversiones. Desde `2026-04-01`, `Factura_A`/`Factura_B` produce Ingresos Brutos por `1,5%` del subtotal; cada venta produce además la comisión definida por su canal; y una entrega con egreso y relación canónica del flete produce Logística. El guardado de ventas y entregas materializa el gasto idempotentemente en el mismo snapshot.
 
 - El alta de pedidos tiene servicio y endpoint específico; el editor genérico continúa disponible pero no es el camino canónico de la pantalla Pedidos.
-- No se encontró un writer especializado de `ventas`; `sales-orders.js` la lee para deuda pero solo crea `pedidos` y `detalle_pedidos`.
+- El writer especializado de `ventas` crea una fila por pedido, rechaza carreras y duplicados fiscales por cliente/tipo/número, y conserva `id_entrega` como vínculo económico. No reparte importes entre varios pedidos porque el modelo no define ese criterio.
 - El alta integral de pedidos no tiene idempotencia persistente: no existe almacenamiento técnico separado y no se agregó una tabla o contrato oculto. Un reintento posterior a una respuesta exitosa perdida puede duplicar el pedido.
 - `table-registry.json` declara claves históricas `Id_Entrega_Pedido` para `entregas_detalle` e `Id_Cobro_Venta` para `cobros_detalle`, mientras configuración y frontend usan `id_entregas_detalle` e `id_cobros_detalle`. No migrar ni unificar sin análisis de Base de datos.
 - No hay estado persistido de pedido/venta; entrega y deuda se derivan. Definir un estado nuevo sería cambio de contrato/esquema.

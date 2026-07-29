@@ -527,10 +527,14 @@ function cacheElements() {
     "purchase-submit",
     "orders-form",
     "order-client",
+    "order-client-id",
+    "order-client-listbox",
     "order-date",
     "order-delivery-date",
     "order-original-date",
     "order-product",
+    "order-product-id",
+    "order-product-listbox",
     "order-boxes",
     "order-tax",
     "order-unit-price",
@@ -1891,7 +1895,7 @@ function switchView(view) {
 
   const navGroupViews = {
     analysis: ["results", "cashflow"],
-    "sales-distribution": ["orders-entry", "sales-entry", "logistics-entry", "commissions-entry"],
+    "sales-distribution": ["orders-entry", "sales-invoice-entry", "sales-entry", "logistics-entry", "commissions-entry"],
     "purchases-inventory": ["purchase-entry", "reception-entry", "data-entry", "creditor-entry", "other-expenses-entry"],
     treasury: [
       "cashbox",
@@ -1939,7 +1943,8 @@ function switchView(view) {
     "investment-fund": ["Fondo de inversión", "Registro, historial y saldo del fondo común de inversión."],
     "payments-entry": ["Pagos", "Carga agrupada de pagos y medios de cancelacion."],
     "issued-check-entry": ["Cheques entregados", "Carga y control de cheques propios entregados."],
-    "sales-entry": ["Ventas", "Carga agrupada de ventas, pedidos y entregas."],
+    "sales-invoice-entry": ["Ventas", "Carga de facturas de venta desde pedidos pendientes."],
+    "sales-entry": ["Saldos Pendientes", "Facturas de venta con saldo pendiente de cobro."],
     "orders-entry": ["Pedidos", "Carga y seguimiento de pedidos de clientes."],
     "collections-entry": ["Cobros", "Carga agrupada de cobros y cheques recibidos."],
     "received-check-entry": ["Cheques recibidos", "Carga y control de cheques recibidos."],
@@ -1962,6 +1967,7 @@ function switchView(view) {
   }
   if (view === "data-entry") initializeViewOnce(view, initializeInventoryView);
   if (view === "purchase-entry") initializeViewOnce(view, loadPurchaseBackendOptions);
+  if (view === "sales-invoice-entry") runViewLoad(view, loadUnbilledSalesOrders);
   if (["orders-entry", "logistics-entry", "sales-entry", "collections-entry", "commissions-entry", "received-check-entry"].includes(view)) {
     runViewLoad("commercial-entry-data", loadCommercialEntryData);
   }

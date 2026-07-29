@@ -38,6 +38,7 @@ const { createCashBoxesService } = require("./backend/services/cash-boxes.servic
 const { createReceivedChecksService } = require("./backend/services/received-checks.service");
 const { createInvestmentFundService } = require("./backend/services/investment-fund.service");
 const { createSalesOrderEntryService } = require("./backend/services/sales-order-entry.service");
+const { createSalesInvoiceEntryService } = require("./backend/services/sales-invoice-entry.service");
 const { createAttachmentsService } = require("./backend/services/attachments.service");
 const { createOtherExpenseEntryService } = require("./backend/services/other-expense-entry.service");
 const { createReceptionEntryService } = require("./backend/services/reception-entry.service");
@@ -667,6 +668,21 @@ const { handleSalesOrderFullEntry } = createSalesOrderEntryService({
   saveBackendCache,
   sendJson
 });
+const {
+  handleSalesDeliveryFullEntry,
+  handleSalesInvoiceFullEntry,
+  handleUnbilledOrdersGet
+} = createSalesInvoiceEntryService({
+  backendId,
+  backendNextNumericId,
+  ensureBackendTable,
+  isIsoDate,
+  loadCache,
+  readJsonBody,
+  saveBackendCache,
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
+});
 const { handlePurchaseFullEntry } = createPurchaseEntryService({
   backendId,
   backendNextNumericId,
@@ -823,7 +839,10 @@ const server = http.createServer(createRequestHandler({
     handleReceptionAttachmentSave,
     handleReceptionInvoiceRead,
     handleRuntimeShutdown,
-    handleSalesOrderFullEntry
+    handleSalesDeliveryFullEntry,
+    handleSalesInvoiceFullEntry,
+    handleSalesOrderFullEntry,
+    handleUnbilledOrdersGet
   },
   sendJson,
   serveStaticFile
