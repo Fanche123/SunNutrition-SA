@@ -114,6 +114,8 @@ Crear, mover, renombrar o eliminar un archivo permanente de datos obliga a actua
 
 ## Entrega
 
+`backend/migrations/20260729-internal-transfer-catalog.js` agrega de forma idempotente únicamente la etiqueta `Transferencia interna - Galicia` y su relación con el acreedor canónico `Propio`, validado por CUIT propio; exige hash para aplicar y crea backup verificable.
+
 `backend/migrations/20260728-last-bank-batch-reset.js` es la reparación puntual no automática del último lote ICBC; exige hash exacto y backup verificable, ofrece dry-run/restore y tiene regresión aislada en `tests/last-bank-batch-reset.test.js`.
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**; en alto riesgo agregar backup/rollback y consumidores.

@@ -299,7 +299,22 @@ function createCashBoxesService({
         `Pago ${item.id || "sin ID"} excluido: el cheque emitido todavía no tiene débito ICBC efectivo.`
       );
       return false;
-    });
+    }).map((item) => ({
+      ...item,
+      classification: paymentFinancialClassification(item.id, tables)
+    }));
+  }
+
+  function paymentFinancialClassification(paymentId, tables) {
+    const expenseIds = new Set((tables.detalle_pagos?.rows || [])
+      .filter((row) => backendId(row.id_pago) === backendId(paymentId))
+      .map((row) => backendId(row.id_egreso))
+      .filter(Boolean));
+    const transfer = (tables.egresos?.rows || []).find((row) => (
+      expenseIds.has(backendId(row.id_egreso))
+      && String(row._financialClassification || "") === "transferencia_interna"
+    ));
+    return transfer ? "Transferencia interna" : "Pago";
   }
 
   function buildCollectionEntries(headers, tables, associations, definition, warnings, cutoffDate) {
@@ -485,6 +500,7 @@ function createCashBoxesService({
           reference: `Pago #${item.id || "sin ID"}${referenceSuffix}`,
           method: item.row.metodo,
           bank: item.row.banco,
+          classification: item.classification,
           otherAssociations: associations.paymentsOtherBanks.get(item.id) || []
         });
       });
@@ -498,6 +514,7 @@ function createCashBoxesService({
     reference,
     method,
     bank,
+    classification = "",
     otherAssociations
   }) {
     const impact = instrumentImpact(method, bank, definition);
@@ -512,6 +529,7 @@ function createCashBoxesService({
       reference,
       method: String(method || "Sin método").trim(),
       bank: String(bank || "").trim(),
+      classification: classification || (type === "pago" ? "Pago" : "Cobro"),
       instrument: [method, bank].filter((value) => String(value || "").trim()).join(" · ") || "Sin instrumento",
       amountCents: item.amountCents,
       status: impact.status,

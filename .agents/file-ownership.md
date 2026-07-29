@@ -101,6 +101,8 @@ Cada ruta tiene un propietario principal. Los consumidores pueden proponer cambi
 
 ## Regla para compartidos
 
+| `backend/migrations/20260729-internal-transfer-catalog.js`, `tests/internal-transfer.test.js` | Base de datos + Tesorería | Contabilidad, Reportes/Caja | Inicialización idempotente del catálogo Propio / Transferencia interna - Galicia y regresión del flujo financiero directo | Alto | `base-de-datos.md` + `tesoreria.md` + consumidores |
+
 | `backend/migrations/20260728-last-bank-batch-reset.js`, `tests/last-bank-batch-reset.test.js` | Base de datos + Tesorería | Contabilidad, Arquitectura, UI/UX | Reversión puntual, atómica e idempotente del último lote ICBC por linaje persistido, con backup/dry-run/restore | Alto | `base-de-datos.md` + `tesoreria.md` + consumidores |
 
 `app.js`, `index.html`, estilos, router, data-store y registry admiten un cambio de dominio solo si es mínimo y necesario. Informar impacto y actualizar AGENTS afectados cuando cambie una dependencia estable. Si cambia la responsabilidad del archivo, derivar a Arquitectura.

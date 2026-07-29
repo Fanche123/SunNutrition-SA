@@ -96,6 +96,8 @@ La coordinación v2 basada en archivos se conserva únicamente para recuperació
 
 ## Entrega
 
+La configuración `20260729-internal-transfer-catalog.js` agrega con hash y backup la relación canónica mínima para transferencias internas; la regla operativa permanece en Tesorería y no agrega esquema ni tablas.
+
 La reparación real `backend/migrations/20260728-last-bank-batch-reset.js` comparte el contrato de hash, backup verificable, dry-run/restore y reemplazo atómico de las reparaciones ICBC existentes.
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.

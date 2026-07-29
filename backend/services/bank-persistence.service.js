@@ -341,6 +341,40 @@ function createBankPersistenceService(dependencies) {
   
   function createBankEgressForSource(tables, movement, reviewRow = {}, operationKey = "", operationPayload = "") {
     const sourceMatch = movement.sourceMatch;
+    if (sourceMatch?.directFinancialEgress) {
+      const relation = (tables.acreedores_etiquetas?.rows || []).find((row) => (
+        backendId(row.id_acreedor_etiqueta) === backendId(sourceMatch.idAcreedorEtiqueta)
+        && backendId(row.id_acreedor) === backendId(sourceMatch.idAcreedor)
+        && backendId(row.id_etiqueta) === backendId(sourceMatch.idEtiqueta)
+      ));
+      if (!relation) return null;
+      const expenseTable = tables.egresos;
+      const expenseId = backendNextNumericId(expenseTable.rows, "id_egreso");
+      const total = fromCents(Math.abs(toCents(movement.amount)));
+      expenseTable.rows.push({
+        _rowNumber: expenseTable.rows.length + 2,
+        id_egreso: expenseId,
+        fecha_factura: movement.date,
+        fecha_prevista_pago: movement.date,
+        id_etiqueta: backendId(sourceMatch.idEtiqueta),
+        id_acreedor_etiqueta: backendId(sourceMatch.idAcreedorEtiqueta),
+        tipo_factura: "",
+        nro_factura: movement.rowNumber || "",
+        iva: 0,
+        per_ret_iva: 0,
+        per_ret_iibb: 0,
+        imp_internos: 0,
+        subtotal: total,
+        total,
+        _bankMovementKey: cleanBackendText(movement.movementKey),
+        _bankOperationKey: operationKey,
+        _bankOperationPayload: operationPayload,
+        _financialClassification: "transferencia_interna",
+        _editedLocallyAt: new Date().toISOString()
+      });
+      expenseTable.rowCount = expenseTable.rows.length;
+      return { expenseId, sourceId: "", sourceLabel: sourceMatch.label || "Transferencia interna" };
+    }
     const sourceTable = tables[sourceMatch?.table];
     const sourceRow = sourceTable?.rows?.find((row) => backendId(row[sourceMatch.idColumn]) === backendId(sourceMatch.id));
     if (!sourceRow || backendId(sourceRow.id_egreso)) return null;

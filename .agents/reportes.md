@@ -98,6 +98,8 @@ Las agregaciones monetarias de resultados, dashboard y cashflow usan `shared/mon
 
 ## Mantenimiento y entrega
 
+Los egresos con clasificación financiera `transferencia_interna` no son fuente del Estado de Resultados; Caja ICBC sí refleja su pago y lo identifica como `Transferencia interna`.
+
 Crear, mover, renombrar o eliminar un archivo permanente del sector obliga, en la misma tarea, a actualizar este AGENT, `.agents/file-ownership.md` y arquitectura/dependencias. Una integración nueva actualiza también el AGENT del dominio productor/consumidor. No aplica a temporales, logs, outputs, adjuntos, caches o generados. Es parte obligatoria del terminado.
 
 Entregá por defecto: **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.

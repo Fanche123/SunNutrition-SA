@@ -52,6 +52,8 @@ El materializador reconoce `egresos.imp_internos` por `fecha_factura`, con ident
 
 ## Trabajo directo
 
+Las transferencias internas bancarias provisionales crean sólo `egresos`, `pagos` y `detalle_pagos`; quedan explícitamente fuera de `gastos_economicos` y `gastos_egresos`, por lo que no modifican el Estado de Resultados.
+
 Recibí pedidos en lenguaje natural directamente, inspeccioná solo el contexto relevante, implementá lo autorizado sin exigir `taskId`, `handoff`, `await`, `present`, `Aprobar` ni `begin`, y validá proporcionalmente. Pedí confirmación solo ante una decisión contable o financiera, destructiva, de datos, contrato o seguridad que sea realmente bloqueante. Si cambia el ownership, derivá verbalmente al chat correcto. El tooling coordinado subsiste solo como legado manual si el usuario lo pide expresamente.
 
 Crear o cambiar archivos permanentes obliga a actualizar este manual, ownership, arquitectura y consumidores.

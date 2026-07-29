@@ -39,6 +39,17 @@ const DEFAULT_BANK_DETAIL_RULES = [
   { detail: "IVA REDUCIDA", expenseType: "Iva", creditor: "Estado" }
 ];
 
+const INTERNAL_TRANSFER_RULES = [
+  {
+    bank: "ICBC",
+    ownCuits: ["30717550419"],
+    detailPattern: /^transf connbkg(?:\b|$)/,
+    creditorName: "Propio",
+    tagName: "Transferencia interna - Galicia"
+  }
+];
+
 module.exports = {
-  DEFAULT_BANK_DETAIL_RULES
+  DEFAULT_BANK_DETAIL_RULES,
+  INTERNAL_TRANSFER_RULES
 };

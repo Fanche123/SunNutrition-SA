@@ -1,4 +1,5 @@
 const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/money");
+const { INTERNAL_TRANSFER_RULES } = require("../bank-rules");
 
 function createBankParserService(dependencies) {
   const { backendIsoDate, backendNormalizeText, backendNumber, bankManualCheckDepositMatch, bankMovementBackendCreditorId, bankSourceDestinationForOriginType, bestBankMatch, bestBankSourceMatch, compactBankText, consumePersistedBankMovement, exactPendingExpenseMatch, extractBankCheckNumber, extractBankCuit, identifyBankCounterparty, normalizeBankCheckNumber, normalizeBankCuit, uniqueExactBankMatch } = dependencies;
@@ -302,6 +303,29 @@ function createBankParserService(dependencies) {
           match: null
         };
       }
+
+      const internalTransfer = internalTransferMatch(enrichedMovement, identified, bank);
+      if (internalTransfer) {
+        return {
+          ...enrichedMovement,
+          provider: internalTransfer.creditorName,
+          tag: internalTransfer.tagName,
+          idEtiqueta: internalTransfer.idEtiqueta,
+          idAcreedorEtiqueta: internalTransfer.idAcreedorEtiqueta,
+          status: "agregar_egreso",
+          action: "Agregar egreso",
+          classificationType: "transferencia_interna",
+          sourceMatch: {
+            type: "transferencia_interna",
+            directFinancialEgress: true,
+            label: internalTransfer.tagName,
+            idAcreedor: bankMovementBackendCreditorId(enrichedMovement),
+            idEtiqueta: internalTransfer.idEtiqueta,
+            idAcreedorEtiqueta: internalTransfer.idAcreedorEtiqueta
+          },
+          match: null
+        };
+      }
   
       const hasExpenseIdentity = Boolean(bankMovementBackendCreditorId(enrichedMovement) && enrichedMovement.idEtiqueta);
       return {
@@ -387,6 +411,40 @@ function createBankParserService(dependencies) {
   }
 
   return { analyzeBankMovement, parseBankMovements };
+
+  function internalTransferMatch(movement, identified, bank) {
+    const normalizedBank = backendNormalizeText(bank);
+    const normalizedDetail = backendNormalizeText([
+      movement.bankConcept,
+      movement.detail,
+      movement.concept
+    ].filter(Boolean).join(" "));
+    const movementCuit = normalizeBankCuit(movement.cuit);
+    const identifiedCuit = normalizeBankCuit(identified?.cuit);
+    const identifiedName = backendNormalizeText(identified?.name);
+    const exclusionText = normalizedDetail;
+    if (
+      toCents(movement.amount) >= 0
+      || /pago|proveedor|cheq|cheque|fondo|fci|rescate|suscrip|comision|impuesto|retenc/.test(exclusionText)
+    ) return null;
+
+    return INTERNAL_TRANSFER_RULES.map((rule) => {
+      if (normalizedBank !== backendNormalizeText(rule.bank)) return null;
+      if (!rule.detailPattern.test(normalizedDetail)) return null;
+      const ownIdentity = rule.ownCuits.includes(movementCuit)
+        && (rule.ownCuits.includes(identifiedCuit) || identifiedName === backendNormalizeText(rule.creditorName));
+      if (!ownIdentity || identified?.type !== "acreedor") return null;
+      const tag = (identified.tagOptionDetails || []).find(
+        (option) => backendNormalizeText(option.name) === backendNormalizeText(rule.tagName)
+      );
+      if (!tag?.idEtiqueta || !tag?.idAcreedorEtiqueta) return null;
+      return {
+        ...rule,
+        idEtiqueta: String(tag.idEtiqueta),
+        idAcreedorEtiqueta: String(tag.idAcreedorEtiqueta)
+      };
+    }).find(Boolean) || null;
+  }
 }
 
 function bankCsvError(message) {

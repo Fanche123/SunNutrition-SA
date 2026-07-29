@@ -121,6 +121,8 @@ Pagos, cobros, cheques y planes dependen del contrato único `shared/money.js` /
 
 ## Mantenimiento y entrega
 
+La conciliación de débitos ICBC `TRANSF CONNBKG` sólo propone transferencia interna cuando CUIT y acreedor canónico confirman identidad propia, no existen señales de proveedor, cheque, fondo o impuesto y está disponible la relación exacta `Propio / Transferencia interna - Galicia`. El flujo crea egreso financiero directo y luego pago bancario, sin `otros_gastos`, `gastos_economicos` ni `gastos_egresos`.
+
 La reparación puntual `backend/migrations/20260728-last-bank-batch-reset.js`, validada por `tests/last-bank-batch-reset.test.js`, conserva el último lote ICBC importado y elimina únicamente sus cadenas trazadas por `_bankMovementKey`/`_bankOperationKey`, con firma exacta, backup, dry-run, restore e idempotencia.
 
 Crear, mover, renombrar o eliminar un archivo permanente del sector obliga, en la misma tarea, a actualizar este AGENT, `.agents/file-ownership.md` y arquitectura/dependencias. Una integración nueva actualiza también el AGENT consumidor. No aplica a temporales, logs, outputs, adjuntos, caches o generados. Es parte obligatoria del terminado.
