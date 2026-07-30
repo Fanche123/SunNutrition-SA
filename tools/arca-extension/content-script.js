@@ -32,6 +32,10 @@
     return String(element?.value || element?.textContent || element?.getAttribute?.("aria-label") || "").trim();
   }
 
+  function normalizeActionText(element) {
+    return normalize(elementText(element)).replace(/^<\s*|\s*>$/g, "").trim();
+  }
+
   function isFinalAction(element) {
     const control = element?.closest?.("button, input[type='submit'], input[type='button'], a");
     return Boolean(control && FINAL_ACTION_PATTERN.test(elementText(control)));
@@ -77,6 +81,40 @@
     const field = targetId ? document.getElementById(targetId) : label.querySelector("input, select, textarea");
     if (!field || SECRET_FIELD_PATTERN.test(`${field.id} ${field.name} ${label.textContent}`)) return null;
     return field;
+  }
+
+  function findUniqueInitialField(labelText) {
+    const expected = normalizeLabel(labelText);
+    const candidates = new Set();
+    const labels = [...document.querySelectorAll("label")]
+      .filter((label) => normalizeLabel(label.textContent) === expected);
+    for (const label of labels) {
+      const targetId = label.getAttribute("for");
+      const field = targetId ? document.getElementById(targetId) : label.querySelector("select");
+      if (!field || field.tagName !== "SELECT") return null;
+      candidates.add(field);
+    }
+    const rows = [...document.querySelectorAll("tr")].filter((row) => (
+      [...row.querySelectorAll("th, td")]
+        .some((cell) => normalizeLabel(cell.textContent) === expected)
+    ));
+    for (const row of rows) {
+      const selects = [...row.querySelectorAll("select")];
+      if (selects.length !== 1) return null;
+      candidates.add(selects[0]);
+    }
+    return candidates.size === 1 ? [...candidates][0] : null;
+  }
+
+  function initialScreenFields() {
+    const screenText = normalize(document.body?.innerText || document.body?.textContent);
+    if (!screenText.includes("puntos de ventas y tipos de comprobantes habilitados para impresion")) {
+      return null;
+    }
+    const pointField = findUniqueInitialField("Punto de Ventas a utilizar");
+    const receiptField = findUniqueInitialField("Tipo de Comprobante");
+    if (!pointField || !receiptField || pointField === receiptField) return null;
+    return { pointField, receiptField };
   }
 
   function exactOption(field, value, optionText = "", matchBy = "exact") {
@@ -158,21 +196,20 @@
 
   function completeInitialFields(payload) {
     const [pointDefinition, receiptDefinition] = buildFieldPlan("initial", payload);
-    const pointField = findFieldByExactLabel(pointDefinition.labels);
-    if (!pointField) return { ok: false, pending: false };
+    const fields = initialScreenFields();
+    if (!fields) return { ok: false, pending: false, reason: "initial_structure_unknown" };
+    const { pointField, receiptField } = fields;
     const pointValue = resolvedFieldValue(
       pointField,
       pointDefinition.value,
       pointDefinition.optionText,
       pointDefinition.matchBy
     );
-    if (pointValue === null) return { ok: false, pending: false };
+    if (pointValue === null) return { ok: false, pending: false, reason: "point_of_sale_not_unique" };
     if (String(pointField.value) !== String(pointValue) && !applyFieldValue(pointField, pointValue)) {
-      return { ok: false, pending: false };
+      return { ok: false, pending: false, reason: "point_of_sale_rejected" };
     }
 
-    const receiptField = findFieldByExactLabel(receiptDefinition.label);
-    if (!receiptField) return { ok: false, pending: true };
     const receiptValue = resolvedFieldValue(
       receiptField,
       receiptDefinition.value,
@@ -184,10 +221,14 @@
         const text = normalize(option.textContent);
         return text && !text.includes("seleccionar");
       });
-      return { ok: false, pending: availableOptions.length === 0 };
+      return {
+        ok: false,
+        pending: availableOptions.length === 0,
+        reason: availableOptions.length === 0 ? "receipt_options_pending" : "receipt_type_not_unique"
+      };
     }
     if (String(receiptField.value) !== String(receiptValue) && !applyFieldValue(receiptField, receiptValue)) {
-      return { ok: false, pending: false };
+      return { ok: false, pending: false, reason: "receipt_type_rejected" };
     }
     return { ok: true, pending: false };
   }
@@ -325,7 +366,12 @@
           "waiting"
         );
       }
-      return interrupt("selector_changed", "ARCA cambió los campos de datos iniciales.");
+      const message = result.reason === "point_of_sale_not_unique"
+        ? "No existe una única opción para el punto de venta 00001."
+        : result.reason === "receipt_type_not_unique"
+          ? `No existe una única opción exacta ${receiptLabel(payload.invoice.receiptType)}.`
+          : "ARCA cambió la estructura verificada de los datos iniciales.";
+      return interrupt("selector_changed", message);
     }
     if (stage === "emission") {
       updateSession("completing_stage", "", "emission");
@@ -392,7 +438,7 @@
   function findUniqueAction(expectedText) {
     const expected = normalize(expectedText);
     const matches = [...document.querySelectorAll("button, input[type='submit'], input[type='button'], a")]
-      .filter((control) => normalize(elementText(control)) === expected);
+      .filter((control) => normalizeActionText(control) === expected);
     return matches.length === 1 ? matches[0] : null;
   }
 
@@ -409,7 +455,7 @@
   }
 
   function interimActionAllowed(control, stage) {
-    const text = normalize(elementText(control));
+    const text = normalizeActionText(control);
     if (stage === "service") return text === "generar comprobantes";
     if (stage === "representative") return !FINAL_ACTION_PATTERN.test(text);
     return ["initial", "emission", "recipient", "lines"].includes(stage) && text === "continuar";
@@ -586,6 +632,7 @@
       && mutations.length
       && mutations.every((mutation) => mutation.target?.closest?.("#sunnutrition-arca-assistant"))
     ) return;
+    if (Array.isArray(mutations) && mutations.length) lastPageSignature = "";
     clearTimeout(observerTimer);
     observerTimer = setTimeout(runRecognizedStage, 250);
   }
@@ -657,19 +704,25 @@
       completeLineRows,
       createStageGuard,
       authorizeInterimAction,
+      continueFromStage,
       exactOption,
+      initialScreenFields,
       findFieldByExactLabel,
       findRepresentativeControl,
       findUniqueAction,
       interimActionAllowed,
       isFinalAction,
       normalize,
+      normalizeActionText,
       normalizeLabel,
       payloadCoherenceIsValid,
       recipientLabel,
       receiptLabel,
       resolvedFieldValue,
-      setFieldValue
+      setFieldValue,
+      setCurrentStageForTesting(stage) {
+        currentStage = stage;
+      }
     };
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);
