@@ -13,7 +13,7 @@ comprobantes, no obtiene CAE y no confirma, firma ni presenta información fisca
 4. Copiar el identificador de 32 caracteres mostrado por el navegador.
 5. En ERP > Ventas > Facturación ARCA, pegar ese identificador y usar **Verificar extensión**.
 
-La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.2`
+La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.3`
 negocia el contrato fiscal `3` con el ERP antes de preparar o abrir una sesión; después de modificar
 o actualizar estos archivos hay que presionar **Recargar** en `chrome://extensions`.
 
@@ -59,6 +59,11 @@ del cliente no participa de la condición frente al IVA. Todas las líneas usan 
 selecciona primero el punto de venta y espera que ARCA cargue sus comprobantes dependientes; luego
 acepta Factura A o Factura B exclusivamente por el texto visible. La extensión puede accionar únicamente la opción inicial
 Generar comprobantes y los botones Continuar de las etapas reconocidas.
+
+La pantalla inicial también admite el HTML legado observado en ARCA, donde los textos de ambos
+campos están en celdas de tabla y no en elementos `label`. Para operar exige conjuntamente el
+título completo de esa pantalla, una única fila para cada texto exacto y un único `select` por fila;
+la carga asincrónica del segundo selector se reevalúa al incorporarse sus opciones.
 
 ## Invariante de no emisión
 

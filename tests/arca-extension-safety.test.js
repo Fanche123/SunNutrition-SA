@@ -468,6 +468,7 @@ test("invariante de no submit: no existe invocación de click, submit o requestS
   assert.equal(content.FINAL_ACTION_PATTERN.test("Obtener CAE"), true);
   assert.equal(content.FINAL_ACTION_PATTERN.test("Presentar"), true);
   assert.equal(content.interimActionAllowed({ value: "Continuar" }, "emission"), true);
+  assert.equal(content.interimActionAllowed({ value: "Continuar >" }, "initial"), true);
   assert.equal(content.interimActionAllowed({ value: "Confirmar" }, "review"), false);
   assert.equal(content.interimActionAllowed({ value: "Generar comprobantes" }, "service"), true);
   assert.equal(content.interimActionAllowed({ value: "Generar" }, "service"), false);
@@ -598,7 +599,16 @@ test("punto de venta se resuelve sólo por identificador único de cinco dígito
 
 test("pantalla inicial real selecciona punto 00001 y únicamente Factura A o B", () => {
   const originalDocument = global.document;
+  const originalMouseEvent = global.MouseEvent;
   const dispatched = [];
+  const clicked = [];
+  const fixture = fs.readFileSync(
+    path.join(root, "tests/fixtures/arca/initial-fields-legacy.html"),
+    "utf8"
+  );
+  assert.match(fixture, /Puntos de Ventas y Tipos de Comprobantes habilitados para impresión/);
+  assert.match(fixture, /Punto de Ventas a utilizar/);
+  assert.match(fixture, /Tipo de Comprobante/);
   const point = {
     tagName: "SELECT",
     id: "puntodeventa",
@@ -629,31 +639,53 @@ test("pantalla inicial real selecciona punto 00001 y únicamente Factura A o B",
     options: [{ value: "", textContent: "seleccionar..." }],
     dispatchEvent: (event) => dispatched.push(`receipt:${event.type}`)
   };
-  const fields = { puntodeventa: point, tipocomprobante: receipt };
-  const labels = [
-    {
-      textContent: "Punto de Ventas a utilizar",
-      getAttribute: () => "puntodeventa",
-      querySelector: () => null
-    },
-    {
-      textContent: "Tipo de Comprobante",
-      getAttribute: () => "tipocomprobante",
-      querySelector: () => null
+  const row = (label, select) => ({
+    querySelectorAll: (selector) => selector === "th, td"
+      ? [{ textContent: label }, { textContent: "" }]
+      : selector === "select" ? [select] : [],
+    querySelector: (selector) => selector === "select" ? select : null
+  });
+  const rows = [row("Punto de Ventas a utilizar", point), row("Tipo de Comprobante", receipt)];
+  const back = { value: "< Volver", dispatchEvent: () => clicked.push("back") };
+  const next = {
+    value: "Continuar >",
+    disabled: false,
+    getAttribute: () => null,
+    dispatchEvent: (event) => {
+      clicked.push(`next:${event.type}`);
+      return true;
     }
-  ];
+  };
+  const banner = { dataset: {}, textContent: "" };
   global.document = {
-    querySelectorAll: (selector) => selector === "label" ? labels : [],
-    getElementById: (id) => fields[id] || null
+    body: { innerText: fixture },
+    documentElement: { appendChild: () => {} },
+    querySelectorAll: (selector) => selector === "tr"
+      ? rows
+      : selector === "button, input[type='submit'], input[type='button'], a"
+        ? [back, next]
+        : [],
+    getElementById: (id) => id === "sunnutrition-arca-assistant" ? banner : null
+  };
+  global.MouseEvent = class MouseEvent {
+    constructor(type) { this.type = type; }
   };
   try {
     const payload = safeMessage().payload;
     payload.invoice.receiptType = "Factura_A";
-    assert.deepEqual(content.completeInitialFields(payload), { ok: false, pending: true });
+    assert.deepEqual(content.completeInitialFields(payload), {
+      ok: false,
+      pending: true,
+      reason: "receipt_options_pending"
+    });
     assert.deepEqual([point.value, receipt.value], ["1", ""]);
     receipt.options = [{ value: "", textContent: "seleccionar..." }, ...receiptOptions];
     assert.deepEqual(content.completeInitialFields(payload), { ok: true, pending: false });
     assert.deepEqual([point.value, receipt.value], ["1", "1"]);
+    assert.equal(content.findUniqueAction("Continuar")?.value, "Continuar >");
+    content.setCurrentStageForTesting("initial");
+    content.continueFromStage("Datos iniciales completos.", "initial");
+    assert.deepEqual(clicked, ["next:click"]);
     payload.invoice.receiptType = "Factura_B";
     assert.deepEqual(content.completeInitialFields(payload), { ok: true, pending: false });
     assert.deepEqual([point.value, receipt.value], ["1", "6"]);
@@ -669,10 +701,39 @@ test("pantalla inicial real selecciona punto 00001 y únicamente Factura A o B",
       { value: "Factura A", textContent: "Nota de Débito A" }
     ];
     payload.invoice.receiptType = "Factura_A";
-    assert.deepEqual(content.completeInitialFields(payload), { ok: false, pending: false });
+    assert.deepEqual(content.completeInitialFields(payload), {
+      ok: false,
+      pending: false,
+      reason: "receipt_type_not_unique"
+    });
     assert.equal(receipt.value, "");
+
+    point.options = [{ value: "2", textContent: "00002" }];
+    assert.deepEqual(content.completeInitialFields(payload), {
+      ok: false,
+      pending: false,
+      reason: "point_of_sale_not_unique"
+    });
+
+    point.options = [{ value: "1", textContent: "00001" }];
+    rows.push(row("Punto de Ventas a utilizar", { ...point }));
+    assert.equal(content.initialScreenFields(), null);
+
+    rows.pop();
+    const conflictingPoint = { ...point };
+    const pointLabel = {
+      textContent: "Punto de Ventas a utilizar",
+      getAttribute: () => "label-point",
+      querySelector: () => null
+    };
+    global.document.getElementById = (id) => id === "label-point" ? conflictingPoint : null;
+    global.document.querySelectorAll = (selector) => selector === "label"
+      ? [pointLabel]
+      : selector === "tr" ? rows : [];
+    assert.equal(content.initialScreenFields(), null);
   } finally {
     global.document = originalDocument;
+    global.MouseEvent = originalMouseEvent;
   }
 });
 

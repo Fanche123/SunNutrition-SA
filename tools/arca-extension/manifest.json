@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "SunNutrition - Asistente ARCA",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "minimum_chrome_version": "102",
   "description": "Completa datos preparados por el ERP y se detiene antes de emitir comprobantes.",
   "permissions": ["storage", "alarms"],
