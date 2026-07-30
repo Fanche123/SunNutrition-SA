@@ -20,6 +20,7 @@ Contabilidad no posee `egresos`, `pagos`, productores operativos ni el Estado de
 - Compras produce recepciones y otros gastos.
 - RR. HH. produce sueldos y costos laborales.
 - Ventas produce comisiones y logística.
+- Ventas posee la preparación fiscal ARCA y su contrato técnico compartido; Contabilidad consume/revisa las reglas A/B, condición frente al IVA, IVA fijo y fecha admisible, sin convertir clasificaciones comerciales de clientes en datos fiscales.
 - Tesorería produce refinanciaciones, planes de pago y rendimientos del fondo de inversión.
 - Reportes consume exclusivamente gastos confirmados por `fecha_economica` en todos los períodos y diagnósticos.
 - El detalle lazy del Estado de Resultados conserva `origen_tipo`, `origen_id`, `concepto`, movimiento e importe de esas mismas filas confirmadas para resolver contraparte y referencia; no agrega escrituras ni reconstruye productores.

@@ -1,9 +1,16 @@
 (function initializeArcaExtension(root) {
   "use strict";
 
+  if (typeof root.importScripts === "function" && !root.ArcaFiscalContract) {
+    root.importScripts("arca-fiscal-contract.js");
+  }
+  const ARCA_FISCAL = root.ArcaFiscalContract
+    || (typeof module === "object" && module.exports ? require("./arca-fiscal-contract") : null);
   const LOGIN_URL = "https://auth.afip.gob.ar/contribuyente_/login.xhtml?action=SYSTEM&system=rcel";
   const SESSION_TTL_MS = 5 * 60 * 1000;
   const SESSION_STORAGE_KEY = "sunnutritionArcaPreparedSessions";
+  const SESSION_ALARM_PREFIX = "sunnutrition-arca-expiry:";
+  const EXPECTED_AUTOMATION = ARCA_FISCAL.AUTOMATION;
   const FORBIDDEN_KEYS = /^(clave|password|passwd|cookie|cookies|token|mfa|captcha|certificado|certificate|firma|signature|secret|secreto)$/i;
   const fallbackSessions = new Map();
   let operationQueue = Promise.resolve();
@@ -11,12 +18,13 @@
   function validatePreparedMessage(message) {
     if (!message || message.type !== "PREPARE_SESSION") return false;
     if (!/^[0-9a-f-]{36}$/i.test(String(message.sessionId || ""))) return false;
-    if (!message.payload || message.payload.contractVersion !== 1) return false;
+    if (!message.payload || message.payload.contractVersion !== ARCA_FISCAL.CONTRACT.version) return false;
     if (message.payload.mode !== "review_only" || message.payload.finalSubmissionAllowed !== false) return false;
     if (!/^[a-f0-9]{64}$/i.test(String(message.payload.revision || ""))) return false;
     const expiresAt = Date.parse(message.payload.expiresAt);
     if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + SESSION_TTL_MS + 5000) return false;
     if (containsForbiddenKey(message.payload)) return false;
+    if (!ARCA_FISCAL.preparedPayloadIsValid(message.payload)) return false;
     return Boolean(
       message.payload.order?.id
       && message.payload.customer?.cuit
@@ -49,7 +57,7 @@
       return Number.isInteger(sender?.tab?.id)
         && (sender.frameId === undefined || sender.frameId === 0)
         && url.protocol === "https:"
-        && ["auth.afip.gob.ar", "serviciosjava2.afip.gob.ar"].includes(url.hostname);
+        && ["auth.afip.gob.ar", "fe.afip.gob.ar", "serviciosjava2.afip.gob.ar"].includes(url.hostname);
     } catch {
       return false;
     }
@@ -69,6 +77,22 @@
 
   function storageArea() {
     return root.chrome?.storage?.session || null;
+  }
+
+  function expiryAlarmName(sessionId) {
+    return `${SESSION_ALARM_PREFIX}${sessionId}`;
+  }
+
+  function createExpiryAlarm(session) {
+    if (session?.id && Number.isFinite(session.expiresAt) && root.chrome?.alarms?.create) {
+      root.chrome.alarms.create(expiryAlarmName(session.id), { when: session.expiresAt });
+    }
+  }
+
+  function clearExpiryAlarm(sessionId) {
+    if (sessionId && root.chrome?.alarms?.clear) {
+      root.chrome.alarms.clear(expiryAlarmName(sessionId), () => void root.chrome.runtime.lastError);
+    }
   }
 
   function callStorage(method, argument) {
@@ -139,6 +163,7 @@
     const session = currentRecords[sessionId];
     if (!session) return false;
     cancelSession(session, "timeout");
+    clearExpiryAlarm(sessionId);
     await writeSessionRecords(currentRecords);
     return true;
   }
@@ -163,7 +188,10 @@
       return { ok: false, status: "rejected", reason: "invalid_extension_response" };
     }
     const records = await readSessionRecords();
-    Object.values(records).forEach((existing) => cancelSession(existing, "manual_abort"));
+    Object.values(records).forEach((existing) => {
+      cancelSession(existing, "manual_abort");
+      clearExpiryAlarm(existing.id);
+    });
     const session = {
       id: message.sessionId,
       payload: message.payload,
@@ -176,6 +204,7 @@
       expiresAt: Date.parse(message.payload.expiresAt)
     };
     await writeSessionRecords({ [session.id]: session });
+    createExpiryAlarm(session);
     try {
       const tab = await createTab(LOGIN_URL);
       if (!tab?.id) throw new Error("ARCA tab was not created");
@@ -198,6 +227,7 @@
       const latestSession = latestRecords[session.id];
       if (latestSession) {
         cancelSession(latestSession, "extension_unavailable");
+        clearExpiryAlarm(latestSession.id);
         await writeSessionRecords(latestRecords);
       }
       return publicStatus(latestSession);
@@ -207,7 +237,11 @@
   async function externalMessage(message, sender) {
     if (message?.type === "PING") {
       return trustedExternalSender(sender)
-        ? { ok: true, contractVersion: 1, mode: "review_only" }
+        ? {
+          ok: true,
+          contractVersion: ARCA_FISCAL.CONTRACT.version,
+          mode: "review_only"
+        }
         : { ok: false };
     }
     if (message?.type === "PREPARE_SESSION") return prepareSession(message, sender);
@@ -227,6 +261,7 @@
       const session = records[sessionId];
       if (!session) return { ok: false, status: "not_found", reason: "unexpected_response" };
       cancelSession(session, "manual_abort", { closeTab: message.closeTab === true });
+      clearExpiryAlarm(session.id);
       delete records[sessionId];
       await writeSessionRecords(records);
       return { ...publicStatus(session), status: "interrupted", reason: "manual_abort" };
@@ -252,6 +287,27 @@
         stage: session.stage || ""
       };
     }
+    if (message?.type === "AUTHORIZE_INTERIM_ACTION") {
+      const allowedPreviousStage = {
+        representative: "login",
+        service: "representative"
+      }[message.stage];
+      if (
+        !allowedPreviousStage
+        || session.stage !== allowedPreviousStage
+        || ["review_reached", "interrupted"].includes(session.status)
+        || !session.payload
+      ) return { ok: false, status: "rejected", stage: session.stage || "" };
+      session.status = message.stage === "representative"
+        ? "waiting_representative"
+        : "service_recognized";
+      session.stage = message.stage;
+      session.reason = "";
+      session.updatedAt = new Date().toISOString();
+      records[session.id] = session;
+      await writeSessionRecords(records);
+      return { ok: true, status: session.status, stage: session.stage };
+    }
     if (message?.type === "UPDATE_SESSION") {
       const allowedStatuses = new Set([
         "waiting_login",
@@ -262,7 +318,9 @@
         "review_reached",
         "interrupted"
       ]);
-      const allowedStages = new Set(["", "login", "representative", "service", "initial", "recipient", "lines", "review"]);
+      const allowedStages = new Set([
+        "", "login", "representative", "service", "initial", "emission", "recipient", "lines", "review"
+      ]);
       const allowedReasons = new Set([
         "",
         "network_error",
@@ -278,12 +336,23 @@
       ) {
         return { ok: false };
       }
+      if (["review_reached", "interrupted"].includes(session.status) || !session.payload) {
+        return publicStatus(session);
+      }
+      const stageOrder = ["", "login", "representative", "service", "initial", "emission", "recipient", "lines", "review"];
+      if (
+        !["review_reached", "interrupted"].includes(message.status)
+        && stageOrder.indexOf(message.stage || "") < stageOrder.indexOf(session.stage || "")
+      ) {
+        return { ok: false };
+      }
       session.status = message.status;
       session.stage = message.stage || "";
       session.reason = message.reason || "";
       session.updatedAt = new Date().toISOString();
       if (session.status === "review_reached" || session.status === "interrupted") {
         session.payload = null;
+        clearExpiryAlarm(session.id);
       }
       records[session.id] = session;
       await writeSessionRecords(records);
@@ -309,16 +378,28 @@
       respondAsync(internalMessage, message, sender, sendResponse)
     ));
   }
+  if (root.chrome?.alarms?.onAlarm) {
+    root.chrome.alarms.onAlarm.addListener((alarm) => {
+      if (!String(alarm?.name || "").startsWith(SESSION_ALARM_PREFIX)) return;
+      const sessionId = alarm.name.slice(SESSION_ALARM_PREFIX.length);
+      operationQueue = operationQueue.then(() => expireSession(sessionId)).catch(() => {});
+    });
+  }
 
   if (typeof module === "object" && module.exports) {
     module.exports = {
       FORBIDDEN_KEYS,
+      EXPECTED_AUTOMATION,
       LOGIN_URL,
+      SESSION_ALARM_PREFIX,
       SESSION_STORAGE_KEY,
       SESSION_TTL_MS,
       cancelSession,
+      clearExpiryAlarm,
       containsForbiddenKey,
+      createExpiryAlarm,
       expireSession,
+      expiryAlarmName,
       externalMessage,
       internalMessage,
       prepareSession,

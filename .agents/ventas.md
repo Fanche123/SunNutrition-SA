@@ -39,6 +39,7 @@ Cambiar una relación comercial que afecte cobros, reportes o inventario requier
 - `assets/js/modules/logistics-entry.js`
 - `assets/js/modules/commissions-entry.js`
 - `backend/services/sales-*.service.js`
+- `tools/arca-extension/*.js`
 - `backend/services/order-*.service.js` (sin coincidencias actuales)
 - `backend/services/customer-*.service.js` (sin coincidencias actuales)
 - `.agents/ventas.md`
@@ -47,6 +48,7 @@ Cambiar una relación comercial que afecte cobros, reportes o inventario requier
 
 Propios de frontend:
 
+- `assets/js/modules/arca-invoicing.js`
 - `assets/js/modules/sales-orders.js`
 - `assets/js/modules/sales-invoice-entry.js`
 - `assets/js/modules/logistics-entry.js`
@@ -54,6 +56,8 @@ Propios de frontend:
 
 Backend propio:
 
+- `backend/services/arca-invoicing.service.js`
+- `backend/services/arca-invoicing.service.test.js`
 - `backend/services/sales-order-entry.service.js`
 - `backend/services/sales-order-entry.service.test.js`
 - `backend/services/sales-invoice-entry.service.js`
@@ -65,6 +69,7 @@ No existe actualmente un servicio backend específico de Ventas o Clientes.
 
 Compartidos e integraciones relevantes:
 
+- Facturación ARCA: `tools/arca-extension/arca-fiscal-contract.js` es la única fuente de constantes fiscales consumida por backend, frontend y extensión; `background.js` autoriza transiciones seguras y `content-script.js` completa únicamente etapas reconocidas hasta revisión, sin emisión.
 - Coordinación comercial: `assets/js/modules/operational-data-coordinator.js`, `assets/js/modules/operational-shared.js`, `assets/js/core/api.js`.
 - Cobros/retenciones: `assets/js/modules/collections-retentions.js` (propietario Tesorería).
 - Otros consumidores: `assets/js/modules/received-check-entry.js`, `assets/js/modules/inventory-theoretical-model.js`.
@@ -97,6 +102,7 @@ El flujo actual usa:
 - `GET /api/backend/tables/:tabla?all=true` para cargar tablas comerciales.
 - `POST /api/backend/tables/:tabla` con `{ rows, deletedIds?, search?, limit?, offset? }` para altas/ediciones.
 - `POST /api/sales/orders/full-entry` para validar y persistir atómicamente un pedido con uno o varios detalles.
+- `GET /api/sales/arca/orders` y `POST /api/sales/arca/prepare` preparan un snapshot efímero sin registrar ventas: el backend deriva A/B, condición frente al IVA, punto de venta e IVA desde el contrato compartido y rechaza overrides incompatibles.
 - `GET /api/sales/unbilled-orders` lista pedidos sin `ventas.id_pedido`; `POST /api/sales/invoices/full-entry` vuelve a validar la relación y crea atómicamente una venta por pedido.
 - `POST /api/sales/deliveries/full-entry` crea entrega y detalle en un snapshot y completa `ventas.id_entrega` para pedidos ya facturados, conservando la fecha económica por entrega.
 - `GET /api/reports/income-statement?...` y `GET /api/reports/cashflow` son contratos consumidores de Reportes, no propiedad de Ventas.

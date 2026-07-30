@@ -33,6 +33,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `shared/money.js`: contrato monetario único para frontend, backend y pruebas; se carga antes de los scripts de dominio y también se importa mediante CommonJS.
 - `shared/money-columns.js`: clasificación única de columnas monetarias usada por editor, SQL y escritura operativa genérica.
 - `shared/inventory-purchase-evaluation.js`: regla única de Inventario para consumo diario, umbral de compra y días disponibles, compatible con navegador y CommonJS.
+- `tools/arca-extension/arca-fiscal-contract.js`: contrato fiscal único de la preparación ARCA, compatible con CommonJS, navegador y extensión; fija reglas A/B, IVA/punto de venta, valida fecha y coherencia financiera, y se carga antes de `arca-invoicing.js`.
 - `backend/utils/money-input.js`: validación estricta de payloads monetarios antes de persistir, incluida la prohibición de subcentavos.
 - `assets/js/app.js`: punto de entrada del frontend y modulos historicos aun acoplados al estado global.
 - `assets/js/modules/`: dominios frontend extraidos que se exponen como namespaces de `window` para conservar el sistema de scripts clasicos.

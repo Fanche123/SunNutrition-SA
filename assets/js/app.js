@@ -2002,8 +2002,12 @@ function switchView(view) {
   if (view === "purchase-entry") initializeViewOnce(view, loadPurchaseBackendOptions);
   if (view === "arca-invoicing") {
     runViewLoad(view, async () => {
+      await loadDeferredScript(
+        "tools/arca-extension/arca-fiscal-contract.js?v=20260730-fixed-fiscal",
+        "initializeArcaFiscalContract"
+      );
       const initialize = await loadDeferredScript(
-        "assets/js/modules/arca-invoicing.js?v=20260730-delivery-priority",
+        "assets/js/modules/arca-invoicing.js?v=20260730-fixed-fiscal",
         "initializeArcaInvoicing"
       );
       await initialize();

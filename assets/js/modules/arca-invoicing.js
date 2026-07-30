@@ -1,6 +1,9 @@
 (function exposeArcaInvoicing(root) {
   "use strict";
 
+  const ARCA_FISCAL = typeof module === "object" && module.exports
+    ? require("../../../tools/arca-extension/arca-fiscal-contract")
+    : root.ArcaFiscalContract;
   const state = {
     bound: false,
     rows: [],
@@ -17,13 +20,11 @@
     launchSequence: 0,
     auditedTerminalStatus: ""
   };
-  const VAT_RATES = [0, 2.5, 5, 10.5, 21, 27];
   const POLL_TIMEOUT_MS = 5 * 60 * 1000;
   const MAX_POLL_FAILURES = 3;
 
   async function initializeArcaInvoicing() {
     bind();
-    defaultInvoiceDate();
     restoreExtensionId();
     await Promise.all([loadOrders(), loadAudit()]);
   }
@@ -45,9 +46,7 @@
     byId("arca-extension-check")?.addEventListener("click", verifyExtension);
     byId("arca-refresh-status")?.addEventListener("click", refreshExtensionStatus);
     byId("arca-cancel")?.addEventListener("click", () => cancelActiveSession("manual_abort"));
-    ["arca-issuer-condition", "arca-recipient-condition"].forEach((id) => {
-      byId(id)?.addEventListener("change", updateReceiptSuggestion);
-    });
+    byId("arca-receipt-type")?.addEventListener("change", updateReceiptSuggestion);
     byId("arca-extension-id")?.addEventListener("change", saveExtensionId);
     byId("arca-prepare-form")?.addEventListener("input", clearPreparedState);
     byId("arca-prepare-form")?.addEventListener("change", clearPreparedState);
@@ -136,15 +135,12 @@
     text("arca-summary-order", `#${order.id_pedido}`);
     text("arca-summary-client", order.cliente || "-");
     text("arca-summary-cuit", order.cuit || "Falta CUIT");
-    text("arca-summary-condition", order.condicion_fiscal || "Falta condición fiscal");
     text("arca-summary-address", order.domicilio || "Falta domicilio");
     text("arca-summary-date", formatDate(order.fecha_pedido));
     text("arca-summary-delivery", `Prevista ${formatDate(order.fecha_entrega_prevista)}`);
-    const recipientSelect = byId("arca-recipient-condition");
-    const inferredCondition = normalizeFiscalCondition(order.condicion_fiscal);
-    if (recipientSelect && inferredCondition) recipientSelect.value = inferredCondition;
-    const configuredType = normalizeReceiptType(order.tipo_comprobante_configurado);
-    if (configuredType && byId("arca-receipt-type")) byId("arca-receipt-type").value = configuredType;
+    const receiptSelect = byId("arca-receipt-type");
+    if (receiptSelect) receiptSelect.value = "";
+    setInvoiceDateFromOrder(order);
     renderProducts(order.productos || []);
     updateReceiptSuggestion();
     renderPreparedSummary();
@@ -160,49 +156,32 @@
       <td class="num">${escapeHtml(formatNumber(product.unidades_individuales))}</td>
       <td class="num">${escapeHtml(formatMoney(product.precio_unidad_individual))}</td>
       <td class="num">${escapeHtml(`${formatNumber(product.bonificacion)}%`)}</td>
-      <td>
-        <select data-arca-vat="${escapeHtml(product.id_detalle_pedido)}" aria-label="IVA de ${escapeHtml(product.producto)}" required>
-          <option value="">Elegir IVA</option>
-          ${VAT_RATES.map((rate) => `<option value="${rate}">${formatNumber(rate)}%</option>`).join("")}
-        </select>
-      </td>
     </tr>`).join("");
   }
 
   function updateReceiptSuggestion() {
-    const issuer = byId("arca-issuer-condition")?.value || "";
-    const recipient = byId("arca-recipient-condition")?.value || "";
-    const suggestion = suggestReceiptType(issuer, recipient);
-    text("arca-receipt-suggestion", suggestion
-      ? `Sugerencia según condiciones seleccionadas: ${suggestion.replace("_", " ")}.`
-      : "Seleccioná ambas condiciones para obtener una sugerencia.");
+    const receiptType = byId("arca-receipt-type")?.value || "";
+    text("arca-receipt-suggestion", fiscalSummaryForReceipt(receiptType));
   }
 
   async function prepareInvoice(event) {
     event.preventDefault();
     if (!state.selected) return setStatus("Seleccioná un pedido.", "error");
-    const form = event.currentTarget;
-    if (!form.reportValidity()) return;
-    const vatRates = {};
-    const vatSelects = [...(byId("arca-products-body")?.querySelectorAll("[data-arca-vat]") || [])];
-    if (!vatSelects.length || vatSelects.some((select) => !select.value)) {
-      setStatus("Seleccioná la alícuota de IVA de todos los productos.", "error");
+    const invoiceDate = byId("arca-invoice-date")?.value || "";
+    if (!ARCA_FISCAL.validIsoCalendarDate(invoiceDate)) {
+      setStatus("Ingresá una fecha válida para el comprobante.", "error");
+      byId("arca-invoice-date")?.focus();
       return;
     }
-    vatSelects.forEach((select) => {
-      vatRates[select.dataset.arcaVat] = select.value;
-    });
+    const form = event.currentTarget;
+    if (!form.reportValidity()) return;
     setButtonLoading(event.submitter, true, "Preparando...");
     try {
-      const prepareRequest = {
-        orderId: state.selected.id_pedido,
-        pointOfSale: byId("arca-point-of-sale")?.value || "",
-        receiptType: byId("arca-receipt-type")?.value || "",
-        issuerCondition: byId("arca-issuer-condition")?.value || "",
-        recipientCondition: byId("arca-recipient-condition")?.value || "",
-        invoiceDate: byId("arca-invoice-date")?.value || "",
-        vatRates
-      };
+      const prepareRequest = buildPrepareRequest(
+        state.selected.id_pedido,
+        byId("arca-receipt-type")?.value || "",
+        invoiceDate
+      );
       const result = await requestBackendApi("/api/sales/arca/prepare", {
         method: "POST",
         body: JSON.stringify(prepareRequest)
@@ -256,6 +235,15 @@
     if (!validExtensionId(extensionId)) {
       return setStatus("Ingresá el ID válido de la extensión instalada.", "error");
     }
+    try {
+      const compatibilityError = extensionContractCompatibilityError(
+        await extensionMessage(extensionId, { type: "PING" })
+      );
+      if (compatibilityError) throw new Error(compatibilityError);
+    } catch (error) {
+      setStatus(`No se pudo iniciar la extensión: ${error.message}`, "error");
+      return;
+    }
     let current;
     try {
       current = await requestBackendApi("/api/sales/arca/prepare", {
@@ -307,8 +295,12 @@
     if (!validExtensionId(extensionId)) return setStatus("El ID de extensión no es válido.", "error");
     try {
       const response = await extensionMessage(extensionId, { type: "PING" });
-      if (!response?.ok || response.mode !== "review_only") throw new Error("Contrato incompatible.");
-      setStatus("Extensión verificada en modo exclusivo de revisión.", "success");
+      const compatibilityError = extensionContractCompatibilityError(response);
+      if (compatibilityError) throw new Error(compatibilityError);
+      setStatus(
+        `Extensión verificada en modo exclusivo de revisión (contrato ${ARCA_FISCAL.CONTRACT.version}).`,
+        "success"
+      );
     } catch (error) {
       setStatus(`No se pudo verificar la extensión: ${error.message}`, "error");
     }
@@ -474,17 +466,34 @@
     loadOrders();
   }
 
-  function defaultInvoiceDate() {
-    const input = byId("arca-invoice-date");
-    if (input && !input.value) input.value = localDateIso(new Date());
+  function invoiceDateFromOrder(order) {
+    const value = String(order?.fecha_entrega_prevista || "");
+    return ARCA_FISCAL.validIsoCalendarDate(value) ? value : "";
   }
 
-  function localDateIso(date) {
-    return [
-      String(date.getFullYear()).padStart(4, "0"),
-      String(date.getMonth() + 1).padStart(2, "0"),
-      String(date.getDate()).padStart(2, "0")
-    ].join("-");
+  function buildPrepareRequest(orderId, receiptType, invoiceDate) {
+    return Object.freeze({
+      orderId,
+      receiptType,
+      invoiceDate
+    });
+  }
+
+  function setInvoiceDateFromOrder(order, input = byId("arca-invoice-date")) {
+    const value = invoiceDateFromOrder(order);
+    if (input) input.value = value;
+    return value;
+  }
+
+  function fiscalSummaryForReceipt(receiptType) {
+    const rule = ARCA_FISCAL.ruleForReceipt(receiptType);
+    const vatLabel = ARCA_FISCAL.CONTRACT.vatRate.toLocaleString("es-AR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    });
+    return rule
+      ? `${rule.label} · Cliente: ${rule.recipientConditionLabel} · IVA fijo ${vatLabel}%.`
+      : "Seleccioná Factura A o Factura B.";
   }
 
   function extensionMessage(extensionId, message) {
@@ -495,6 +504,23 @@
         else resolve(response);
       });
     });
+  }
+
+  function extensionContractCompatibilityError(response) {
+    if (
+      response?.ok === true
+      && response.mode === "review_only"
+      && response.contractVersion === ARCA_FISCAL.CONTRACT.version
+    ) return "";
+    if (
+      response?.ok === true
+      && response.mode === "review_only"
+      && Number.isInteger(response.contractVersion)
+    ) {
+      return `La extensión cargada usa el contrato ${response.contractVersion}; `
+        + `se requiere el ${ARCA_FISCAL.CONTRACT.version}. Recargala desde chrome://extensions.`;
+    }
+    return "Contrato incompatible.";
   }
 
   function cancelExtensionSession(extensionId, sessionId, { closeTab = false } = {}) {
@@ -525,23 +551,10 @@
   }
 
   function suggestReceiptType(issuer, recipient) {
-    if (issuer === "responsable_inscripto") {
-      return ["responsable_inscripto", "monotributista"].includes(recipient)
-        ? "Factura_A"
-        : (recipient ? "Factura_B" : "");
-    }
-    return ["monotributista", "exento"].includes(issuer) && recipient ? "Factura_C" : "";
-  }
-
-  function normalizeFiscalCondition(value) {
-    const textValue = normalizeText(value);
-    if (/monotrib/.test(textValue)) return "monotributista";
-    if (/responsable.*inscrip/.test(textValue)) return "responsable_inscripto";
-    if (/consumidor.*final/.test(textValue)) return "consumidor_final";
-    if (/exent/.test(textValue)) return "exento";
-    if (/no.*alcanz/.test(textValue)) return "no_alcanzado";
-    if (/no.*categoriz/.test(textValue)) return "no_categorizado";
-    return "";
+    if (issuer !== ARCA_FISCAL.CONTRACT.issuerCondition) return "";
+    return ARCA_FISCAL.CONTRACT.receiptTypes.find(
+      (receiptType) => ARCA_FISCAL.ruleForReceipt(receiptType)?.recipientCondition === recipient
+    ) || "";
   }
 
   function normalizeReceiptType(value) {
@@ -581,17 +594,20 @@
 
   function extensionStatusLabel(value, stage = "") {
     const stageLabels = {
+      representative: "empresa representada",
+      service: "Generar comprobantes",
       initial: "punto de venta y tipo de comprobante",
+      emission: "datos de emisión",
       recipient: "datos del receptor",
       lines: "líneas e importes"
     };
     return {
       prepared: "Datos preparados; abriendo ARCA...",
       waiting_login: "Esperando el login manual en ARCA. La extensión no lee credenciales.",
-      waiting_representative: "Esperando que elijas SunNutrition manualmente en ARCA.",
-      service_recognized: "Comprobantes en línea reconocido. Elegí Generar comprobantes manualmente.",
+      waiting_representative: "Validando y eligiendo SunNutrition en ARCA.",
+      service_recognized: "Comprobantes en línea reconocido; abriendo Generar comprobantes.",
       completing_stage: `Completando ${stageLabels[stage] || "una etapa reconocida"} en ARCA.`,
-      fields_completed: `Campos de ${stageLabels[stage] || "la etapa reconocida"} completos; revisalos y continuá manualmente.`
+      fields_completed: `Campos de ${stageLabels[stage] || "la etapa reconocida"} completos; avanzando a la siguiente etapa segura.`
     }[value] || "Asistencia en curso.";
   }
 
@@ -681,14 +697,18 @@
   if (typeof module === "object" && module.exports) {
     module.exports = {
       argentinaCalendarIso,
+      buildPrepareRequest,
       expectedDeliveryMarkup,
       expectedDeliveryTiming,
+      extensionContractCompatibilityError,
       extensionStatusLabel,
-      normalizeFiscalCondition,
+      fiscalSummaryForReceipt,
+      invoiceDateFromOrder,
       normalizeReceiptType,
-      localDateIso,
+      setInvoiceDateFromOrder,
       suggestReceiptType,
-      validExtensionId
+      validExtensionId,
+      __testing: { openArca, state }
     };
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);

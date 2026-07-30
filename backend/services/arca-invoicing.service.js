@@ -1,11 +1,10 @@
 const {
   calculateInvoice,
   calculateLine,
-  individualUnits,
-  RECEIPT_TYPES,
-  VAT_RATES
+  individualUnits
 } = require("../../shared/order-pricing");
 const { isIsoDate } = require("../utils/runtime");
+const ARCA_FISCAL = require("../../tools/arca-extension/arca-fiscal-contract");
 
 const AUDIT_STATUSES = new Set(["prepared", "review_reached", "interrupted"]);
 const SESSION_TTL_MS = 5 * 60 * 1000;
@@ -20,19 +19,10 @@ const INTERRUPTION_REASONS = new Set([
   "timeout",
   "unexpected_response"
 ]);
-const RECIPIENT_CONDITIONS = new Set([
-  "responsable_inscripto",
-  "monotributista",
-  "exento",
-  "consumidor_final",
-  "no_alcanzado",
-  "no_categorizado"
-]);
-const ISSUER_CONDITIONS = new Set(["responsable_inscripto", "monotributista", "exento"]);
-
 function createArcaInvoicingService({
   auditFile,
   backendId,
+  calendarToday = () => ARCA_FISCAL.argentinaCalendarIso(new Date()),
   crypto,
   fs,
   loadCache,
@@ -91,9 +81,7 @@ function createArcaInvoicingService({
         cliente: client.nombre_cliente || "",
         id_cliente: backendId(order.id_cliente),
         cuit: client.cuit || "",
-        condicion_fiscal: client.tipo || "",
         domicilio: [client.direccion, client.localidad].filter(Boolean).join(", "),
-        tipo_comprobante_configurado: client.tipo_comprobante || "",
         entrega: delivery ? {
           estado: "entregado_sin_factura",
           id_entrega: backendId(delivery.id_entrega),
@@ -189,67 +177,61 @@ function createArcaInvoicingService({
       throw invoiceError(`Faltan datos del pedido: ${current.faltantes.join(", ")}.`);
     }
 
-    const pointOfSale = String(body.pointOfSale || "").trim();
     const receiptType = String(body.receiptType || "").trim();
-    const issuerCondition = String(body.issuerCondition || "").trim();
-    const recipientCondition = String(body.recipientCondition || "").trim();
     const invoiceDate = String(body.invoiceDate || "").trim();
-    if (!/^\d{4,5}$/.test(pointOfSale)) throw invoiceError("El punto de venta debe tener 4 o 5 dígitos.");
-    if (!RECEIPT_TYPES.includes(receiptType)) throw invoiceError("Seleccioná el tipo de comprobante A, B o C.");
-    if (!ISSUER_CONDITIONS.has(issuerCondition)) throw invoiceError("La condición fiscal del emisor es obligatoria.");
-    if (!RECIPIENT_CONDITIONS.has(recipientCondition)) throw invoiceError("La condición fiscal del cliente es obligatoria.");
-    if (!isIsoDate(invoiceDate)) throw invoiceError("La fecha del comprobante no es válida.");
-
-    const suggestedType = suggestReceiptType(issuerCondition, recipientCondition);
-    if (!suggestedType) throw invoiceError("No hay una regla fiscal inequívoca para las condiciones seleccionadas.");
-    if (suggestedType !== receiptType) {
-      throw invoiceError(`Las condiciones seleccionadas requieren revisar ${displayReceiptType(suggestedType)}.`);
+    const receiptRule = ARCA_FISCAL.ruleForReceipt(receiptType);
+    if (!receiptRule) throw invoiceError("Seleccioná únicamente Factura A o Factura B.");
+    if (!isIsoDate(invoiceDate)) {
+      throw invoiceError("Ingresá una fecha válida para el comprobante.");
     }
+    const dateValidation = ARCA_FISCAL.validateProductInvoiceDate(invoiceDate, calendarToday());
+    if (!dateValidation.ok) {
+      throw invoiceError(
+        "La fecha del comprobante no es admitida por ARCA para Productos: debe estar dentro de los 5 días "
+        + "anteriores o posteriores y una fecha futura no puede pasar al mes siguiente. Corregila antes de abrir ARCA."
+      );
+    }
+    assertFixedFiscalOverrides(body, receiptRule, current.productos);
 
-    const vatRates = body.vatRates && typeof body.vatRates === "object" ? body.vatRates : {};
     const lines = current.productos.map((product) => {
-      const rate = Number(vatRates[product.id_detalle_pedido]);
-      if (!VAT_RATES.includes(rate)) {
-        throw invoiceError(`Seleccioná la alícuota de IVA de ${product.producto}.`);
-      }
-      if (receiptType === "Factura_C" && rate !== 0) {
-        throw invoiceError(`Factura C requiere IVA 0% para ${product.producto}.`);
-      }
       const calculation = calculateLine({
         boxes: product.cantidad_cajas,
         unitsPerBox: product.unidades_por_caja,
         unitPrice: product.precio_unidad_individual,
         discountPercent: product.bonificacion,
-        vatRate: rate,
+        vatRate: ARCA_FISCAL.CONTRACT.vatRate,
         receiptType
       });
       return {
         id: product.id_detalle_pedido,
         productId: product.id_producto,
-        description: product.producto,
+        description: ARCA_FISCAL.AUTOMATION.lineDescription,
         ...calculation
       };
     });
     const totals = calculateInvoice(lines);
 
     const prepared = {
-      contractVersion: 1,
+      contractVersion: ARCA_FISCAL.CONTRACT.version,
       source: "sunnutrition-erp",
       mode: "review_only",
       finalSubmissionAllowed: false,
+      automation: ARCA_FISCAL.AUTOMATION,
       invoice: {
-        pointOfSale,
+        pointOfSale: ARCA_FISCAL.CONTRACT.pointOfSale,
         receiptType,
         invoiceDate,
         currency: "PES",
-        issuerCondition,
-        recipientCondition,
+        issuerCondition: ARCA_FISCAL.CONTRACT.issuerCondition,
+        recipientCondition: receiptRule.recipientCondition,
+        recipientConditionLabel: receiptRule.recipientConditionLabel,
         totals
       },
       customer: {
         name: current.cliente,
         cuit: digits(current.cuit),
-        fiscalCondition: recipientCondition,
+        fiscalCondition: receiptRule.recipientCondition,
+        fiscalConditionLabel: receiptRule.recipientConditionLabel,
         address: current.domicilio
       },
       order: {
@@ -334,19 +316,15 @@ function createArcaInvoicingService({
 }
 
 function suggestReceiptType(issuerCondition, recipientCondition) {
-  if (issuerCondition === "responsable_inscripto") {
-    return ["responsable_inscripto", "monotributista"].includes(recipientCondition)
-      ? "Factura_A"
-      : "Factura_B";
-  }
-  if (["monotributista", "exento"].includes(issuerCondition)) return "Factura_C";
-  return "";
+  if (issuerCondition !== ARCA_FISCAL.CONTRACT.issuerCondition) return "";
+  return ARCA_FISCAL.CONTRACT.receiptTypes.find(
+    (receiptType) => ARCA_FISCAL.ruleForReceipt(receiptType)?.recipientCondition === recipientCondition
+  ) || "";
 }
 
 function missingSourceFields({ client, details }) {
   const missing = [];
   if (digits(client.cuit).length !== 11) missing.push("CUIT del cliente");
-  if (!String(client.tipo || "").trim()) missing.push("condición fiscal del cliente");
   if (!String(client.direccion || "").trim()) missing.push("domicilio del cliente");
   if (!details.length) missing.push("productos");
   details.forEach((detail, index) => {
@@ -420,8 +398,37 @@ function digits(value) {
   return String(value || "").replace(/\D/g, "");
 }
 
-function displayReceiptType(value) {
-  return value.replace("_", " ");
+function assertFixedFiscalOverrides(body, receiptRule, products) {
+  assertOptionalFixedValue(body, "pointOfSale", ARCA_FISCAL.CONTRACT.pointOfSale, "punto de venta");
+  assertOptionalFixedValue(
+    body,
+    "issuerCondition",
+    ARCA_FISCAL.CONTRACT.issuerCondition,
+    "condición fiscal del emisor"
+  );
+  assertOptionalFixedValue(
+    body,
+    "recipientCondition",
+    receiptRule.recipientCondition,
+    "condición fiscal del cliente"
+  );
+  assertOptionalFixedValue(body, "vatRate", ARCA_FISCAL.CONTRACT.vatRate, "alícuota de IVA");
+  if (!Object.prototype.hasOwnProperty.call(body, "vatRates")) return;
+  if (!body.vatRates || typeof body.vatRates !== "object" || Array.isArray(body.vatRates)) {
+    throw invoiceError("La alícuota de IVA está fijada en 21,00% para todas las líneas.");
+  }
+  const expectedIds = new Set(products.map((product) => String(product.id_detalle_pedido)));
+  const entries = Object.entries(body.vatRates);
+  if (entries.some(([id, rate]) => !expectedIds.has(String(id)) || Number(rate) !== ARCA_FISCAL.CONTRACT.vatRate)) {
+    throw invoiceError("La alícuota de IVA está fijada en 21,00% para todas las líneas.");
+  }
+}
+
+function assertOptionalFixedValue(body, key, expected, label) {
+  if (!Object.prototype.hasOwnProperty.call(body, key)) return;
+  if (String(body[key]) !== String(expected)) {
+    throw invoiceError(`No se puede modificar ${label}; el valor fiscal está fijado por el ERP.`);
+  }
 }
 
 function invoiceError(message, statusCode = 400) {
@@ -431,6 +438,8 @@ function invoiceError(message, statusCode = 400) {
 }
 
 module.exports = {
+  ARCA_FISCAL,
+  assertFixedFiscalOverrides,
   compareExpectedDelivery,
   createArcaInvoicingService,
   missingSourceFields,

@@ -13,12 +13,16 @@ comprobantes, no obtiene CAE y no confirma, firma ni presenta información fisca
 4. Copiar el identificador de 32 caracteres mostrado por el navegador.
 5. En ERP > Ventas > Facturación ARCA, pegar ese identificador y usar **Verificar extensión**.
 
-La instalación es manual. No se distribuye ni actualiza automáticamente.
+La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.2`
+negocia el contrato fiscal `3` con el ERP antes de preparar o abrir una sesión; después de modificar
+o actualizar estos archivos hay que presionar **Recargar** en `chrome://extensions`.
 
 ## Permisos exactos
 
 - `https://auth.afip.gob.ar/*`: mostrar el aviso de login manual. La extensión no lee ni modifica
   campos de clave, MFA, OTP o CAPTCHA.
+- `https://fe.afip.gob.ar/*`: reconocer la selección de empresa y las pantallas actuales de
+  Comprobantes en línea.
 - `https://serviciosjava2.afip.gob.ar/*`: reconocer etapas de Comprobantes en línea y completar
   campos no secretos.
 - `http://127.0.0.1/*` en `externally_connectable`: habilitación declarativa de Chrome/Edge. El
@@ -28,6 +32,8 @@ La instalación es manual. No se distribuye ni actualiza automáticamente.
   para conservar el pedido preparado si Chrome suspende y reinicia el service worker durante el
   login manual. No usa `storage.local` ni `storage.sync`, y el content script no accede directamente
   a ese almacenamiento.
+- `alarms`: agenda únicamente el vencimiento de la sesión preparada para que el service worker
+  descarte el payload a los cinco minutos incluso si no hay polling, navegación ni mensajes.
 
 No solicita `cookies`, `webRequest`, historial, descargas, certificados ni acceso a otros sitios.
 El payload vive solamente en memoria de sesión del navegador: sobrevive a la suspensión normal del
@@ -39,18 +45,30 @@ revisión SHA-256 del snapshot y vence a los cinco minutos. Cambiar de pedido, f
 salir de la solapa o cerrar/recargar el ERP cancela la sesión. El service worker y el content script
 también descartan el payload por TTL aunque el ERP deje de responder.
 
-El seguimiento visible distingue: espera de login manual, espera de selección manual de
-SunNutrition, servicio Comprobantes en línea reconocido, etapa intermedia que se está completando,
-campos completados, revisión final o interrupción concreta. Cada mensaje interno se correlaciona
+El seguimiento visible distingue: espera de login manual, validación y selección automática de
+`SUNNUTRITION S.A.` por coincidencia exacta y única con el nombre legal visible (ARCA no muestra
+el CUIT en esa pantalla), apertura exacta de Generar comprobantes,
+etapa intermedia que se está completando, revisión final o interrupción concreta. Cada mensaje interno se correlaciona
 con la pestaña creada para el pedido; otro pedido, pestaña, host o frame no recibe el payload.
+
+El flujo intermedio usa únicamente coincidencias únicas y exactas: punto de venta `00001`,
+Factura A o B, fecha preparada, concepto Productos, actividad Elaboración de alimentos o bases de
+cereales, condición de venta Cheque, código 4, descripción Barra Pop y unidad Unidades. Factura A
+deriva IVA Responsable Inscripto y Factura B deriva IVA Sujeto Exento. La clasificación comercial
+del cliente no participa de la condición frente al IVA. Todas las líneas usan IVA 21%. La extensión
+selecciona primero el punto de venta y espera que ARCA cargue sus comprobantes dependientes; luego
+acepta Factura A o Factura B exclusivamente por el texto visible. La extensión puede accionar únicamente la opción inicial
+Generar comprobantes y los botones Continuar de las etapas reconocidas.
 
 ## Invariante de no emisión
 
 - El contrato exige `mode: "review_only"` y `finalSubmissionAllowed: false`.
 - No existe un comando externo genérico de click, submit o ejecución de JavaScript.
-- La extensión no hace click en botones, ni llama `submit()` o `requestSubmit()`.
+- La extensión sólo despacha navegación intermedia para una coincidencia única esperada en la etapa
+  reconocida. No llama `click()`, `submit()` ni `requestSubmit()`.
 - Las acciones con textos Confirmar, Emitir, Generar, Obtener CAE, Firmar o Presentar se consideran
-  finales. Los eventos sintéticos sobre esos controles se bloquean.
+  finales. Los eventos sintéticos sobre esos controles se bloquean, salvo la coincidencia exacta
+  `Generar comprobantes` dentro del menú inicial reconocido.
 - Al reconocer la revisión final, descarta el payload salvo el ID del pedido y reporta
   `review_reached`.
 - Si falta un selector, vence la sesión o la pantalla no es inequívoca, reporta una interrupción y

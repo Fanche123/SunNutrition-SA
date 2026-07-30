@@ -2380,7 +2380,6 @@
                 <div><dt>Pedido</dt><dd id="arca-summary-order">-</dd></div>
                 <div><dt>Cliente</dt><dd id="arca-summary-client">-</dd></div>
                 <div><dt>CUIT</dt><dd id="arca-summary-cuit">-</dd></div>
-                <div><dt>Condición fiscal</dt><dd id="arca-summary-condition">-</dd></div>
                 <div><dt>Domicilio</dt><dd id="arca-summary-address">-</dd></div>
                 <div><dt>Fecha de pedido</dt><dd id="arca-summary-date">-</dd></div>
                 <div><dt>Entrega</dt><dd id="arca-summary-delivery">-</dd></div>
@@ -2396,7 +2395,6 @@
                       <th scope="col" class="num">Unidades</th>
                       <th scope="col" class="num">Precio individual</th>
                       <th scope="col" class="num">Bonificación</th>
-                      <th scope="col">IVA *</th>
                     </tr>
                   </thead>
                   <tbody id="arca-products-body"></tbody>
@@ -2405,44 +2403,18 @@
 
               <form id="arca-prepare-form" class="arca-prepare-form">
                 <label>
-                  Condición fiscal del emisor *
-                  <select id="arca-issuer-condition" required>
-                    <option value="">Seleccionar</option>
-                    <option value="responsable_inscripto">IVA Responsable Inscripto</option>
-                    <option value="monotributista">Monotributista</option>
-                    <option value="exento">IVA Exento</option>
-                  </select>
-                </label>
-                <label>
-                  Condición fiscal del cliente *
-                  <select id="arca-recipient-condition" required>
-                    <option value="">Seleccionar</option>
-                    <option value="responsable_inscripto">IVA Responsable Inscripto</option>
-                    <option value="monotributista">Monotributista</option>
-                    <option value="exento">IVA Exento</option>
-                    <option value="consumidor_final">Consumidor Final</option>
-                    <option value="no_alcanzado">No Alcanzado</option>
-                    <option value="no_categorizado">No Categorizado</option>
-                  </select>
-                </label>
-                <label>
                   Tipo de comprobante *
                   <select id="arca-receipt-type" required>
                     <option value="">Seleccionar</option>
                     <option value="Factura_A">Factura A</option>
                     <option value="Factura_B">Factura B</option>
-                    <option value="Factura_C">Factura C</option>
                   </select>
-                </label>
-                <label>
-                  Punto de venta *
-                  <input id="arca-point-of-sale" type="text" inputmode="numeric" pattern="\d{4,5}" maxlength="5" autocomplete="off" required>
                 </label>
                 <label>
                   Fecha del comprobante *
                   <input id="arca-invoice-date" type="date" required>
                 </label>
-                <p id="arca-receipt-suggestion" class="arca-suggestion" role="status">Seleccioná ambas condiciones para obtener una sugerencia.</p>
+                <p id="arca-receipt-suggestion" class="arca-suggestion" role="status">Seleccioná Factura A o Factura B.</p>
                 <div class="arca-prepare-actions">
                   <button type="submit">Revisar y preparar factura</button>
                 </div>
@@ -2501,7 +2473,9 @@
             </div>
             <div class="arca-safety-note" role="note">
               <strong>Detención obligatoria:</strong>
-              la extensión nunca ejecuta Confirmar, Emitir, Generar, Obtener CAE, Firmar o Presentar.
+              la extensión selecciona la empresa configurada, abre “Generar comprobantes” y usa “Continuar”
+              sólo en etapas reconocidas. Nunca ejecuta la acción final Confirmar, Emitir, Generar,
+              Obtener CAE, Firmar o Presentar.
               Si una pantalla o selector no coincide, aborta y vuelve a este flujo.
             </div>
             <p id="arca-status" class="form-status" role="status" aria-live="polite"></p>

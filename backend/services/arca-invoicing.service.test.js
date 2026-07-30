@@ -62,6 +62,7 @@ function serviceFixture() {
   const service = createArcaInvoicingService({
     auditFile,
     backendId: (value) => value === null || value === undefined ? "" : String(value),
+    calendarToday: () => "2026-07-30",
     crypto,
     fs,
     loadCache: () => cache,
@@ -78,16 +79,8 @@ function serviceFixture() {
 function validPrepare(orderId = 1, receiptType = "Factura_A") {
   return {
     orderId,
-    pointOfSale: "00001",
     receiptType,
-    issuerCondition: "responsable_inscripto",
-    recipientCondition: "responsable_inscripto",
-    invoiceDate: "2026-07-30",
-    vatRates: {
-      101: 21,
-      102: 21,
-      105: 21
-    }
+    invoiceDate: "2026-07-30"
   };
 }
 
@@ -106,6 +99,8 @@ test("lista únicamente pedidos sin entrega real y sin factura antes de paginar"
   );
   assert.equal(firstPage.rows[0].fecha_entrega_prevista, "2026-07-05");
   assert.equal(firstPage.rows[0].fecha_pedido, "2026-07-01");
+  assert.equal(Object.hasOwn(firstPage.rows[0], "condicion_fiscal"), false);
+  assert.equal(Object.hasOwn(firstPage.rows[0], "tipo_comprobante_configurado"), false);
   assert.equal(firstPage.rows[0].entrega.estado, "entrega_pendiente");
   assert.equal(firstPage.rows[0].productos[0].unidades_individuales, 20);
   assert.equal(
@@ -173,7 +168,6 @@ test("calcula cajas por unidades, bonificación y Factura A sin duplicar precio 
 test("normaliza Factura B con precio individual IVA incluido", () => {
   const fixture = serviceFixture();
   const body = validPrepare(5, "Factura_B");
-  body.recipientCondition = "consumidor_final";
   const prepared = fixture.service.prepare(body, fixture.cache);
 
   assert.equal(prepared.lines[0].individualUnits, 20);
@@ -198,19 +192,63 @@ test("usa el mismo redondeo de bonificación que la comparación de Ventas", () 
   assert.equal(line.discountAmount, 0);
 });
 
-test("bloquea datos maestros, punto de venta, IVA y tipo fiscal ambiguos o incompatibles", () => {
+test("deriva las reglas fiscales y rechaza intentos de alterar las constantes", () => {
   const fixture = serviceFixture();
   assert.throws(() => fixture.service.prepare(validPrepare(4), fixture.cache), /Faltan datos del pedido/);
-  assert.throws(() => fixture.service.prepare({ ...validPrepare(), pointOfSale: "" }, fixture.cache), /punto de venta/);
-  assert.throws(() => fixture.service.prepare({ ...validPrepare(), vatRates: {} }, fixture.cache), /alícuota de IVA/);
   assert.throws(() => fixture.service.prepare({
     ...validPrepare(),
-    receiptType: "Factura_B"
-  }, fixture.cache), /requieren revisar Factura A/);
+    pointOfSale: "99999"
+  }, fixture.cache), /punto de venta/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    issuerCondition: "exento"
+  }, fixture.cache), /condición fiscal del emisor/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare("1", "Factura_B"),
+    recipientCondition: "responsable_inscripto"
+  }, fixture.cache), /condición fiscal del cliente/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    vatRate: 10.5
+  }, fixture.cache), /alícuota de IVA/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    vatRates: { 101: 27 }
+  }, fixture.cache), /alícuota de IVA/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    receiptType: "Factura_C"
+  }, fixture.cache), /únicamente Factura A o Factura B/);
   assert.throws(() => fixture.service.prepare({
     ...validPrepare(),
     invoiceDate: "2026-02-31"
-  }, fixture.cache), /fecha del comprobante no es válida/);
+  }, fixture.cache), /Ingresá una fecha válida/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    invoiceDate: "2026-08-03"
+  }, fixture.cache), /fecha futura no puede pasar al mes siguiente/);
+  assert.throws(() => fixture.service.prepare({
+    ...validPrepare(),
+    invoiceDate: "2026-07-20"
+  }, fixture.cache), /dentro de los 5 días/);
+});
+
+test("ignora clasificaciones comerciales y deriva A/B sin consultar clientes.tipo", () => {
+  const fixture = serviceFixture();
+  fixture.cache.tables.clientes.rows[0].tipo = "Escuelas_Ciudad";
+  fixture.cache.tables.clientes.rows[0].tipo_comprobante = "Clasificación comercial";
+
+  const invoiceA = fixture.service.prepare(validPrepare(1, "Factura_A"), fixture.cache);
+  const invoiceB = fixture.service.prepare(validPrepare(5, "Factura_B"), fixture.cache);
+
+  assert.equal(invoiceA.invoice.issuerCondition, "responsable_inscripto");
+  assert.equal(invoiceA.invoice.recipientCondition, "responsable_inscripto");
+  assert.equal(invoiceB.invoice.recipientCondition, "exento");
+  assert.equal(invoiceB.invoice.recipientConditionLabel, "IVA Sujeto Exento");
+  assert.equal(invoiceA.invoice.pointOfSale, "00001");
+  assert.ok(invoiceA.lines.every((line) => line.vatRate === 21));
+  assert.ok(invoiceB.lines.every((line) => line.vatRate === 21));
+  assert.doesNotMatch(JSON.stringify(invoiceA), /Escuelas_Ciudad|Clasificación comercial/);
 });
 
 test("la revisión identifica el snapshot y detecta una carrera antes de abrir ARCA", () => {
@@ -226,12 +264,12 @@ test("la revisión identifica el snapshot y detecta una carrera antes de abrir A
   assert.throws(() => fixture.service.prepare(validPrepare(), fixture.cache), /ya fue facturado/);
 });
 
-test("sólo sugiere A, B o C con condiciones explícitas", () => {
+test("sólo sugiere A o B con las condiciones explícitas autorizadas", () => {
   assert.equal(suggestReceiptType("responsable_inscripto", "responsable_inscripto"), "Factura_A");
-  assert.equal(suggestReceiptType("responsable_inscripto", "monotributista"), "Factura_A");
-  assert.equal(suggestReceiptType("responsable_inscripto", "consumidor_final"), "Factura_B");
-  assert.equal(suggestReceiptType("monotributista", "responsable_inscripto"), "Factura_C");
-  assert.equal(suggestReceiptType("", "consumidor_final"), "");
+  assert.equal(suggestReceiptType("responsable_inscripto", "exento"), "Factura_B");
+  assert.equal(suggestReceiptType("responsable_inscripto", "monotributista"), "");
+  assert.equal(suggestReceiptType("monotributista", "responsable_inscripto"), "");
+  assert.equal(suggestReceiptType("", "exento"), "");
 });
 
 test("preparar y auditar no crea ventas ni guarda payload o secretos", async () => {
@@ -243,6 +281,9 @@ test("preparar y auditar no crea ventas ni guarda payload o secretos", async () 
   }, {});
 
   assert.equal(fixture.responses[0].status, 200);
+  assert.equal(fixture.responses[0].payload.payload.automation.representativeCuit, "30717550419");
+  assert.equal(fixture.responses[0].payload.payload.automation.pointOfSale, "00001");
+  assert.equal(fixture.responses[0].payload.payload.lines[0].description, "Barra Pop");
   assert.equal(JSON.stringify(fixture.cache.tables.ventas.rows), salesBefore);
   const auditText = fs.readFileSync(fixture.auditFile, "utf8");
   assert.match(auditText, /"status":"prepared"/);

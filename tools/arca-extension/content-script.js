@@ -1,23 +1,31 @@
 (function initializeArcaContentScript(root) {
   "use strict";
 
+  const ARCA_FISCAL = root.ArcaFiscalContract
+    || (typeof module === "object" && module.exports ? require("./arca-fiscal-contract") : null);
   const FINAL_ACTION_PATTERN = /\b(confirmar|emitir|generar|obtener\s+cae|firmar|presentar)\b/i;
   const SECRET_FIELD_PATTERN = /(clave|password|passwd|token|captcha|mfa|otp|certificado|firma)/i;
-  const REVIEW_PATTERN = /(resumen|vista previa|revisi[oó]n).*(comprobante|datos)/i;
+  const REVIEW_PATTERN = /(resumen|vista previa|revisi[oó]n|confirmaci[oó]n).*(comprobante|datos)/i;
   const SESSION_EXPIRED_PATTERN = /(sesi[oó]n).*(expir|venci|finaliz)/i;
   const NETWORK_ERROR_PATTERN = /(sin conexi[oó]n|no se puede acceder|error de red|err_(connection|network|internet))/i;
   const MAX_SESSION_LOOKUP_ATTEMPTS = 12;
   const SESSION_LOOKUP_RETRY_MS = 250;
+  const ARCA_SERVICE_HOSTS = new Set(["fe.afip.gob.ar", "serviciosjava2.afip.gob.ar"]);
   let activeSession = null;
   let lastPageSignature = "";
   let observerTimer = null;
   let expiryTimer = null;
   let terminalStatus = "";
   let currentStage = "";
+  const stageGuard = createStageGuard();
 
   function normalize(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
       .replace(/\s+/g, " ").trim();
+  }
+
+  function normalizeLabel(value) {
+    return normalize(value).replace(/\s*[:*]+\s*$/, "");
   }
 
   function elementText(element) {
@@ -31,14 +39,28 @@
 
   function blockSyntheticFinalActions() {
     document.addEventListener("click", (event) => {
-      if (!event.isTrusted && isFinalAction(event.target)) {
+      const control = event.target?.closest?.("button, input[type='submit'], input[type='button'], a");
+      if (
+        !event.isTrusted
+        && (
+          currentStage === "review"
+          || (isFinalAction(event.target) && !interimActionAllowed(control, currentStage))
+        )
+      ) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
     }, true);
     document.addEventListener("submit", (event) => {
       const submitter = event.submitter;
-      if (!event.isTrusted && (!submitter || isFinalAction(submitter))) {
+      if (
+        !event.isTrusted
+        && (
+          currentStage === "review"
+          || !submitter
+          || (isFinalAction(submitter) && !interimActionAllowed(submitter, currentStage))
+        )
+      ) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
@@ -46,8 +68,9 @@
   }
 
   function findFieldByExactLabel(labelText) {
-    const expected = normalize(labelText);
-    const labels = [...document.querySelectorAll("label")].filter((label) => normalize(label.textContent) === expected);
+    const expectedLabels = (Array.isArray(labelText) ? labelText : [labelText]).map(normalizeLabel);
+    const labels = [...document.querySelectorAll("label")]
+      .filter((label) => expectedLabels.includes(normalizeLabel(label.textContent)));
     if (labels.length !== 1) return null;
     const label = labels[0];
     const targetId = label.getAttribute("for");
@@ -56,34 +79,117 @@
     return field;
   }
 
-  function setFieldValue(field, value, optionText = "") {
-    if (!field || SECRET_FIELD_PATTERN.test(`${field.id} ${field.name}`)) return false;
+  function exactOption(field, value, optionText = "", matchBy = "exact") {
+    if (field?.tagName !== "SELECT") return null;
+    const expected = normalize(optionText || value);
+    const expectedDigits = String(value || "").replace(/\D/g, "");
+    const matches = [...field.options].filter((option) => {
+      if (matchBy === "numeric_identifier") {
+        const valueDigits = /^\d+$/.test(String(option.value || "").trim())
+          ? String(option.value).trim().padStart(expectedDigits.length, "0")
+          : "";
+        const textDigits = String(option.textContent || "").trim().match(/^0*(\d+)\b/)?.[1] || "";
+        const identifiers = [
+          valueDigits,
+          textDigits ? textDigits.padStart(expectedDigits.length, "0") : ""
+        ].filter(Boolean);
+        return identifiers.length > 0 && identifiers.every((identifier) => identifier === expectedDigits);
+      }
+      if (matchBy === "code_and_label") {
+        const valueCode = /^\d+$/.test(String(option.value || "").trim()) ? String(option.value).trim() : "";
+        const text = String(option.textContent || "").trim();
+        const textCode = text.match(/^0*(\d+)\b/)?.[1] || "";
+        const identifiers = [valueCode, textCode].filter(Boolean).map((identifier) => String(Number(identifier)));
+        const label = normalize(text.replace(/^\s*\d+\s*[-–—:]\s*/, ""));
+        return identifiers.length > 0
+          && identifiers.every((identifier) => identifier === String(Number(expectedDigits)))
+          && label === expected;
+      }
+      if (matchBy === "visible_text") {
+        return normalize(option.textContent) === expected;
+      }
+      return normalize(option.textContent) === expected || normalize(option.value) === expected;
+    });
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function resolvedFieldValue(field, value, optionText = "", matchBy = "exact", format = "") {
+    if (!field || SECRET_FIELD_PATTERN.test(`${field.id} ${field.name}`)) return null;
     if (field.tagName === "SELECT") {
-      const expected = normalize(optionText || value);
-      const matches = [...field.options].filter((option) => (
-        normalize(option.textContent) === expected || normalize(option.value) === expected
-      ));
-      if (matches.length !== 1) return false;
-      field.value = matches[0].value;
-    } else {
-      field.value = String(value ?? "");
+      const option = exactOption(field, value, optionText, matchBy);
+      return option ? option.value : null;
     }
+    if (format === "date" && field.type !== "date") {
+      const [year, month, day] = String(value || "").split("-");
+      return year && month && day ? `${day}/${month}/${year}` : null;
+    }
+    return String(value ?? "");
+  }
+
+  function applyFieldValue(field, value) {
+    field.value = value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
     field.dispatchEvent(new Event("change", { bubbles: true }));
-    return true;
+    return String(field.value) === String(value);
+  }
+
+  function setFieldValue(field, value, optionText = "", matchBy = "exact", format = "") {
+    if (!field || SECRET_FIELD_PATTERN.test(`${field.id} ${field.name}`)) return false;
+    const resolved = resolvedFieldValue(field, value, optionText, matchBy, format);
+    return resolved !== null && applyFieldValue(field, resolved);
   }
 
   function completeExactFields(definitions) {
     const resolved = definitions.map((definition) => ({
       ...definition,
-      field: findFieldByExactLabel(definition.label)
+      field: findFieldByExactLabel(definition.labels || definition.label)
     }));
     if (resolved.some((definition) => !definition.field)) return false;
-    return resolved.every((definition) => setFieldValue(
+    const values = resolved.map((definition) => resolvedFieldValue(
       definition.field,
       definition.value,
-      definition.optionText
+      definition.optionText,
+      definition.matchBy,
+      definition.format
     ));
+    if (values.some((value) => value === null)) return false;
+    return resolved.every((definition, index) => applyFieldValue(definition.field, values[index]));
+  }
+
+  function completeInitialFields(payload) {
+    const [pointDefinition, receiptDefinition] = buildFieldPlan("initial", payload);
+    const pointField = findFieldByExactLabel(pointDefinition.labels);
+    if (!pointField) return { ok: false, pending: false };
+    const pointValue = resolvedFieldValue(
+      pointField,
+      pointDefinition.value,
+      pointDefinition.optionText,
+      pointDefinition.matchBy
+    );
+    if (pointValue === null) return { ok: false, pending: false };
+    if (String(pointField.value) !== String(pointValue) && !applyFieldValue(pointField, pointValue)) {
+      return { ok: false, pending: false };
+    }
+
+    const receiptField = findFieldByExactLabel(receiptDefinition.label);
+    if (!receiptField) return { ok: false, pending: true };
+    const receiptValue = resolvedFieldValue(
+      receiptField,
+      receiptDefinition.value,
+      receiptDefinition.optionText,
+      receiptDefinition.matchBy
+    );
+    if (receiptValue === null) {
+      const availableOptions = [...(receiptField.options || [])].filter((option) => {
+        const text = normalize(option.textContent);
+        return text && !text.includes("seleccionar");
+      });
+      return { ok: false, pending: availableOptions.length === 0 };
+    }
+    if (String(receiptField.value) !== String(receiptValue) && !applyFieldValue(receiptField, receiptValue)) {
+      return { ok: false, pending: false };
+    }
+    return { ok: true, pending: false };
   }
 
   function receiptLabel(receiptType) {
@@ -105,11 +211,35 @@
   function buildFieldPlan(stage, payload) {
     if (stage === "initial") {
       return [
-        { label: "Punto de Venta", value: payload.invoice.pointOfSale },
+        {
+          labels: ["Punto de Ventas a utilizar", "Punto de Venta", "Punto de venta"],
+          value: payload.invoice.pointOfSale,
+          matchBy: "numeric_identifier"
+        },
         {
           label: "Tipo de Comprobante",
           value: payload.invoice.receiptType,
-          optionText: receiptLabel(payload.invoice.receiptType)
+          optionText: receiptLabel(payload.invoice.receiptType),
+          matchBy: "visible_text"
+        }
+      ];
+    }
+    if (stage === "emission") {
+      return [
+        {
+          labels: ["Fecha de Comprobante", "Fecha del Comprobante", "Fecha de emisión"],
+          value: payload.invoice.invoiceDate,
+          format: "date"
+        },
+        {
+          labels: ["Conceptos a incluir", "Concepto"],
+          value: payload.automation.concept,
+          optionText: payload.automation.concept
+        },
+        {
+          labels: ["Actividad", "Actividad asociada"],
+          value: payload.automation.activity,
+          optionText: payload.automation.activity
         }
       ];
     }
@@ -121,25 +251,33 @@
           value: payload.customer.fiscalCondition,
           optionText: recipientLabel(payload.customer.fiscalCondition)
         },
-        { label: "Domicilio Comercial", value: payload.customer.address }
+        {
+          labels: ["Condiciones de Venta", "Condición de venta"],
+          value: payload.automation.saleCondition,
+          optionText: payload.automation.saleCondition
+        }
       ];
     }
     return [];
   }
 
   function classifyPage(text, hasFinalControls, hostname) {
+    if (!ARCA_SERVICE_HOSTS.has(hostname)) return "outside_service";
     const normalizedText = normalize(text);
     if (NETWORK_ERROR_PATTERN.test(normalizedText)) return "network_error";
     if (SESSION_EXPIRED_PATTERN.test(normalizedText)) return "session_expired";
     if (REVIEW_PATTERN.test(normalizedText) && hasFinalControls) return "review";
     if (/punto de venta.*tipo de comprobante/.test(normalizedText)) return "initial";
+    if (/datos de emision/.test(normalizedText)) return "emission";
     if (/datos del receptor/.test(normalizedText)) return "recipient";
     if (/datos de la operacion|detalle de la operacion/.test(normalizedText)) return "lines";
     if (/seleccione la empresa|seleccione.*representad|elegi.*representad/.test(normalizedText)) {
       return "representative_selection";
     }
-    if (/comprobantes en linea|generar comprobantes/.test(normalizedText)) return "service_menu";
-    return hostname === "serviciosjava2.afip.gob.ar" ? "unrecognized" : "outside_service";
+    if (/comprobantes en linea/.test(normalizedText) && /generar comprobantes/.test(normalizedText)) {
+      return "service_menu";
+    }
+    return "unrecognized";
   }
 
   function runRecognizedStage() {
@@ -159,7 +297,7 @@
     currentStage = {
       representative_selection: "representative",
       service_menu: "service"
-    }[stage] || (["initial", "recipient", "lines", "review"].includes(stage) ? stage : "");
+    }[stage] || (["initial", "emission", "recipient", "lines", "review"].includes(stage) ? stage : "");
     if (stage === "session_expired") {
       return interrupt("session_expired", "La sesión de ARCA venció. Volvé al ERP y prepará una sesión nueva.");
     }
@@ -173,81 +311,224 @@
     }
 
     const payload = activeSession.payload;
+    if (!payloadCoherenceIsValid(payload)) {
+      return interrupt("unexpected_response", "Los datos preparados no respetan la configuración fiscal esperada.");
+    }
     if (stage === "initial") {
       updateSession("completing_stage", "", "initial");
+      const result = completeInitialFields(payload);
+      if (result.ok) return continueFromStage("Datos iniciales completos.", "initial");
+      if (result.pending) {
+        lastPageSignature = "";
+        return showBanner(
+          "Punto de venta 00001 seleccionado. Esperando los comprobantes habilitados por ARCA.",
+          "waiting"
+        );
+      }
+      return interrupt("selector_changed", "ARCA cambió los campos de datos iniciales.");
+    }
+    if (stage === "emission") {
+      updateSession("completing_stage", "", "emission");
       const completed = completeExactFields(buildFieldPlan(stage, payload));
       return completed
-        ? fieldsCompleted("Datos iniciales completos. Revisalos y presioná Continuar manualmente.", "initial")
-        : interrupt("selector_changed", "ARCA cambió los campos de datos iniciales.");
+        ? continueFromStage("Datos de emisión completos.", "emission")
+        : interrupt("selector_changed", "ARCA cambió los campos de datos de emisión.");
     }
     if (stage === "recipient") {
       updateSession("completing_stage", "", "recipient");
       const completed = completeExactFields(buildFieldPlan(stage, payload));
       return completed
-        ? fieldsCompleted("Datos del receptor completos. Revisalos y presioná Continuar manualmente.", "recipient")
+        ? continueFromStage("Datos del receptor completos.", "recipient")
         : interrupt("selector_changed", "ARCA cambió los campos del receptor.");
     }
     if (stage === "lines") {
       updateSession("completing_stage", "", "lines");
-      const result = completeLineRows(payload.lines);
+      const result = completeLineRows(payload.lines, payload.automation);
       return result.ok
-        ? fieldsCompleted("Detalle completo. Revisá cantidades, precios, IVA y bonificaciones antes de continuar.", "lines")
+        ? continueFromStage("Detalle completo.", "lines")
         : interrupt(result.reason, result.message);
     }
     if (stage === "representative_selection") {
-      showBanner("Elegí SunNutrition manualmente. El asistente conserva el pedido preparado sin acceder a tus credenciales.", "waiting");
-      return updateSession("waiting_representative", "", "representative");
+      const control = findRepresentativeControl(payload.automation);
+      if (!control) {
+        return interrupt(
+          "selector_changed",
+          "No se encontró una única empresa representada con el nombre legal configurado."
+        );
+      }
+      return authorizeInterimAction(
+        control,
+        "representative",
+        "SunNutrition identificada por el nombre legal visible. Abriendo la empresa representada."
+      );
     }
     if (stage === "service_menu") {
-      showBanner("Comprobantes en línea reconocido. Elegí Generar comprobantes manualmente; el asistente retomará en el formulario.", "waiting");
-      return updateSession("service_recognized", "", "service");
+      const control = findUniqueAction("Generar comprobantes");
+      if (!control) {
+        return interrupt("selector_changed", "No se encontró una única acción Generar comprobantes.");
+      }
+      return authorizeInterimAction(control, "service");
     }
     if (stage === "unrecognized") {
       return interrupt("screen_unrecognized", "La pantalla de ARCA no coincide con una etapa verificada.");
     }
   }
 
-  function completeLineRows(lines) {
+  function createStageGuard() {
+    const consumed = new Set();
+    return {
+      claim(stage) {
+        if (!stage || consumed.has(stage)) return false;
+        consumed.add(stage);
+        return true;
+      }
+    };
+  }
+
+  function payloadCoherenceIsValid(payload) {
+    return ARCA_FISCAL.preparedPayloadIsValid(payload);
+  }
+
+  function findUniqueAction(expectedText) {
+    const expected = normalize(expectedText);
+    const matches = [...document.querySelectorAll("button, input[type='submit'], input[type='button'], a")]
+      .filter((control) => normalize(elementText(control)) === expected);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function findRepresentativeControl(automation) {
+    const expectedName = normalize(automation?.representativeName);
+    if (!expectedName) return null;
+    const matches = [...document.querySelectorAll(
+      "button, input[type='submit'], input[type='button'], a"
+    )].filter((control) => (
+      normalize(elementText(control)) === expectedName
+      && !FINAL_ACTION_PATTERN.test(elementText(control))
+    ));
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  function interimActionAllowed(control, stage) {
+    const text = normalize(elementText(control));
+    if (stage === "service") return text === "generar comprobantes";
+    if (stage === "representative") return !FINAL_ACTION_PATTERN.test(text);
+    return ["initial", "emission", "recipient", "lines"].includes(stage) && text === "continuar";
+  }
+
+  function activateInterimAction(control, stage) {
+    if (
+      currentStage !== stage
+      || !control
+      || control.disabled
+      || control.getAttribute?.("aria-disabled") === "true"
+      || !interimActionAllowed(control, stage)
+      || !stageGuard.claim(stage)
+    ) return false;
+    return control.dispatchEvent(new MouseEvent("click", {
+      bubbles: true,
+      cancelable: true,
+      view: root
+    }));
+  }
+
+  function authorizeInterimAction(control, stage, successMessage = "Abriendo Generar comprobantes.") {
+    if (!interimActionAllowed(control, stage)) {
+      return interrupt("unexpected_response", "La acción intermedia no coincide con la etapa autorizada.");
+    }
+    root.chrome.runtime.sendMessage({ type: "AUTHORIZE_INTERIM_ACTION", stage }, (response) => {
+      if (root.chrome.runtime.lastError || !response?.ok || response.stage !== stage) {
+        interrupt("unexpected_response", "La transición intermedia no fue autorizada de forma segura.");
+        return;
+      }
+      activeSession.stage = stage;
+      if (activateInterimAction(control, stage)) {
+        showBanner(successMessage, "complete");
+      } else {
+        interrupt("unexpected_response", "ARCA no aceptó la transición intermedia autorizada.");
+      }
+    });
+  }
+
+  function continueFromStage(message, stage) {
+    const control = findUniqueAction("Continuar");
+    if (!control) {
+      return interrupt("selector_changed", `${message} No se encontró una única acción Continuar.`);
+    }
+    fieldsCompleted(`${message} Avanzando a la siguiente etapa segura.`, stage);
+    if (!activateInterimAction(control, stage)) {
+      return interrupt("unexpected_response", `${message} ARCA no aceptó la navegación intermedia.`);
+    }
+  }
+
+  function completeLineRows(lines, automation = activeSession?.payload?.automation) {
+    if (!automation) {
+      return {
+        ok: false,
+        reason: "unexpected_response",
+        message: "Falta la configuración segura del detalle."
+      };
+    }
     const rows = [...document.querySelectorAll("tr")].filter((row) => {
       const controls = [...row.querySelectorAll("input, select, textarea")];
       return controls.some((control) => /(descripcion|detalle)/i.test(`${control.name} ${control.id}`))
         && controls.some((control) => /cantidad/i.test(`${control.name} ${control.id}`))
         && controls.some((control) => /precio/i.test(`${control.name} ${control.id}`));
     });
-    if (rows.length < lines.length) {
+    if (rows.length !== lines.length) {
       return {
         ok: false,
         reason: "selector_changed",
-        message: "No se reconocieron todas las filas de productos. No se completó ninguna acción final."
+        message: "La cantidad de filas de productos no coincide exactamente con el pedido."
       };
     }
+    const preparedRows = [];
     for (let index = 0; index < lines.length; index += 1) {
       const row = rows[index];
       const line = lines[index];
+      const productCode = uniqueControl(row, /codigo/i);
       const description = uniqueControl(row, /(descripcion|detalle)/i);
       const quantity = uniqueControl(row, /cantidad/i);
+      const unit = uniqueControl(row, /(unidad|medida)/i);
       const price = uniqueControl(row, /precio/i);
       const discount = uniqueControl(row, /(bonif|descuento)/i);
       const vat = uniqueControl(row, /(alicuota|iva)/i);
-      if (!description || !quantity || !price || !vat) {
+      if (!productCode || !description || !quantity || !unit || !price || !vat) {
         return {
           ok: false,
           reason: "selector_changed",
           message: `No se reconocieron todos los campos del producto ${index + 1}.`
         };
       }
-      const valuesOk = setFieldValue(description, line.description)
-        && setFieldValue(quantity, line.individualUnits)
-        && setFieldValue(price, line.unitPrice)
-        && (!discount || setFieldValue(discount, line.discountPercent))
-        && setFieldValue(vat, line.vatRate, `${line.vatRate.toFixed(2).replace(".", ",")} %`);
-      if (!valuesOk) {
+      const definitions = [
+        [productCode, automation.productCode, automation.productCodeLabel, "code_and_label"],
+        [description, automation.lineDescription],
+        [quantity, line.individualUnits],
+        [unit, automation.unit, automation.unit],
+        [price, line.unitPrice],
+        ...(discount ? [[discount, line.discountPercent]] : []),
+        [vat, line.vatRate, `${line.vatRate.toFixed(2).replace(".", ",")} %`]
+      ];
+      const values = definitions.map(([field, value, optionText, matchBy]) => (
+        resolvedFieldValue(field, value, optionText, matchBy)
+      ));
+      if (values.some((value) => value === null)) {
         return {
           ok: false,
           reason: "unexpected_response",
           message: `ARCA rechazó un valor del producto ${index + 1}.`
         };
       }
+      preparedRows.push({ definitions, values });
+    }
+    const valuesOk = preparedRows.every(({ definitions, values }) => (
+      definitions.every(([field], index) => applyFieldValue(field, values[index]))
+    ));
+    if (!valuesOk) {
+      return {
+        ok: false,
+        reason: "unexpected_response",
+        message: "ARCA no conservó exactamente los valores preparados del detalle."
+      };
     }
     return { ok: true };
   }
@@ -299,7 +580,12 @@
     banner.textContent = `SunNutrition · ${message}`;
   }
 
-  function scheduleInspection() {
+  function scheduleInspection(mutations = []) {
+    if (
+      Array.isArray(mutations)
+      && mutations.length
+      && mutations.every((mutation) => mutation.target?.closest?.("#sunnutrition-arca-assistant"))
+    ) return;
     clearTimeout(observerTimer);
     observerTimer = setTimeout(runRecognizedStage, 250);
   }
@@ -363,15 +649,26 @@
       MAX_SESSION_LOOKUP_ATTEMPTS,
       NETWORK_ERROR_PATTERN,
       SECRET_FIELD_PATTERN,
+      blockSyntheticFinalActions,
       buildFieldPlan,
       classifyPage,
       completeExactFields,
+      completeInitialFields,
       completeLineRows,
+      createStageGuard,
+      authorizeInterimAction,
+      exactOption,
       findFieldByExactLabel,
+      findRepresentativeControl,
+      findUniqueAction,
+      interimActionAllowed,
       isFinalAction,
       normalize,
+      normalizeLabel,
+      payloadCoherenceIsValid,
       recipientLabel,
       receiptLabel,
+      resolvedFieldValue,
       setFieldValue
     };
   }
