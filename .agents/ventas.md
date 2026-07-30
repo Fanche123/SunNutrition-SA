@@ -58,6 +58,8 @@ Backend propio:
 - `backend/services/sales-order-entry.service.test.js`
 - `backend/services/sales-invoice-entry.service.js`
 - `backend/services/sales-invoice-entry.service.test.js`
+- `backend/services/delivery-deletion.service.js`
+- `tests/delivery-integrity.test.js`
 
 No existe actualmente un servicio backend específico de Ventas o Clientes.
 
@@ -82,6 +84,7 @@ Tablas comerciales confirmadas:
 - `detalle_pedidos` — PK `id_detalle_pedido`; `id_pedido`, `id_producto`, `cantidad_cajas`, `impuesto`, `precio_ud`, `bonificacion`.
 - `entregas` — PK canónica `id_entrega`; fecha, flete y vínculos de egreso.
 - `entregas_detalle` — clave canónica usada por código `id_entregas_detalle`; relación `id_entrega`/`id_pedido`.
+- El alta de entrega sólo considera asociado un pedido cuando `entregas_detalle.id_entrega` referencia una entrega existente. La baja administrativa de una entrega usa preview firmado: elimina únicamente sus filas `entregas_detalle`, desvincula `ventas.id_entrega`, conserva pedidos y bloquea egresos o dependencias no allowlisted.
 - `ventas` — PK `id_venta`; vínculos a pedido/cliente/entrega, factura, fechas, IVA, subtotal y total.
 
 Integraciones de lectura/escritura ajena:

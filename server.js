@@ -39,6 +39,7 @@ const { createReceivedChecksService } = require("./backend/services/received-che
 const { createInvestmentFundService } = require("./backend/services/investment-fund.service");
 const { createSalesOrderEntryService } = require("./backend/services/sales-order-entry.service");
 const { createSalesInvoiceEntryService } = require("./backend/services/sales-invoice-entry.service");
+const { createArcaInvoicingService } = require("./backend/services/arca-invoicing.service");
 const { createAttachmentsService } = require("./backend/services/attachments.service");
 const { createOtherExpenseEntryService } = require("./backend/services/other-expense-entry.service");
 const { createReceptionEntryService } = require("./backend/services/reception-entry.service");
@@ -68,6 +69,7 @@ const { createPayrollNormalizationService } = require("./backend/services/payrol
 const { createPayrollExpenseEntryService } = require("./backend/services/payroll-expense-entry.service");
 const { createIncomeCalculationService } = require("./backend/services/income-calculation.service");
 const { createIncomeStatementService } = require("./backend/services/income-statement.service");
+const { createProductionReportService } = require("./backend/services/production-report.service");
 const { createInventoryValuationService } = require("./backend/services/inventory-valuation.service");
 const { createSqlService } = require("./backend/services/sql.service");
 const { createCreditorEntryService } = require("./backend/services/creditor-entry.service");
@@ -250,11 +252,14 @@ const buildBackendIncomeStatementReport = createIncomeStatementService({
   loadCache
 });
 const buildBackendIncomeStatementDetail = buildBackendIncomeStatementReport.buildDetail;
+const { buildProductionReport } = createProductionReportService({ loadCache });
 
 const {
+  handleInvoiceProviderHealth,
   handlePayrollScaleRead,
   handleReceptionAttachmentSave,
-  handleReceptionInvoiceRead
+  handleReceptionInvoiceRead,
+  handleSalesInvoiceRead
 } = createAttachmentsService({
   childProcess,
   fs,
@@ -282,13 +287,15 @@ const {
   handleBackendSqlQuery,
   handleCashflowReport,
   handleIncomeStatementDetail,
-  handleIncomeStatementReport
+  handleIncomeStatementReport,
+  handleProductionReport
 } = createCoreHandlers({
   APP_STATE_FILE,
   backendComparisonPeriod,
   buildBackendCashflowReport,
   buildBackendIncomeStatementDetail,
   buildBackendIncomeStatementReport,
+  buildProductionReport,
   readAppState,
   readJsonBody,
   runBackendSqlQuery,
@@ -683,6 +690,21 @@ const {
   sendJson,
   synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
+const {
+  handleAuditGet: handleArcaAuditGet,
+  handleAuditPost: handleArcaAuditPost,
+  handleOrdersGet: handleArcaOrdersGet,
+  handlePreparePost: handleArcaPreparePost
+} = createArcaInvoicingService({
+  auditFile: path.join(ROOT_DIR, "tmp", "arca-invoicing-audit.jsonl"),
+  backendId,
+  crypto,
+  fs,
+  loadCache,
+  path,
+  readJsonBody,
+  sendJson
+});
 const { handlePurchaseFullEntry } = createPurchaseEntryService({
   backendId,
   backendNextNumericId,
@@ -791,6 +813,10 @@ const server = http.createServer(createRequestHandler({
     handleBankReconciliationDepositChecks,
     handleBankReconciliationState,
     handleBankReconciliationSummary,
+    handleArcaAuditGet,
+    handleArcaAuditPost,
+    handleArcaOrdersGet,
+    handleArcaPreparePost,
     handleCashBoxesGet,
     handleCashflowReport,
     handleCollectionFullEntry,
@@ -810,6 +836,7 @@ const server = http.createServer(createRequestHandler({
     handleEconomicExpensesList,
     handleIncomeStatementDetail,
     handleIncomeStatementReport,
+    handleProductionReport,
     handleInvestmentFundCreate,
     handleInvestmentFundList,
     handleInventoryAppend,
@@ -833,11 +860,13 @@ const server = http.createServer(createRequestHandler({
     handlePaymentPlansList,
     handlePaymentFullEntry,
     handlePendingEndorsementPaymentsList,
+    handleInvoiceProviderHealth,
     handleReceivedChecksEndorse,
     handlePurchaseFullEntry,
     handleReceptionFullEntry,
     handleReceptionAttachmentSave,
     handleReceptionInvoiceRead,
+    handleSalesInvoiceRead,
     handleRuntimeShutdown,
     handleSalesDeliveryFullEntry,
     handleSalesInvoiceFullEntry,

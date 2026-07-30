@@ -15,6 +15,7 @@ const {
 
 const PROJECT_ROOT = path.resolve(__dirname, "..");
 const HEALTH_PATH = "/api/health";
+const OCR_HEALTH_PATH = "/api/health/ocr";
 const SHUTDOWN_PATH = "/api/runtime/shutdown";
 const REQUEST_TIMEOUT_MS = 1000;
 const SHUTDOWN_TIMEOUT_MS = 8000;
@@ -31,11 +32,12 @@ async function main(argv = process.argv.slice(2)) {
   };
 
   if (command === "status") return runStatus(context, { json });
+  if (command === "ocr-status") return runOcrStatus(context, { json });
   if (command === "start") return runStart(context, { json });
   if (command === "restart") return runRestart(context, { json });
   if (command === "stop") return runStop(context, { json });
 
-  throw new Error(`Comando desconocido "${command}". Use start, status, restart o stop.`);
+  throw new Error(`Comando desconocido "${command}". Use start, status, ocr-status, restart o stop.`);
 }
 
 async function inspectRuntime(context) {
@@ -125,6 +127,45 @@ async function runStatus(context, options = {}) {
   writeStatus(status, options);
   process.exitCode = status.state === "running_fresh" ? 0 : 2;
   return status;
+}
+
+async function runOcrStatus(context, options = {}) {
+  const status = await inspectRuntime(context);
+  if (status.state !== "running_fresh") {
+    writeStatus(status, options);
+    process.exitCode = 2;
+    return status;
+  }
+
+  const probe = await requestJson({
+    host: status.controlHost,
+    port: context.port,
+    path: OCR_HEALTH_PATH,
+    method: "GET",
+    timeoutMs: 7000
+  });
+  const result = {
+    ...status,
+    state: probe.statusCode === 200 && probe.body?.connectivity === "reachable"
+      ? "ocr_reachable"
+      : "ocr_unreachable",
+    ocr: probe.body || {
+      ok: false,
+      connectivity: "unreachable",
+      transportCode: probe.errorCode || "invalid_response"
+    }
+  };
+  if (options.json) {
+    console.log(JSON.stringify(result));
+  } else if (result.state === "ocr_reachable") {
+    console.log(`OCR accesible desde el servidor ERP PID ${status.runtime.pid}.`);
+    console.log(`Proveedor: ${result.ocr.provider}; respuesta de conectividad HTTP ${result.ocr.providerStatus}.`);
+  } else {
+    console.error(`OCR sin conectividad desde el servidor ERP PID ${status.runtime.pid}.`);
+    console.error(`Transporte: ${result.ocr.transportCode || "respuesta_invalida"}.`);
+  }
+  process.exitCode = result.state === "ocr_reachable" ? 0 : 2;
+  return result;
 }
 
 async function runStart(context, options = {}) {
@@ -481,6 +522,7 @@ module.exports = {
   inspectRuntime,
   main,
   requestSafeShutdown,
+  runOcrStatus,
   runRestart,
   runStart,
   runStatus,

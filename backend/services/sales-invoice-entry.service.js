@@ -1,4 +1,75 @@
-const { normalize: normalizeMoney, toCents } = require("../../shared/money");
+const {
+  fromCents,
+  normalize: normalizeMoney,
+  toCents
+} = require("../../shared/money");
+const {
+  discountedSubtotalCents,
+  individualUnits
+} = require("../../shared/order-pricing");
+
+function expectedOrderSubtotal(details = []) {
+  const missingFields = new Set();
+  const lines = details.map((detail) => {
+    const boxes = finitePositiveNumber(detail.cantidad_cajas);
+    const unitsPerBox = finitePositiveNumber(detail.unidades_por_caja);
+    const unitPriceCents = moneyCentsOrNull(detail.precio_unitario);
+    const discount = percentageOrNull(detail.bonificacion);
+    if (boxes === null) missingFields.add("cantidad de cajas");
+    if (unitsPerBox === null) missingFields.add("unidades por caja");
+    if (unitPriceCents === null) missingFields.add("precio unitario");
+    if (discount === null) missingFields.add("bonificación");
+
+    const units = boxes === null || unitsPerBox === null ? null : individualUnits(boxes, unitsPerBox);
+    let subtotalCents = null;
+    if (units !== null && unitPriceCents !== null && discount !== null) {
+      subtotalCents = discountedSubtotalCents(fromCents(unitPriceCents), units, discount);
+    }
+    return {
+      id_producto: detail.id_producto,
+      producto: String(detail.producto || ""),
+      cantidad_cajas: boxes,
+      unidades_por_caja: unitsPerBox,
+      unidades_individuales: units,
+      precio_unitario: unitPriceCents === null ? null : fromCents(unitPriceCents),
+      bonificacion: discount,
+      subtotal_esperado: subtotalCents === null ? null : fromCents(subtotalCents)
+    };
+  });
+  if (!lines.length) missingFields.add("detalle del pedido");
+  const complete = missingFields.size === 0;
+  const subtotalCents = complete
+    ? lines.reduce((total, line) => total + toCents(line.subtotal_esperado), 0)
+    : null;
+  return {
+    estado: complete ? "calculable" : "datos_insuficientes",
+    campos_faltantes: [...missingFields],
+    subtotal_esperado: subtotalCents === null ? null : fromCents(subtotalCents),
+    lineas: lines
+  };
+}
+
+function finitePositiveNumber(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
+function moneyCentsOrNull(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  try {
+    const cents = toCents(value);
+    return cents >= 0 ? cents : null;
+  } catch {
+    return null;
+  }
+}
+
+function percentageOrNull(value) {
+  if (value === "" || value === null || value === undefined) return 0;
+  const number = Number(String(value).replace(",", "."));
+  return Number.isFinite(number) && number >= 0 ? number : null;
+}
 
 function createSalesInvoiceEntryService({
   backendId,
@@ -29,16 +100,7 @@ function createSalesInvoiceEntryService({
       if (!detailsByOrder.has(orderId)) detailsByOrder.set(orderId, []);
       detailsByOrder.get(orderId).push(detail);
     });
-    const deliveryByOrder = new Map();
-    const deliveriesById = new Map((tables.entregas?.rows || [])
-      .map((delivery) => [backendId(delivery.id_entrega), delivery]));
-    (tables.entregas_detalle?.rows || []).forEach((relation) => {
-      const orderId = backendId(relation.id_pedido);
-      const deliveryId = backendId(relation.id_entrega);
-      if (orderId && deliveryId && !deliveryByOrder.has(orderId)) {
-        deliveryByOrder.set(orderId, deliveriesById.get(deliveryId) || { id_entrega: deliveryId });
-      }
-    });
+    const deliveryByOrder = validDeliveryByOrder(cache, backendId);
 
     return (tables.pedidos?.rows || [])
       .filter((order) => !billedOrderIds.has(backendId(order.id_pedido)))
@@ -51,9 +113,13 @@ function createSalesInvoiceEntryService({
           return {
             id_producto: backendId(detail.id_producto),
             producto: product.nombre_producto || "",
-            cantidad_cajas: Number(detail.cantidad_cajas) || 0
+            cantidad_cajas: detail.cantidad_cajas,
+            unidades_por_caja: product.cantidad_individual,
+            precio_unitario: detail.precio_ud,
+            bonificacion: detail.bonificacion
           };
         });
+        const expectedSubtotal = expectedOrderSubtotal(details);
         return {
           id_pedido: orderId,
           fecha_pedido: order.fecha_pedido || "",
@@ -64,7 +130,8 @@ function createSalesInvoiceEntryService({
           id_entrega: delivery ? backendId(delivery.id_entrega) : "",
           fecha_entrega: delivery?.fecha || "",
           cantidad_cajas: details.reduce((total, detail) => total + detail.cantidad_cajas, 0),
-          productos: details
+          productos: details,
+          comparacion_factura: expectedSubtotal
         };
       });
   }
@@ -102,8 +169,7 @@ function createSalesInvoiceEntryService({
       if (!cache.tables.fletes.rows.some((row) => backendId(row.id_flete) === fleetId)) {
         throw httpError(400, "El flete seleccionado no existe.");
       }
-      const deliveredOrders = new Set(cache.tables.entregas_detalle.rows
-        .map((row) => backendId(row.id_pedido)));
+      const deliveredOrders = deliveryAssociationOrderIds(cache, backendId);
       if (orderIds.some((orderId) => deliveredOrders.has(orderId))) {
         throw httpError(409, "Uno o más pedidos ya tienen una entrega asociada.");
       }
@@ -192,12 +258,7 @@ function createSalesInvoiceEntryService({
         throw httpError(409, "La factura ya está registrada para este cliente.");
       }
 
-      const deliveryRelation = cache.tables.entregas_detalle.rows
-        .find((row) => backendId(row.id_pedido) === orderId);
-      const deliveryId = backendId(deliveryRelation?.id_entrega);
-      if (deliveryId && !cache.tables.entregas.rows.some((row) => backendId(row.id_entrega) === deliveryId)) {
-        throw httpError(409, "La entrega asociada al pedido ya no existe.");
-      }
+      const deliveryId = backendId(validDeliveryByOrder(cache, backendId).get(orderId)?.id_entrega);
 
       const saleId = backendNextNumericId(cache.tables.ventas.rows, "id_venta");
       const timestamp = new Date().toISOString();
@@ -236,7 +297,7 @@ function createSalesInvoiceEntryService({
     const nroFactura = String(invoice.nroFactura || "").trim();
     const fechaFactura = String(invoice.fechaFactura || "").trim();
     const fechaAcordada = String(invoice.fechaAcordada || "").trim();
-    if (!["Factura_A", "Factura_B", "Factura_C"].includes(tipoFactura)) {
+    if (!["Factura_A", "Factura_B", "Factura_C", "Remito_X"].includes(tipoFactura)) {
       throw httpError(400, "El tipo de factura es inválido.");
     }
     if (!nroFactura || nroFactura.length > 120) throw httpError(400, "El número de factura es obligatorio.");
@@ -303,4 +364,26 @@ function createSalesInvoiceEntryService({
   };
 }
 
-module.exports = { createSalesInvoiceEntryService };
+function deliveryAssociationOrderIds(cache, backendId) {
+  return new Set(validDeliveryByOrder(cache, backendId).keys());
+}
+
+function validDeliveryByOrder(cache, backendId) {
+  const deliveriesById = new Map((cache?.tables?.entregas?.rows || [])
+    .map((delivery) => [backendId(delivery.id_entrega), delivery])
+    .filter(([deliveryId]) => Boolean(deliveryId)));
+  const result = new Map();
+  (cache?.tables?.entregas_detalle?.rows || []).forEach((relation) => {
+    const orderId = backendId(relation.id_pedido);
+    const delivery = deliveriesById.get(backendId(relation.id_entrega));
+    if (orderId && delivery && !result.has(orderId)) result.set(orderId, delivery);
+  });
+  return result;
+}
+
+module.exports = {
+  createSalesInvoiceEntryService,
+  deliveryAssociationOrderIds,
+  expectedOrderSubtotal,
+  validDeliveryByOrder
+};

@@ -1,5 +1,5 @@
 function createCoreHandlers(dependencies) {
-  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementDetail, buildBackendIncomeStatementReport, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
+  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementDetail, buildBackendIncomeStatementReport, buildProductionReport, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
 
 function handleIncomeStatementReport(request, response) {
   try {
@@ -74,6 +74,23 @@ async function handleBackendSqlQuery(request, response) {
   }
 }
 
+function handleProductionReport(request, response) {
+  try {
+    const url = new URL(request.url, `http://${request.headers.host}`);
+    const report = buildProductionReport(
+      String(url.searchParams.get("start") || ""),
+      String(url.searchParams.get("end") || "")
+    );
+    sendJson(response, 200, { ok: true, report });
+  } catch (error) {
+    sendJson(response, error.status || 500, {
+      ok: false,
+      code: error.code || "PRODUCTION_REPORT_ERROR",
+      error: error.message
+    });
+  }
+}
+
 async function handleAppStateGet(response) {
   try {
     const state = readAppState(APP_STATE_FILE);
@@ -96,7 +113,7 @@ async function handleAppStateSave(request, response) {
   sendJson(response, 200, { ok: true });
 }
 
-  return { handleAppStateGet, handleAppStateSave, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementDetail, handleIncomeStatementReport };
+  return { handleAppStateGet, handleAppStateSave, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementDetail, handleIncomeStatementReport, handleProductionReport };
 }
 
 module.exports = { createCoreHandlers };

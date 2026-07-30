@@ -33,12 +33,13 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Gobierno: `.agents/README.md`, `_base-development.md`, `file-ownership.md`, `arquitectura.md`, `docs/agent-manuals-plan.md`.
 - Coordinación heredada opcional: `.agents/coordinador.md`, `.coordination/`, `tools/coordination*`, `docs/coordination/`, `Iniciar_Coordinador.bat` y `Ver_Estado_Coordinacion.bat` se conservan como tooling manual legado; su propietario operativo sigue siendo Coordinador.
 - Composición/configuración: `server.js`, `package.json`, `AGENTS.md`, `.gitattributes`, `.gitignore`, `.env.example`, `backend/routes/router.js` e `Iniciar_ERP_y_Coordinador.bat`, cuyo nombre histórico se conserva aunque ahora inicia únicamente el ERP.
-- Ciclo de vida local: `backend/utils/server-runtime.js`, `tools/erp-server.js`, `tests/erp-server-lifecycle.test.js` y `docs/local-server.md` concentran identidad/huella, lock autenticado por checkout y puerto, comandos `start/status/restart/stop`, conflicto legible y regresión aislada.
+- Ciclo de vida local: `backend/utils/server-runtime.js`, `tools/erp-server.js`, `tests/erp-server-lifecycle.test.js` y `docs/local-server.md` concentran identidad/huella, lock autenticado por checkout y puerto, comandos `start/status/ocr-status/restart/stop`, conflicto legible y regresión aislada. `AGENTS.md` centraliza el gate operativo obligatorio de cierre para Local, Worktree e integración.
 - Hilos y subagentes nativos: Coordinador crea hilos principales visibles con `create_thread`; el ejecutor realiza sus pruebas proporcionales. En alto riesgo usa secuencialmente `watchdog_tarea`, tres instancias paralelas de `validador_tarea` y `consolidador_validacion`, todos read-only.
 - Core transversal: `shared/money.js` define el contrato monetario CommonJS/navegador documentado en `docs/money-contract.md`; `shared/inventory-purchase-evaluation.js` centraliza la regla operativa de alerta para frontend y backend bajo ownership de Inventario. `assets/js/core/api.js`, `files.js`, `formatters.js`; `assets/js/dom-utils.js`; `assets/js/modules/operational-data-coordinator.js` y `operational-shared.js` conservan sus adaptadores y coordinadores compartidos.
 - Ventas expone lectura focalizada de pedidos sin factura y alta transaccional de una venta por pedido; router y servidor sólo componen `sales-invoice-entry.service.js`, que reutiliza el lector compartido de comprobantes sin modificar su contrato.
 - Infraestructura backend: `backend/http-config.js`, `backend/services/core-handlers.service.js`, `backend/utils/files.js`, `http.js`, `ids.js`, `runtime.js` y `server-runtime.js`.
 - Administración compone `expense-deletion.service.js` exclusivamente para la baja allowlisted de `egresos`; router expone el preview específico y el POST administrativo confirma con la firma del mismo plan, sin cascada genérica.
+- Administración compone `delivery-deletion.service.js` para la baja allowlisted de `entregas`; reutiliza el endpoint de preview administrativo, elimina sólo `entregas_detalle`, desvincula `ventas.id_entrega` y bloquea dependencias financieras o desconocidas.
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
 - Referencias/validación: `docs/architecture.md`, `docs/refactor-architecture-plan.md`, `backend/README.md`, `tools/check-js.ps1`. `.codex-snippet.txt` es un snippet no cargado por runtime y queda bajo revisión arquitectónica, no como fuente funcional.
 
@@ -101,8 +102,15 @@ La configuración `20260729-internal-transfer-catalog.js` agrega con hash y back
 
 La reparación real `backend/migrations/20260728-last-bank-batch-reset.js` comparte el contrato de hash, backup verificable, dry-run/restore y reemplazo atómico de las reparaciones ICBC existentes.
 
+La reparación puntual `backend/migrations/20260729-order-1005-delivery-orphan.js` exige la firma exacta del snapshot y backup previo; elimina sólo la relación huérfana demostrada del pedido `1005`.
+
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
 
 ## Primer mensaje
 
 > Leé `.agents/arquitectura.md` y usalo como guía permanente. Para cada tarea revisá solo los archivos necesarios y sus dependencias directas. No hagas un relevamiento general salvo que te lo pida o detectes alto riesgo.
+### Reporte read-only de producción
+
+`/api/reports/production` delega selección de snapshots, entregas y conciliación a
+`backend/services/production-report.service.js`. La vista se carga bajo demanda desde
+`assets/js/modules/reports-production.js`; no persiste ni precarga tablas completas.

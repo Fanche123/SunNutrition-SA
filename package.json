@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node tools/erp-server.js start",
     "server:status": "node tools/erp-server.js status",
+    "server:ocr-status": "node tools/erp-server.js ocr-status",
     "server:restart": "node tools/erp-server.js restart",
     "server:stop": "node tools/erp-server.js stop",
     "server:test": "node --test tests/erp-server-lifecycle.test.js",

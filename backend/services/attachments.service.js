@@ -1,9 +1,20 @@
-const { parseInput: parseMoneyInput } = require("../../shared/money");
+const {
+  divideCents,
+  fromCents,
+  parseInput: parseMoneyInput
+} = require("../../shared/money");
+
+// Factura B de Ventas expresa el IVA dentro del total salvo evidencia fiscal explícita en contrario.
+const SALES_FACTURA_B_DEFAULT_IVA = Object.freeze({
+  percent: 21,
+  grossDivisor: "1.21"
+});
 
 function createAttachmentsService({
   childProcess,
   fetchImpl = globalThis.fetch,
   fs,
+  invoiceProviderHealthTimeoutMs = 5_000,
   invoiceReadTimeoutMs = 45_000,
   path,
   pythonExecutable,
@@ -44,6 +55,14 @@ function createAttachmentsService({
   }
   
   async function handleReceptionInvoiceRead(request, response) {
+    return handleInvoiceRead(request, response, { normalizeSalesFacturaB: false });
+  }
+
+  async function handleSalesInvoiceRead(request, response) {
+    return handleInvoiceRead(request, response, { normalizeSalesFacturaB: true });
+  }
+
+  async function handleInvoiceRead(request, response, options) {
     try {
       const body = await readJsonBody(request);
       const fileDataUrl = String(body.fileDataUrl || body.imageDataUrl || "");
@@ -71,14 +90,17 @@ function createAttachmentsService({
       const extractedInvoice = isPdf
         ? await extractReceptionInvoiceFromPdf(apiKey, fileDataUrl, fileName, mimeType)
         : await extractReceptionInvoiceFromImage(apiKey, fileDataUrl);
-      const { invoice, missingFields } = normalizeReceptionInvoice(extractedInvoice);
+      const { invoice, missingFields, reviewWarnings } = normalizeReceptionInvoice(
+        extractedInvoice,
+        options
+      );
       if (!Object.values(invoice).some((value) => (
         (typeof value === "string" && value !== "")
         || (typeof value === "number" && value > 0)
       ))) {
         throw invoiceReadError("UNREADABLE_RESPONSE");
       }
-      sendJson(response, 200, { ok: true, invoice, missingFields });
+      sendJson(response, 200, { ok: true, invoice, missingFields, reviewWarnings });
     } catch (error) {
       const code = classifyInvoiceReadError(error);
       const status = code === "SERVICE_TIMEOUT"
@@ -89,6 +111,27 @@ function createAttachmentsService({
             ? 503
             : 502;
       sendInvoiceReadError(response, status, code, error?.invoiceReadDetails);
+    }
+  }
+
+  async function handleInvoiceProviderHealth(_request, response) {
+    try {
+      const providerResponse = await fetchInvoiceProvider("https://api.openai.com/v1/models", {
+        method: "HEAD"
+      }, invoiceProviderHealthTimeoutMs);
+      sendJson(response, 200, {
+        ok: true,
+        provider: "openai",
+        connectivity: "reachable",
+        providerStatus: providerResponse.status
+      });
+    } catch (error) {
+      sendJson(response, 503, {
+        ok: false,
+        provider: "openai",
+        connectivity: "unreachable",
+        transportCode: String(error?.cause?.code || error?.code || "unknown").toLowerCase()
+      });
     }
   }
 
@@ -154,7 +197,7 @@ function createAttachmentsService({
   }
 
   function safeProviderMetadata(value) {
-    return String(value || "").replace(/[^a-z0-9_.-]/g, "").slice(0, 80);
+    return String(value || "").toLowerCase().replace(/[^a-z0-9_.-]/g, "").slice(0, 80);
   }
 
   function dataUrlBuffer(dataUrl) {
@@ -322,6 +365,10 @@ function createAttachmentsService({
     "fecha_factura": "YYYY-MM-DD",
     "subtotal": numero,
     "iva": numero,
+    "iva_alicuota": numero,
+    "exento": numero,
+    "no_gravado": numero,
+    "tratamiento_iva": "texto",
     "per_ret_iva": numero,
     "per_ret_iibb": numero,
     "imp_internos": numero,
@@ -396,20 +443,29 @@ function createAttachmentsService({
     return JSON.parse(extractResponseText(payload) || "{}");
   }
 
-  async function fetchInvoiceProvider(url, options) {
+  async function fetchInvoiceProvider(url, options = {}, timeoutMs = invoiceReadTimeoutMs) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), invoiceReadTimeoutMs);
+    const externalSignal = options.signal;
+    const abortFromExternalSignal = () => controller.abort(externalSignal?.reason);
+    if (externalSignal?.aborted) abortFromExternalSignal();
+    else externalSignal?.addEventListener("abort", abortFromExternalSignal, { once: true });
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const { signal: _externalSignal, ...fetchOptions } = options;
     try {
-      return await fetchImpl(url, { ...options, signal: controller.signal });
+      return await fetchImpl(url, { ...fetchOptions, signal: controller.signal });
     } catch (error) {
       if (controller.signal.aborted) throw invoiceReadError("SERVICE_TIMEOUT", error);
-      throw invoiceReadError("SERVICE_UNAVAILABLE", error, { stage: "provider_transport" });
+      throw invoiceReadError("SERVICE_UNAVAILABLE", error, {
+        stage: "provider_transport",
+        transportCode: safeProviderMetadata(error?.cause?.code)
+      });
     } finally {
       clearTimeout(timeout);
+      externalSignal?.removeEventListener("abort", abortFromExternalSignal);
     }
   }
 
-  function normalizeReceptionInvoice(value) {
+  function normalizeReceptionInvoice(value, options = {}) {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
       throw invoiceReadError("UNREADABLE_RESPONSE");
     }
@@ -419,7 +475,12 @@ function createAttachmentsService({
       const candidate = text(input, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return "";
       const date = new Date(`${candidate}T00:00:00Z`);
-      return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== candidate ? "" : candidate;
+      const year = Number(candidate.slice(0, 4));
+      return Number.isNaN(date.getTime())
+        || date.toISOString().slice(0, 10) !== candidate
+        || year < 2000
+        ? ""
+        : candidate;
     };
     const money = (input) => {
       const parsed = parseMoneyInput(input);
@@ -436,10 +497,65 @@ function createAttachmentsService({
       imp_internos: money(value.imp_internos),
       total: money(value.total)
     };
+    const reviewWarnings = [];
+    if (options.normalizeSalesFacturaB) {
+      normalizeSalesFacturaB(invoice, value, reviewWarnings);
+    }
     const missingFields = Object.entries(invoice)
       .filter(([, fieldValue]) => fieldValue === "" || fieldValue === null)
       .map(([field]) => field);
-    return { invoice, missingFields };
+    return { invoice, missingFields, reviewWarnings };
+  }
+
+  function normalizeSalesFacturaB(invoice, source, reviewWarnings) {
+    if (invoice.tipo_factura !== "Factura_B" || !(invoice.total > 0)) return;
+
+    const hasAdditionalTaxes = ["per_ret_iva", "per_ret_iibb", "imp_internos"]
+      .some((field) => invoice[field] > 0);
+    const explicitRateText = String(source.iva_alicuota ?? "").trim().replace(",", ".");
+    const explicitRate = Number(explicitRateText);
+    const hasDifferentExplicitRate = explicitRateText !== ""
+      && Number.isFinite(explicitRate)
+      && explicitRate !== SALES_FACTURA_B_DEFAULT_IVA.percent;
+    const positiveFiscalAmount = (value) => {
+      const parsed = parseMoneyInput(value);
+      return parsed.ok && !parsed.empty && parsed.cents > 0;
+    };
+    const taxTreatment = String(source.tratamiento_iva || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    const hasSpecialTaxTreatment = positiveFiscalAmount(source.exento)
+      || positiveFiscalAmount(source.no_gravado)
+      || /\bexent[oa]\b|\bno\s+gravado\b/.test(taxTreatment);
+    if (hasAdditionalTaxes || hasDifferentExplicitRate || hasSpecialTaxTreatment) {
+      reviewWarnings.push(
+        "Factura B con alícuota, exención o impuestos adicionales: revisá manualmente subtotal e IVA."
+      );
+      return;
+    }
+
+    const totalCents = parseMoneyInput(invoice.total).cents;
+    const subtotalCents = invoice.subtotal === null ? null : parseMoneyInput(invoice.subtotal).cents;
+    const ivaCents = invoice.iva === null ? null : parseMoneyInput(invoice.iva).cents;
+    if (
+      subtotalCents !== null
+      && ivaCents !== null
+      && subtotalCents + ivaCents === totalCents
+    ) {
+      return;
+    }
+
+    const derivedSubtotalCents = divideCents(invoice.total, SALES_FACTURA_B_DEFAULT_IVA.grossDivisor);
+    const derivedIvaCents = totalCents - derivedSubtotalCents;
+    if (subtotalCents === totalCents && ivaCents === derivedIvaCents) {
+      invoice.subtotal = fromCents(totalCents - ivaCents);
+      invoice.iva = fromCents(ivaCents);
+      return;
+    }
+
+    invoice.subtotal = fromCents(derivedSubtotalCents);
+    invoice.iva = fromCents(derivedIvaCents);
   }
   
   function extractResponseText(payload) {
@@ -462,7 +578,13 @@ function createAttachmentsService({
       .slice(0, 120) || "archivo";
   }
 
-  return { handlePayrollScaleRead, handleReceptionAttachmentSave, handleReceptionInvoiceRead };
+  return {
+    handleInvoiceProviderHealth,
+    handlePayrollScaleRead,
+    handleReceptionAttachmentSave,
+    handleReceptionInvoiceRead,
+    handleSalesInvoiceRead
+  };
 }
 
 module.exports = { createAttachmentsService };

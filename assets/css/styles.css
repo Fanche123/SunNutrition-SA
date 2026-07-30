@@ -257,6 +257,10 @@ h2 {
   white-space: nowrap;
 }
 
+.period-picker[hidden] {
+  display: none;
+}
+
 .period-picker label {
   color: var(--muted);
   font-size: 12px;
@@ -8021,7 +8025,17 @@ button.danger {
 }
 .sales-invoice-panel {
   display: grid;
-  gap: 18px;
+  gap: 20px;
+  padding: 20px;
+  background: #f6f8fa;
+}
+
+.sales-invoice-zone {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
 }
 
 .sales-invoice-panel .panel-heading {
@@ -8042,15 +8056,139 @@ button.danger {
 }
 
 .sales-invoice-form {
-  border-top: 1px solid var(--border);
-  padding-top: 18px;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.sales-invoice-orders-zone .table-wrap {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.sales-invoice-orders-zone table {
+  min-width: 860px;
+}
+
+.sales-invoice-zone-heading {
+  margin-bottom: 16px;
+}
+
+.sales-invoice-zone-heading p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.sales-invoice-file-bar {
+  grid-template-columns: minmax(320px, 1.2fr) minmax(220px, .8fr) minmax(150px, 180px);
+}
+
+.sales-invoice-file-bar #sales-invoice-read {
+  min-height: 74px;
+}
+
+.photo-drop-zone:has(input:focus-visible) {
+  border-color: #0f766e;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.18);
+}
+
+.sales-invoice-fields-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.sales-invoice-fields-grid label {
+  min-width: 0;
+}
+
+.sales-invoice-comparison {
+  margin-top: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-left: 4px solid #64748b;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.sales-invoice-comparison[data-state="match"] {
+  border-left-color: #15803d;
+  background: #f0fdf4;
+}
+
+.sales-invoice-comparison[data-state="difference"] {
+  border-left-color: #b45309;
+  background: #fffbeb;
+}
+
+.sales-invoice-comparison-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sales-invoice-comparison-heading p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.sales-invoice-comparison-state {
+  white-space: nowrap;
+}
+
+.sales-invoice-comparison-values {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0 0;
+}
+
+.sales-invoice-comparison-values div {
+  padding: 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, .72);
+}
+
+.sales-invoice-comparison-values dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sales-invoice-comparison-values dd {
+  margin: 5px 0 0;
+  font-weight: 700;
+}
+
+.sales-invoice-comparison details {
+  margin-top: 14px;
+}
+
+.sales-invoice-comparison summary {
+  cursor: pointer;
+  font-weight: 700;
 }
 
 .sales-invoice-actions {
-  grid-column: 1 / -1;
+  align-items: center;
+  gap: 14px;
+  padding: 0 4px;
+}
+
+.sales-invoice-actions .form-status {
+  min-width: 0;
 }
 
 @media (max-width: 760px) {
+  .sales-invoice-panel {
+    gap: 14px;
+    padding: 12px;
+  }
+
+  .sales-invoice-zone {
+    padding: 14px;
+  }
+
   .sales-invoice-panel .panel-heading {
     align-items: stretch;
     flex-direction: column;
@@ -8058,5 +8196,290 @@ button.danger {
 
   .sales-invoice-panel .panel-heading button {
     width: 100%;
+  }
+
+  .sales-invoice-file-bar,
+  .sales-invoice-fields-grid,
+  .sales-invoice-comparison-values {
+    grid-template-columns: 1fr;
+  }
+
+  .sales-invoice-comparison-heading {
+    flex-direction: column;
+  }
+
+  .sales-invoice-file-bar .photo-drop-zone {
+    grid-template-columns: minmax(0, 1fr) 120px;
+  }
+
+  .sales-invoice-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sales-invoice-actions button {
+    width: 100%;
+  }
+}
+/* Reporte read-only de producción por turno. */
+.production-report-header { align-items: flex-end; gap: 20px; }
+.production-report-header p { margin: 6px 0 0; color: var(--text-muted); }
+.production-period-form { display: flex; align-items: flex-end; gap: 10px; }
+.production-period-form label { display: grid; gap: 5px; font-size: .82rem; font-weight: 700; }
+.production-period-form input { min-height: 40px; }
+.production-daily-row td { background: #f6f9fc; font-weight: 700; }
+.production-shift-row td:first-child { padding-left: 34px; }
+.production-status { font-size: .82rem; }
+.production-status.is-ok { color: #147a46; }
+.production-status.is-warning { color: #a94b0b; }
+.production-status.is-insufficient { color: #a12a2a; }
+
+@media (max-width: 760px) {
+  .production-report-header,
+  .production-period-form { align-items: stretch; flex-direction: column; }
+}
+
+/* Facturación asistida: preparación local y handoff seguro a ARCA. */
+.arca-invoicing-layout {
+  display: grid;
+  gap: 20px;
+}
+
+.arca-orders-panel,
+.arca-review-panel,
+.arca-extension-panel,
+.arca-audit-panel {
+  min-width: 0;
+}
+
+.arca-filter-form {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.4fr) minmax(170px, .8fr) auto;
+  align-items: end;
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.arca-filter-form label,
+.arca-prepare-form label,
+.arca-extension-controls label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.arca-orders-table table {
+  min-width: 1050px;
+}
+
+.arca-products-table table,
+.arca-prepared-summary table {
+  min-width: 940px;
+}
+
+.arca-orders-table tr.is-selected td {
+  background: #ecfdf5;
+}
+
+.arca-orders-table tr.is-delivery-today td {
+  background: #fff7ed;
+}
+
+.arca-orders-table tr.is-delivery-tomorrow td {
+  background: #fffbeb;
+}
+
+.arca-orders-table tr.is-delivery-today td:first-child,
+.arca-orders-table tr.is-delivery-tomorrow td:first-child {
+  box-shadow: inset 4px 0 #b45309;
+}
+
+.arca-orders-table tr.is-selected.is-delivery-today td,
+.arca-orders-table tr.is-selected.is-delivery-tomorrow td {
+  background: #ecfdf5;
+}
+
+.arca-delivery-date {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+  white-space: nowrap;
+}
+
+.arca-delivery-priority {
+  font-size: .76rem;
+  font-weight: 800;
+  color: #92400e;
+}
+
+.arca-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #eef2f6;
+  color: #334155;
+  font-size: .78rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.arca-badge.entrega_pendiente,
+.arca-badge.datos_incompletos {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.arca-badge.listo {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.arca-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.arca-order-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.arca-order-summary div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.arca-order-summary dt {
+  color: var(--muted);
+  font-size: .76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.arca-order-summary dd {
+  margin: 5px 0 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.arca-prepare-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+
+.arca-suggestion {
+  grid-column: span 2;
+  align-self: end;
+  margin: 0;
+  padding: 11px 12px;
+  border-radius: 7px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.arca-prepare-actions {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.arca-prepared-summary {
+  display: grid;
+  gap: 14px;
+  margin-top: 20px;
+  padding: 18px;
+  border: 2px solid #0f766e;
+  border-radius: 10px;
+  background: #f0fdfa;
+}
+
+.arca-prepared-summary[hidden] {
+  display: none;
+}
+
+.arca-prepared-summary h3,
+.arca-prepared-summary p {
+  margin: 0;
+}
+
+.arca-prepared-summary p {
+  margin-top: 5px;
+  color: var(--muted);
+}
+
+.arca-extension-controls {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) repeat(4, auto);
+  align-items: end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.arca-safety-note {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-left: 4px solid #b45309;
+  border-radius: 6px;
+  background: #fffbeb;
+  color: #78350f;
+}
+
+.compact-button {
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+@media (max-width: 1050px) {
+  .arca-filter-form,
+  .arca-prepare-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arca-order-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arca-extension-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .arca-suggestion {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 680px) {
+  .arca-filter-form,
+  .arca-prepare-form,
+  .arca-order-summary,
+  .arca-extension-controls {
+    grid-template-columns: 1fr;
+  }
+
+  .arca-filter-form button,
+  .arca-prepare-actions button,
+  .arca-extension-controls button {
+    width: 100%;
+  }
+
+  .arca-prepare-actions,
+  .arca-pagination {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

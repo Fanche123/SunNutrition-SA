@@ -1,4 +1,5 @@
 const { adminRelationsForTable } = require("../config/admin-table-relations");
+const { applyDeliveryDeletion, previewDeliveryDeletion } = require("./delivery-deletion.service");
 const { applyExpenseDeletion, previewExpenseDeletion } = require("./expense-deletion.service");
 
 const RELATION_OPTION_LIMIT = 500;
@@ -56,11 +57,16 @@ function createAdminTableService(dependencies) {
   async function handleAdminTableDeletePreview(request, response) {
     try {
       const { tableName } = requestDeletePreviewTable(request);
-      if (tableName !== "egresos") {
-        throw adminError("ADMIN_DELETE_PREVIEW_UNAVAILABLE", "La vista previa especial sólo está disponible para egresos.");
-      }
       const body = await readJsonBody(request);
-      const plan = previewExpenseDeletion(loadCache(), body.deletedIds);
+      const preview = tableName === "egresos"
+        ? previewExpenseDeletion
+        : tableName === "entregas"
+          ? previewDeliveryDeletion
+          : null;
+      if (!preview) {
+        throw adminError("ADMIN_DELETE_PREVIEW_UNAVAILABLE", "La vista previa especial no está disponible para esta tabla.");
+      }
+      const plan = preview(loadCache(), body.deletedIds);
       sendJson(response, 200, { ok: true, plan });
     } catch (error) {
       sendJson(response, 400, {
@@ -229,6 +235,11 @@ function createAdminTableService(dependencies) {
         && updatedRows.length === 0
         && insertedRows.length === 0;
       let expenseDeletionResult = null;
+      const pureDeliveryDelete = tableName === "entregas"
+        && deletedIds.length > 0
+        && updatedRows.length === 0
+        && insertedRows.length === 0;
+      let deliveryDeletionResult = null;
       if (pureExpenseDelete) {
         expenseDeletionResult = applyExpenseDeletion(cache, deletedIds, body.deletePlanToken);
         if (expenseDeletionResult.idempotent) {
@@ -238,6 +249,18 @@ function createAdminTableService(dependencies) {
             deleted: 0,
             deletedIds: [],
             deletionSummary: expenseDeletionResult.plan
+          });
+          return;
+        }
+      } else if (pureDeliveryDelete) {
+        deliveryDeletionResult = applyDeliveryDeletion(cache, deletedIds, body.deletePlanToken);
+        if (deliveryDeletionResult.idempotent) {
+          sendJson(response, 200, {
+            ok: true,
+            idempotent: true,
+            deleted: 0,
+            deletedIds: [],
+            deletionSummary: deliveryDeletionResult.plan
           });
           return;
         }
@@ -309,7 +332,7 @@ function createAdminTableService(dependencies) {
           operation: "delete",
           primaryKey: primaryKeyValue
         })));
-      } else for (const [inputIndex, deletedId] of deletedIds.entries()) {
+      } else if (!deliveryDeletionResult) for (const [inputIndex, deletedId] of deletedIds.entries()) {
         try {
           const existingIndex = byId.get(deletedId);
           if (existingIndex === undefined) {
@@ -331,7 +354,13 @@ function createAdminTableService(dependencies) {
           throw rowError(error, inputIndex, deletedId);
         }
       }
-      if (deletedIds.length && tableName !== "egresos") {
+      if (deliveryDeletionResult) {
+        operations.push(...deletedIds.map((primaryKeyValue) => ({
+          table: tableName,
+          operation: "delete",
+          primaryKey: primaryKeyValue
+        })));
+      } else if (deletedIds.length && tableName !== "egresos") {
         const deletedSet = new Set(deletedIds);
         table.rows = currentRows.filter((row) => !deletedSet.has(stringId(row[primaryKey])));
         deletedIds.forEach((id) => operations.push({ table: tableName, operation: "delete", primaryKey: id }));
@@ -371,8 +400,10 @@ function createAdminTableService(dependencies) {
         inserted: insertedRows.length,
         deleted: deletedIds.length,
         deletedIds,
-        ...(tableName === "egresos" && deletedIds.length
-          ? { deletionSummary: previewExpenseDeletion(original, deletedIds) }
+        ...((tableName === "egresos" || tableName === "entregas") && deletedIds.length
+          ? { deletionSummary: tableName === "egresos"
+            ? previewExpenseDeletion(original, deletedIds)
+            : deliveryDeletionResult.plan }
           : {})
       });
     } catch (error) {

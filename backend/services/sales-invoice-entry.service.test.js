@@ -2,7 +2,76 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const test = require("node:test");
-const { createSalesInvoiceEntryService } = require("./sales-invoice-entry.service");
+const {
+  createSalesInvoiceEntryService,
+  expectedOrderSubtotal
+} = require("./sales-invoice-entry.service");
+
+test("calcula subtotal esperado por unidades individuales, bonificación y centavos", () => {
+  const result = expectedOrderSubtotal([
+    {
+      id_producto: 20,
+      producto: "Barra Pop 140Ud",
+      cantidad_cajas: 40,
+      unidades_por_caja: 140,
+      precio_unitario: "10.25",
+      bonificacion: 5
+    },
+    {
+      id_producto: 21,
+      producto: "Otro producto",
+      cantidad_cajas: 2,
+      unidades_por_caja: 12,
+      precio_unitario: "3.33",
+      bonificacion: 0
+    }
+  ]);
+
+  assert.equal(result.estado, "calculable");
+  assert.equal(result.lineas[0].unidades_individuales, 5600);
+  assert.equal(result.lineas[0].subtotal_esperado, 54530);
+  assert.equal(result.lineas[1].subtotal_esperado, 79.92);
+  assert.equal(result.subtotal_esperado, 54609.92);
+});
+
+test("no reemplaza datos faltantes por cero", () => {
+  const result = expectedOrderSubtotal([{
+    id_producto: 20,
+    cantidad_cajas: 40,
+    unidades_por_caja: "",
+    precio_unitario: "10.25",
+    bonificacion: 0
+  }]);
+
+  assert.equal(result.estado, "datos_insuficientes");
+  assert.deepEqual(result.campos_faltantes, ["unidades por caja"]);
+  assert.equal(result.subtotal_esperado, null);
+});
+
+test("comparte con ARCA el redondeo final después de aplicar la bonificación", () => {
+  const result = expectedOrderSubtotal([{
+    id_producto: 20,
+    cantidad_cajas: 1,
+    unidades_por_caja: 1,
+    precio_unitario: "0.01",
+    bonificacion: 50
+  }]);
+
+  assert.equal(result.subtotal_esperado, 0.01);
+});
+
+test("Factura B conserva el total IVA incluido esperado por pedido", () => {
+  const result = expectedOrderSubtotal([{
+    id_producto: 20,
+    cantidad_cajas: 1,
+    unidades_por_caja: 20,
+    precio_unitario: "121.00",
+    bonificacion: 10
+  }]);
+
+  assert.equal(result.estado, "calculable");
+  assert.equal(result.subtotal_esperado, 2178);
+});
 
 function baseCache() {
   return {
@@ -151,6 +220,16 @@ test("guarda una venta con relación canónica y fecha económica por entrega", 
   assert.equal(ctx.service.unbilledOrders(ctx.saved()).some((row) => row.id_pedido === "1"), false);
 });
 
+test("acepta Remito X con el valor canonico del formulario", async () => {
+  const ctx = fixture();
+  const body = validBody();
+  body.invoice.tipoFactura = "Remito_X";
+  const response = await submit(ctx, body);
+
+  assert.equal(response.status, 200);
+  assert.equal(ctx.saved().tables.ventas.rows[0].tipo_factura, "Remito_X");
+});
+
 test("rechaza selección múltiple sin inventar reparto contable", async () => {
   const ctx = fixture();
   const response = await submit(ctx, { ...validBody(), orderIds: [1, 2] });
@@ -205,6 +284,33 @@ test("factura sin entrega adquiere el vínculo económico al crear la entrega po
   assert.equal(
     ctx.source().tables.entregas_detalle.rows.find((row) => row.id_pedido === "3").id_entrega,
     deliveryResponse.payload.deliveryId
+  );
+});
+
+test("una relación sin entrega padre no bloquea recrear la entrega", async () => {
+  const source = baseCache();
+  source.tables.entregas_detalle.rows.push({
+    id_entregas_detalle: 2,
+    id_entrega: "",
+    id_pedido: 3
+  });
+  const ctx = fixture({ source });
+  await ctx.service.handleSalesDeliveryFullEntry({
+    body: { orderIds: [3], fleetId: 40, deliveryDate: "2026-07-20" }
+  }, {});
+  const response = ctx.responses.at(-1);
+  assert.equal(response.status, 200);
+  assert.equal(ctx.saves(), 1);
+  assert.equal(
+    ctx.source().tables.entregas_detalle.rows
+      .filter((row) => String(row.id_pedido) === "3" && String(row.id_entrega)).length,
+    1
+  );
+  const invoiceResponse = await submit(ctx, validBody(3));
+  assert.equal(invoiceResponse.status, 200);
+  assert.equal(
+    String(ctx.source().tables.ventas.rows.find((row) => String(row.id_pedido) === "3").id_entrega),
+    String(response.payload.deliveryId)
   );
 });
 

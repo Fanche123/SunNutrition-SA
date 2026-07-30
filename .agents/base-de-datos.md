@@ -108,6 +108,7 @@ Crear, mover, renombrar o eliminar un archivo permanente de datos obliga a actua
 - El Editor manual usa `admin-table.service.js` y `admin-table-policy.js`; no accede a tablas ocultas/no registradas, mantiene claves existentes inmutables y bloquea borrados con referencias.
 - Las escrituras administrativas validan el lote sobre una copia, crean un backup verificable por sesión, persisten una vez y registran auditoría técnica mínima.
 - La baja administrativa especial de `egresos` usa `expense-deletion.service.js`: detecta referencias reales, bloquea columnas `id_egreso` no allowlisted y sólo elimina/desvincula relaciones con regla explícita, con token de plan para evitar TOCTOU.
+- La baja administrativa especial de `entregas` usa `delivery-deletion.service.js`: el preview firmado permite sólo `entregas_detalle` (baja) y `ventas.id_entrega` (desvinculación), preserva pedidos y bloquea egresos o referencias fuera de allowlist.
 - El endpoint genérico sigue disponible para compatibilidad operativa local y debe migrarse antes de LAN.
 - SQL usa hijo asíncrono, timeout y presupuesto interno SQLite configurados por `query-limits.js`.
 - Las lecturas `all=true` se miden sin contenido mediante `table-read-metrics.service.js`; no hay límite duro activo.
@@ -117,6 +118,8 @@ Crear, mover, renombrar o eliminar un archivo permanente de datos obliga a actua
 `backend/migrations/20260729-internal-transfer-catalog.js` agrega de forma idempotente únicamente la etiqueta `Transferencia interna - Galicia` y su relación con el acreedor canónico `Propio`, validado por CUIT propio; exige hash para aplicar y crea backup verificable.
 
 `backend/migrations/20260728-last-bank-batch-reset.js` es la reparación puntual no automática del último lote ICBC; exige hash exacto y backup verificable, ofrece dry-run/restore y tiene regresión aislada en `tests/last-bank-batch-reset.test.js`.
+
+`backend/migrations/20260729-order-1005-delivery-orphan.js` repara exclusivamente la fila huérfana demostrada del pedido `1005`; exige hash exacto y backup verificable, ofrece dry-run/apply atómico y es idempotente.
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**; en alto riesgo agregar backup/rollback y consumidores.
 

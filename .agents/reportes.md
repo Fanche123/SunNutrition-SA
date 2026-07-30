@@ -113,3 +113,9 @@ Recibí pedidos en lenguaje natural directamente, inspeccioná solo el contexto 
 ## Primer mensaje
 
 > Leé `.agents/reportes.md` y usalo como guía permanente. Para cada tarea revisá solo los archivos necesarios y sus dependencias directas. No hagas un relevamiento general salvo que te lo pida o que detectes un cambio de alto riesgo.
+## Reporte de producción por turno
+
+- `backend/services/production-report.service.js` calcula en solo lectura `final - inicial + salidas` por producto, turno y día.
+- Los snapshots canónicos son el mayor `id_inventario` persistido por fecha/turno.
+- Las salidas provienen de `entregas.fecha`, `entregas_detalle` y `detalle_pedidos.cantidad_cajas`; se asignan sólo a Mañana.
+- `assets/js/modules/reports-production.js` consume el endpoint lazy y no replica la fórmula.

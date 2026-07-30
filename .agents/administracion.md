@@ -26,7 +26,7 @@ Fuera de alcance: definir columnas, claves o migraciones (Base de datos); cambia
 
 - Frontend: `assets/js/modules/data-editor.js`, `data-map.js`, `sql-console.js`.
 - El Editor usa una única grilla compacta y virtualizada. Solicita todas las filas filtradas, mantiene un único scroll continuo y solo materializa en el DOM la ventana visible. No expone posiciones internas, rangos, páginas ni tamaños de bloque; la selección para borrado ocupa una columna mínima.
-- Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `admin-table.service.js`, `expense-deletion.service.js`, `sql.service.js`.
+- Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `admin-table.service.js`, `expense-deletion.service.js`, `delivery-deletion.service.js`, `sql.service.js`.
 - Compartidos relevantes: `index.html`, `assets/css/styles.css`, `assets/js/app.js`, `assets/js/core/formatters.js`, `backend/services/core-handlers.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`, `backend/routes/router.js`, `tools/backend-sqlite-query.py`.
 
 ## Tablas y contratos confirmados
@@ -90,6 +90,7 @@ Crear, mover, renombrar o eliminar un archivo permanente de Administración obli
 
 - El Editor usa `GET /api/admin/tables`, `GET /api/admin/tables/:tabla?all=true`, `PATCH /api/admin/tables/:tabla/cell` y el POST administrativo para altas/bajas.
 - `backend/config/admin-table-policy.js` habilita CRUD completo con una política administrativa uniforme para toda tabla registrada, sin clases de solo lectura u operación; `backend/services/admin-table.service.js` niega tablas ocultas/no registradas y valida columnas, tipos, dinero, relaciones, conflictos, claves y dependencias antes de cada escritura atómica.
+- La eliminación de `entregas` exige preview firmado y una allowlist cerrada: borra el detalle pedido-entrega, limpia `ventas.id_entrega`, conserva el pedido y bloquea si existe `id_egreso` u otra dependencia desconocida.
 - La lectura administrativa se ordena por la PK real: numéricamente cuando todos sus valores son numéricos y textualmente en otro caso. Solo la PK alterna ascendente/descendente; búsqueda y filtros se aplican sobre la tabla completa.
 - El primer clic solo activa y remarca una celda. Enter, F2, doble clic o un segundo clic sobre la misma celda abren su control de edición conservando el contenido y posicionando el cursor al final; el valor no se selecciona ni se reemplaza automáticamente.
 - La grilla no muestra `Pos.`, rangos, botones 100/300/500, `Agregar fila` ni `Guardar cambios`. Una celda confirmada se guarda y relee individualmente con estados discretos; un rechazo conserva el valor ingresado y marca solo esa celda.

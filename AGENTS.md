@@ -228,6 +228,23 @@ Aplicar la verificación mínima suficiente para cada tarea.
 
 No ejecutar automáticamente toda la suite, builds completos o auditorías generales para cambios pequeños.
 
+### Gate operativo obligatorio de cierre
+
+Esta sección es la fuente normativa transversal para toda tarea ERP. Antes de emitir su respuesta final, el ejecutor debe dejar el servidor principal Local de `C:\Users\benja\Documents\ERP` encendido en `127.0.0.1:3000` y verificar desde ese checkout:
+
+1. identidad, `cwd`, host y puerto correctos;
+2. `npm.cmd run server:status` con resultado `running_fresh`;
+3. `npm.cmd run server:ocr-status` con resultado `ocr_reachable`;
+4. ausencia de servidores temporales o procesos huérfanos creados por la tarea.
+
+`running_fresh` por sí solo nunca habilita el cierre. El diagnóstico OCR existente no envía facturas ni credenciales. Si el servidor principal está apagado, obsoleto o sin conectividad OCR, el ejecutor debe restaurarlo desde un contexto con acceso normal de red mediante la escalación no sandboxeada necesaria. Si no puede obtener ambos estados correctos, la tarea permanece `blocked` y explica exactamente qué necesita del usuario.
+
+La garantía es global: una tarea que no tocó servidores también ejecuta el gate final; si tocó, detuvo o reemplazó alguno, además conserva o restaura el estado operativo. El informe final siempre incluye PID, host/puerto, checkout/`cwd`, resultados de ambos comandos y procesos temporales limpiados.
+
+En Worktrees, toda validación usa puerto aislado, timeout y cleanup garantizado. Nunca reemplaza, detiene ni reinicia el servidor principal Local. Antes de cerrar elimina sus procesos temporales y ejecuta el gate sobre el Local principal. Si el código del Worktree aún no está integrado, informa que `127.0.0.1:3000` conserva una versión Local anterior válida y no sirve el Worktree allí. Solo una tarea de integración actualiza el servidor principal con cambios provenientes de Worktrees.
+
+El ejecutor es el único responsable de restaurar y comprobar este gate. Watchdog, validadores, consolidadores y demás controles read-only no reinician servidores. En riesgo alto, el ejecutor realiza el gate después de liberar los tres validadores y antes de crear el consolidador; este verifica la evidencia informada sin repetirlo. Si la única corrección posterior al consolidado altera código servido o estado del runtime, el ejecutor repite el gate antes de responder.
+
 ---
 
 ## 13. Seguridad al eliminar

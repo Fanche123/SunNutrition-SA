@@ -26,6 +26,10 @@ function createRequestHandler(dependencies) {
     ["POST", "/api/treasury/payment-plans", handlers.handlePaymentPlanCreate],
     ["POST", "/api/sales/orders/full-entry", handlers.handleSalesOrderFullEntry],
     ["GET", "/api/sales/unbilled-orders", handlers.handleUnbilledOrdersGet],
+    ["POST", "/api/sales/arca/prepare", handlers.handleArcaPreparePost],
+    ["POST", "/api/sales/arca/audit", handlers.handleArcaAuditPost],
+    ["GET", "/api/sales/arca/audit", handlers.handleArcaAuditGet],
+    ["POST", "/api/sales/invoice/read", handlers.handleSalesInvoiceRead],
     ["POST", "/api/sales/invoices/full-entry", handlers.handleSalesInvoiceFullEntry],
     ["POST", "/api/sales/deliveries/full-entry", handlers.handleSalesDeliveryFullEntry],
     ["POST", "/api/backend/sql", handlers.handleBackendSqlQuery],
@@ -67,6 +71,9 @@ function createRequestHandler(dependencies) {
           ...(runtimeIdentity ? { runtime: runtimeIdentity } : {})
         });
       }
+      if (request.url === "/api/health/ocr" && request.method === "GET") {
+        return handlers.handleInvoiceProviderHealth(request, response);
+      }
       if (request.url === "/api/backend/schema" && request.method === "GET") {
         return sendJson(response, 200, { ok: true, schema: backendSchema() });
       }
@@ -103,6 +110,12 @@ function createRequestHandler(dependencies) {
       }
       if (request.url.startsWith("/api/reports/cashflow") && request.method === "GET") {
         return await handlers.handleCashflowReport(request, response);
+      }
+      if (request.url.startsWith("/api/reports/production") && request.method === "GET") {
+        return handlers.handleProductionReport(request, response);
+      }
+      if (request.url.startsWith("/api/sales/arca/orders") && request.method === "GET") {
+        return handlers.handleArcaOrdersGet(request, response);
       }
       const bankReconciliationPath = new URL(
         request.url,

@@ -4,6 +4,7 @@ const {
   normalize: normalizeMoney,
   toCents
 } = require("../../shared/money");
+const { individualUnits } = require("../../shared/order-pricing");
 
 const INCOME_STATEMENT_DETAIL_LIMIT = 200;
 const INCOME_STATEMENT_EXPENSE_CONCEPTS = Object.freeze({
@@ -103,7 +104,10 @@ function createIncomeStatementService(dependencies) {
       (detailsByOrder.get(orderId) || []).forEach((detail) => {
         const product = productsById.get(backendId(detail.id_producto));
         const order = ordersById.get(orderId);
-        const quantity = backendNumber(detail.cantidad_cajas) * backendNumber(product?.cantidad_individual || 1);
+        const quantity = individualUnits(
+          backendNumber(detail.cantidad_cajas),
+          backendNumber(product?.cantidad_individual || 1)
+        );
         unitsSold += quantity;
         monthlyOrderDetails.push({
           date: backendIsoDate(order?.fecha_entrega || order?.fecha_pedido),

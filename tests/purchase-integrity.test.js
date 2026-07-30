@@ -30,10 +30,43 @@ function createInvoiceReadHarness(fetchImpl, options = {}) {
   });
   return {
     invoke: async (body) => {
-      await service.handleReceptionInvoiceRead({ body }, {});
+      const handler = options.sales
+        ? service.handleSalesInvoiceRead
+        : service.handleReceptionInvoiceRead;
+      await handler({ body }, {});
       return result;
     }
   };
+}
+
+function createInvoiceProviderHealthHarness(fetchImpl, timeoutMs = 5) {
+  let result;
+  const service = createAttachmentsService({
+    childProcess: {},
+    fetchImpl,
+    fs,
+    invoiceProviderHealthTimeoutMs: timeoutMs,
+    path,
+    pythonExecutable: "python",
+    readJsonBody: async () => ({}),
+    rootDir: "C:\\isolated",
+    sendJson: (_response, status, payload) => {
+      result = { status, payload };
+    }
+  });
+  return {
+    invoke: async () => {
+      await service.handleInvoiceProviderHealth({}, {});
+      return result;
+    }
+  };
+}
+
+function facturaBReadHarness(providerInvoice) {
+  return createInvoiceReadHarness(async () => ({
+    ok: true,
+    json: async () => ({ output_text: JSON.stringify(providerInvoice) })
+  }), { sales: true });
 }
 
 function syntheticPdfDataUrl() {
@@ -73,6 +106,116 @@ test("lector de facturas normaliza exito y marca campos no reconocidos", async (
   }
 });
 
+test("Ventas normaliza el IVA incluido de Factura B y concilia al centavo", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    const exact = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      subtotal: 2744280,
+      iva: 476280,
+      total: 2744280
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b.pdf" });
+    assert.deepEqual(
+      [exact.payload.invoice.subtotal, exact.payload.invoice.iva, exact.payload.invoice.total],
+      [2268000, 476280, 2744280]
+    );
+
+    const cents = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      subtotal: null,
+      iva: null,
+      total: 100
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-centavos.pdf" });
+    assert.deepEqual(
+      [cents.payload.invoice.subtotal, cents.payload.invoice.iva, cents.payload.invoice.total],
+      [82.64, 17.36, 100]
+    );
+
+    for (const total of [0, null, "importe invalido"]) {
+      const partial = await facturaBReadHarness({
+        tipo_factura: "Factura_B",
+        subtotal: null,
+        iva: null,
+        total
+      }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-parcial.pdf" });
+      assert.equal(partial.payload.invoice.subtotal, null);
+      assert.equal(partial.payload.invoice.iva, null);
+      assert.equal(partial.payload.invoice.total, total === 0 ? 0 : null);
+    }
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("Ventas conserva casos fiscales explícitos y no altera Factura A ni Remito X", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    for (const invoice of [
+      { tipo_factura: "Factura_B", subtotal: 100, iva: 21, total: 121 },
+      { tipo_factura: "Factura_A", subtotal: 200, iva: 42, total: 242 },
+      { tipo_factura: "Remito_X", subtotal: null, iva: null, total: 500 }
+    ]) {
+      const result = await facturaBReadHarness(invoice)
+        .invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "documento.pdf" });
+      assert.equal(result.payload.invoice.subtotal, invoice.subtotal);
+      assert.equal(result.payload.invoice.iva, invoice.iva);
+    }
+
+    const additionalTaxes = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      subtotal: 100,
+      iva: 21,
+      per_ret_iibb: 3,
+      total: 124
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-percepcion.pdf" });
+    assert.equal(additionalTaxes.payload.invoice.subtotal, 100);
+    assert.equal(additionalTaxes.payload.invoice.iva, 21);
+    assert.equal(additionalTaxes.payload.reviewWarnings.length, 1);
+
+    const differentRate = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      iva_alicuota: 10.5,
+      subtotal: 100,
+      iva: 10.5,
+      total: 110.5
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-105.pdf" });
+    assert.equal(differentRate.payload.invoice.subtotal, 100);
+    assert.equal(differentRate.payload.invoice.iva, 10.5);
+    assert.equal(differentRate.payload.reviewWarnings.length, 1);
+
+    const benignMetadata = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      iva_alicuota: "21",
+      tratamiento_iva: "IVA incluido",
+      exento: "0,00",
+      no_gravado: "0",
+      subtotal: 2744280,
+      iva: 476280,
+      total: 2744280
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-incluido.pdf" });
+    assert.equal(benignMetadata.payload.invoice.subtotal, 2268000);
+    assert.equal(benignMetadata.payload.invoice.iva, 476280);
+    assert.equal(benignMetadata.payload.reviewWarnings.length, 0);
+
+    const zeroRate = await facturaBReadHarness({
+      tipo_factura: "Factura_B",
+      iva_alicuota: 0,
+      subtotal: 100,
+      iva: 0,
+      total: 100
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura-b-tasa-cero.pdf" });
+    assert.equal(zeroRate.payload.invoice.subtotal, 100);
+    assert.equal(zeroRate.payload.invoice.iva, 0);
+    assert.equal(zeroRate.payload.reviewWarnings.length, 1);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
 test("lector distingue configuracion, archivo invalido, red y respuesta ilegible", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   try {
@@ -92,10 +235,11 @@ test("lector distingue configuracion, archivo invalido, red y respuesta ilegible
 
     process.env.OPENAI_API_KEY = "test-key";
     const unavailable = await createInvoiceReadHarness(async () => {
-      throw new TypeError("fetch failed");
+      throw new TypeError("fetch failed", { cause: { code: "EACCES" } });
     }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
     assert.equal(unavailable.status, 502);
     assert.equal(unavailable.payload.code, "SERVICE_UNAVAILABLE");
+    assert.equal(unavailable.payload.details.transportCode, "eacces");
     assert(!unavailable.payload.error.includes("fetch failed"));
 
     const timeout = await createInvoiceReadHarness((_url, options) => new Promise((_resolve, reject) => {
@@ -110,6 +254,51 @@ test("lector distingue configuracion, archivo invalido, red y respuesta ilegible
     })).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "factura.pdf" });
     assert.equal(unreadable.status, 502);
     assert.equal(unreadable.payload.code, "UNREADABLE_RESPONSE");
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("diagnóstico OCR corta un fetch suspendido con su timeout corto", async () => {
+  const startedAt = Date.now();
+  const harness = createInvoiceProviderHealthHarness((_url, options) => new Promise((_resolve, reject) => {
+    options.signal.addEventListener("abort", () => {
+      reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+    });
+  }), 5);
+
+  const result = await harness.invoke();
+  assert.equal(result.status, 503);
+  assert.equal(result.payload.connectivity, "unreachable");
+  assert(Date.now() - startedAt < 500);
+});
+
+test("lector no propone una fecha historica anomala impresa en un remito", async () => {
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    const harness = createInvoiceReadHarness(async () => ({
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          tipo_factura: "Remito_X",
+          nro_factura: "00001",
+          fecha_factura: "1899-12-30",
+          subtotal: 914760,
+          total: 914760
+        })
+      })
+    }));
+    const result = await harness.invoke({
+      fileDataUrl: syntheticPdfDataUrl(),
+      fileName: "remito.pdf",
+      mimeType: "application/pdf"
+    });
+    assert.equal(result.status, 200);
+    assert.equal(result.payload.invoice.tipo_factura, "Remito_X");
+    assert.equal(result.payload.invoice.fecha_factura, "");
+    assert(result.payload.missingFields.includes("fecha_factura"));
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;

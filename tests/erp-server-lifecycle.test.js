@@ -22,12 +22,20 @@ const runtime = JSON.parse(process.env.FAKE_RUNTIME_JSON);
 runtime.pid = process.pid;
 const token = process.env.FAKE_CONTROL_TOKEN || "";
 const exposeRuntime = process.env.FAKE_EXPOSE_RUNTIME === "1";
+const ocrReachable = process.env.FAKE_OCR_REACHABLE === "1";
 const server = http.createServer((request, response) => {
   response.setHeader("Content-Type", "application/json");
   response.setHeader("Connection", "close");
   if (request.method === "GET" && request.url === "/api/health") {
     response.writeHead(200);
     response.end(JSON.stringify(exposeRuntime ? { ok: true, runtime } : { ok: true }));
+    return;
+  }
+  if (request.method === "GET" && request.url === "/api/health/ocr") {
+    response.writeHead(ocrReachable ? 200 : 503);
+    response.end(JSON.stringify(ocrReachable
+      ? { ok: true, provider: "openai", connectivity: "reachable", providerStatus: 401 }
+      : { ok: false, provider: "openai", connectivity: "unreachable", transportCode: "eacces" }));
     return;
   }
   if (request.method === "POST" && request.url === "/api/runtime/shutdown") {
@@ -44,9 +52,41 @@ const server = http.createServer((request, response) => {
   response.writeHead(404);
   response.end(JSON.stringify({ error: "not found" }));
 });
+
 server.listen(runtime.port, runtime.host);
 process.once("SIGTERM", () => server.close());
 `;
+
+test("ocr-status distingue frescura de conectividad y consulta al proceso administrado", async () => {
+  for (const reachable of [false, true]) {
+    const port = await freePort();
+    const environment = isolatedEnvironment(port);
+    const runtime = fakeRuntime({
+      port,
+      projectRoot: PROJECT_ROOT,
+      sourceFingerprint: computeSourceFingerprint(PROJECT_ROOT)
+    });
+    const controlToken = crypto.randomBytes(32).toString("hex");
+    let serverProcess;
+
+    try {
+      serverProcess = spawnFakeServer(runtime, controlToken, true, {
+        FAKE_OCR_REACHABLE: reachable ? "1" : "0"
+      });
+      const health = await waitForHealth(port, (body) => body?.runtime?.instanceId, serverProcess);
+      writeLock(port, { ...health.runtime, controlToken });
+
+      const result = await runNode([MANAGER_PATH, "ocr-status", "--json"], environment);
+      assert.equal(result.code, reachable ? 0 : 2);
+      const status = parseJsonOutput(result.stdout);
+      assert.equal(status.state, reachable ? "ocr_reachable" : "ocr_unreachable");
+      assert.equal(status.runtime.pid, health.runtime.pid);
+      assert.equal(status.ocr.connectivity, reachable ? "reachable" : "unreachable");
+    } finally {
+      await cleanupOwnedProcess(port, serverProcess, environment);
+    }
+  }
+});
 
 test("la huella cambia con codigo fuente y no con runtime temporal", () => {
   const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "erp-runtime-fingerprint-"));
@@ -391,12 +431,13 @@ function fakeRuntime({
   };
 }
 
-function spawnFakeServer(runtime, controlToken, exposeRuntime) {
+function spawnFakeServer(runtime, controlToken, exposeRuntime, extraEnvironment = {}) {
   return spawnLongRunning(["-e", FAKE_SERVER_SOURCE], {
     ...process.env,
     FAKE_RUNTIME_JSON: JSON.stringify(runtime),
     FAKE_CONTROL_TOKEN: controlToken,
-    FAKE_EXPOSE_RUNTIME: exposeRuntime ? "1" : "0"
+    FAKE_EXPOSE_RUNTIME: exposeRuntime ? "1" : "0",
+    ...extraEnvironment
   });
 }
 

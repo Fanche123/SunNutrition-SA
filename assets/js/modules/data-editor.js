@@ -1490,12 +1490,13 @@ async function openDataEditorDeleteDialog() {
   delete dialog.dataset.planToken;
   dialog.dataset.planApplicable = "false";
   const confirmButton = dataEditorElement("data-editor-delete-confirm");
-  if (confirmButton) confirmButton.disabled = view.table?.name === "egresos" && keys.length > 0;
+  const requiresDeletionPlan = ["egresos", "entregas"].includes(view.table?.name) && keys.length > 0;
+  if (confirmButton) confirmButton.disabled = requiresDeletionPlan;
   dialog.showModal();
-  if (view.table?.name !== "egresos" || !keys.length) return;
+  if (!requiresDeletionPlan) return;
   dataEditorElement("data-editor-delete-summary").textContent = "Calculando las conexiones persistidas actuales…";
   try {
-    const response = await fetch(`${API_BASE_URL}/api/admin/tables/egresos/delete-preview`, {
+    const response = await fetch(`${API_BASE_URL}/api/admin/tables/${encodeURIComponent(view.table.name)}/delete-preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ deletedIds: keys })
@@ -1593,7 +1594,7 @@ async function confirmDataEditorDelete() {
         orderBy: dataEditorOrderColumn(),
         orderDir: view.orderDir,
         tableVersion: view.table.version,
-        ...(view.table.name === "egresos" ? { deletePlanToken: dialog?.dataset.planToken || "" } : {})
+        ...(["egresos", "entregas"].includes(view.table.name) ? { deletePlanToken: dialog?.dataset.planToken || "" } : {})
       })
     });
     const payload = await response.json().catch(() => ({}));
@@ -1618,7 +1619,7 @@ async function confirmDataEditorDelete() {
     }
   } finally {
     if (confirmButton) {
-      confirmButton.disabled = view.table?.name === "egresos"
+      confirmButton.disabled = ["egresos", "entregas"].includes(view.table?.name)
         && (dialog?.dataset.planApplicable !== "true" || !dialog?.dataset.planToken);
       confirmButton.textContent = "Eliminar filas";
     }

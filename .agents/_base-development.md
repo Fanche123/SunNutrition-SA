@@ -36,7 +36,7 @@ Pedir confirmación humana adicional únicamente cuando falte una decisión cont
 - No modificar datos reales durante pruebas. Usar lecturas, payloads inválidos, fixtures o repositorios/copias temporales aisladas.
 - No tocar `.env`, adjuntos, caches ni temporales reales.
 - Validar según riesgo: sintaxis y vista para frontend localizado; sintaxis, servidor y endpoint para backend; casos representativos y consumidores para cálculos; regresión amplia solo para cambios transversales.
-- Antes de validar contra un servidor local, ejecutar `npm.cmd run server:status` desde el checkout/puerto esperado y exigir `running_fresh`. En Worktrees usar puerto aislado, timeout y cleanup en `finally`. Un `404` de una ruta nueva no puede aprobarse como “runtime viejo”: se resuelve o se declara bloqueo real. Ver `docs/local-server.md`.
+- Antes de validar contra un servidor local, ejecutar `npm.cmd run server:status` desde el checkout/puerto esperado y exigir `running_fresh`. En Worktrees usar puerto aislado, timeout y cleanup en `finally`. Un `404` de una ruta nueva no puede aprobarse como “runtime viejo”: se resuelve o se declara bloqueo real. Para cerrar, aplicar además sin excepciones el “Gate operativo obligatorio de cierre” de `AGENTS.md`; `running_fresh` sin `ocr_reachable` no alcanza. Ver `docs/local-server.md`.
 - Informar con honestidad toda prueba no ejecutada.
 
 ## Mantenimiento obligatorio de AGENTS
@@ -58,7 +58,7 @@ El flujo predeterminado crea hilos principales visibles:
 
 El Coordinador no usa `spawn_agent` ni Jefes anidados, no hace trabajo técnico y no recibe el informe. El nuevo hilo realiza toda inspección, cambio, prueba, navegador, captura y revisión, y puede crear sus propios especialistas como subagentes.
 
-Usar Local cuando se necesiten runtime principal, localhost o archivos locales. Usar Worktree para aislamiento o cuando otra tarea escritora ya esté activa. No ejecutar dos escritores simultáneos sobre la misma carpeta principal.
+Usar Local cuando se necesiten runtime principal, localhost o archivos locales. Usar Worktree para aislamiento o cuando otra tarea escritora ya esté activa. No ejecutar dos escritores simultáneos sobre la misma carpeta principal ni asignar a dos tareas ownership para reiniciar el servidor principal. Solo una tarea de integración actualiza el Local con cambios de Worktrees.
 
 ### Tareas cerradas y correcciones posteriores
 
@@ -91,13 +91,16 @@ Antes de cerrar, el ejecutor debe:
 7. distinguir archivos propios de cambios preexistentes o concurrentes;
 8. informar comandos o casos, resultados, evidencia verificable, riesgos y toda prueba no ejecutada.
 
+Además, toda tarea aplica antes de responder el “Gate operativo obligatorio de cierre” de `AGENTS.md`, aunque no haya tocado servidores. El ejecutor restaura si hace falta, limpia únicamente sus procesos temporales e informa la evidencia completa. Los controles read-only no operan servidores.
+
 Para riesgo bajo o medio se cierra con esa validación simple, salvo solicitud expresa o señal concreta. Para riesgo alto —dinero, contabilidad, datos reales, base de datos, migraciones, integraciones complejas o arquitectura transversal—:
 
 1. crear exactamente un `watchdog_tarea` read-only al iniciar y solicitar al mismo agente una revisión ultrarrápida al alcanzar cada ventana aproximada de cinco minutos mediante `followup_task`, o usar un mecanismo recurrente nativo equivalente;
 2. no usar sleeps ni prometer periodicidad autónoma no soportada; una tarea menor a cinco minutos puede terminar sin segunda revisión;
 3. detener el Watchdog después de las pruebas propias y antes de validar;
 4. crear en paralelo tres `validador_tarea` read-only con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual;
-5. esperar y liberar los tres antes de crear exactamente un `consolidador_validacion` read-only.
+5. esperar y liberar los tres, ejecutar el gate operativo obligatorio de `AGENTS.md` y reunir su evidencia;
+6. crear exactamente un `consolidador_validacion` read-only, que revisa esa evidencia sin operar el servidor.
 
 El paquete base común incluye taskId, intención, alcance, dominio, riesgo, impacto visual, archivos propios, diff, pruebas, evidencias, backup/datos cuando aplique, cambios preexistentes, riesgos y puntos no ejecutados. Los controles no modifican, crean agentes ni responden al usuario. El Watchdog solo observa actividad, fase, herramienta, tiempo sin avance, bloqueo y próximo paso, y alerta ante estancamiento o espera anormal. Los validadores emiten `approved`, `fix_required` o `blocked` con evidencia y corrección mínima. El consolidador no repite controles: deduplica, expone contradicciones y preserva todo hallazgo demostrado.
 

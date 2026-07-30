@@ -104,6 +104,7 @@ let salaryLaborCostUi = {};
 const deferredViewInitializations = new Map();
 const activeViewLoads = new Map();
 const queuedViewLoads = new Map();
+const deferredScripts = new Map();
 const DEFAULT_COOPERATIVE_EMPLOYEE_COST = 259506.74;
 const DEFAULT_EMPLOYEE_CONTRIBUTION_RATE = 17;
 // Referencia inicial tomada del F.931 06/2026 de SunNutrition: contribuciones + ART/LRT + SCVO.
@@ -1755,6 +1756,28 @@ function initializeViewOnce(key, initializer, onError = showDeferredViewError) {
   return promise;
 }
 
+function loadDeferredScript(src, globalInitializer) {
+  if (typeof window[globalInitializer] === "function") return Promise.resolve(window[globalInitializer]);
+  if (deferredScripts.has(src)) return deferredScripts.get(src);
+  const promise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = src;
+    script.async = true;
+    script.addEventListener("load", () => {
+      const initializer = window[globalInitializer];
+      if (typeof initializer === "function") resolve(initializer);
+      else reject(new Error(`El módulo ${globalInitializer} no expuso su inicializador.`));
+    }, { once: true });
+    script.addEventListener("error", () => reject(new Error(`No se pudo cargar ${src}.`)), { once: true });
+    document.head.appendChild(script);
+  }).catch((error) => {
+    deferredScripts.delete(src);
+    throw error;
+  });
+  deferredScripts.set(src, promise);
+  return promise;
+}
+
 function runViewLoad(key, loader, onError = showDeferredViewError) {
   const current = activeViewLoads.get(key);
   if (current) return current;
@@ -1793,6 +1816,7 @@ function showDeferredViewError(view, error) {
     "purchase-entry": "purchase-status",
     "reception-entry": "reception-status",
     "salary-entry": "salary-entry-status",
+    "arca-invoicing": "arca-status",
     results: "warnings",
     cashflow: "cashflow-timeline"
   };
@@ -1830,6 +1854,9 @@ async function initializeReportView(view) {
 function switchView(view) {
   if (view === "imports") view = "data-editor";
   if (!document.getElementById(`view-${view}`)) view = "dashboard";
+  const leavingArcaInvoicing = document.getElementById("view-arca-invoicing")?.classList.contains("active")
+    && view !== "arca-invoicing";
+  if (leavingArcaInvoicing) window.cancelArcaInvoicing?.("manual_abort");
   const leavingDataEditor = document.getElementById("view-data-editor")?.classList.contains("active")
     && view !== "data-editor";
   if (
@@ -1866,6 +1893,7 @@ function switchView(view) {
     "issued-check-entry",
     "sales-entry",
     "orders-entry",
+    "arca-invoicing",
     "collections-entry",
     "received-check-entry",
     "deposited-checks-entry",
@@ -1886,6 +1914,8 @@ function switchView(view) {
   document.body.classList.toggle("view-data-editor-active", view === "data-editor");
   document.body.classList.toggle("view-data-map-active", view === "data-map");
   document.body.classList.toggle("view-sql-active", view === "sql");
+  const periodPicker = document.querySelector(".period-picker");
+  if (periodPicker) periodPicker.hidden = !viewUsesGlobalPeriodComparison(view);
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.classList.toggle("active", item.dataset.view === view);
   });
@@ -1894,8 +1924,8 @@ function switchView(view) {
   });
 
   const navGroupViews = {
-    analysis: ["results", "cashflow"],
-    "sales-distribution": ["orders-entry", "sales-invoice-entry", "sales-entry", "logistics-entry", "commissions-entry"],
+    analysis: ["results", "cashflow", "production"],
+    "sales-distribution": ["orders-entry", "arca-invoicing", "sales-invoice-entry", "sales-entry", "logistics-entry", "commissions-entry"],
     "purchases-inventory": ["purchase-entry", "reception-entry", "data-entry", "creditor-entry", "other-expenses-entry"],
     treasury: [
       "cashbox",
@@ -1927,6 +1957,7 @@ function switchView(view) {
     dashboard: ["Dashboard", "Resumen de los datos guardados en este navegador."],
     results: ["Estado de Resultados", "Resultado mensual estimado desde egresos, ventas e inventario."],
     cashflow: ["Cashflow", "Flujo de caja proyectado y editable por fecha."],
+    production: ["Producción", "Producción calculada por producto, turno y día."],
     cashbox: ["Cajas", "Control bidireccional de saldos bancarios y movimientos registrados."],
     "bank-reconciliation": ["Conciliacion bancaria", "Comparacion del extracto bancario contra pagos, cobros y egresos del backend."],
     "creditor-entry": ["Acreedores", "Alta de acreedores, origenes y etiquetas."],
@@ -1944,6 +1975,7 @@ function switchView(view) {
     "payments-entry": ["Pagos", "Carga agrupada de pagos y medios de cancelacion."],
     "issued-check-entry": ["Cheques entregados", "Carga y control de cheques propios entregados."],
     "sales-invoice-entry": ["Ventas", "Carga de facturas de venta desde pedidos pendientes."],
+    "arca-invoicing": ["Facturación ARCA", "Preparación segura y asistencia hasta la revisión previa a emitir."],
     "sales-entry": ["Saldos Pendientes", "Facturas de venta con saldo pendiente de cobro."],
     "orders-entry": ["Pedidos", "Carga y seguimiento de pedidos de clientes."],
     "collections-entry": ["Cobros", "Carga agrupada de cobros y cheques recibidos."],
@@ -1965,8 +1997,18 @@ function switchView(view) {
   if (view === "results" || view === "cashflow") {
     initializeViewOnce(view, () => initializeReportView(view));
   }
+  if (view === "production") runLatestViewLoad(view, initializeProductionReport);
   if (view === "data-entry") initializeViewOnce(view, initializeInventoryView);
   if (view === "purchase-entry") initializeViewOnce(view, loadPurchaseBackendOptions);
+  if (view === "arca-invoicing") {
+    runViewLoad(view, async () => {
+      const initialize = await loadDeferredScript(
+        "assets/js/modules/arca-invoicing.js?v=20260730-delivery-priority",
+        "initializeArcaInvoicing"
+      );
+      await initialize();
+    });
+  }
   if (view === "sales-invoice-entry") runViewLoad(view, loadUnbilledSalesOrders);
   if (["orders-entry", "logistics-entry", "sales-entry", "collections-entry", "commissions-entry", "received-check-entry"].includes(view)) {
     runViewLoad("commercial-entry-data", loadCommercialEntryData);
@@ -1991,6 +2033,12 @@ function switchView(view) {
     loadIssuedCheckPendingPayments();
   }
   if (view === "bank-reconciliation") refreshBankReconciliationFromBackend();
+}
+
+// El comparador global pertenece al reporte que consume y recalcula ambos valores.
+// Las colas y formularios operativos conservan sus filtros locales, si los tienen.
+function viewUsesGlobalPeriodComparison(view) {
+  return view === "results";
 }
 
 /*

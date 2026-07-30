@@ -8,7 +8,13 @@ async function requestBackendApi(path, options = {}) {
     }
   });
   const payload = await response.json();
-  if (!response.ok || !payload.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+  if (!response.ok || !payload.ok) {
+    const error = new Error(payload.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.code = payload.code || "";
+    error.details = payload.details || null;
+    throw error;
+  }
   return payload;
 }
 

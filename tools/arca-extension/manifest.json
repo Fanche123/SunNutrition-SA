@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "SunNutrition - Asistente ARCA",
+  "version": "1.0.1",
+  "minimum_chrome_version": "102",
+  "description": "Completa datos preparados por el ERP y se detiene antes de emitir comprobantes.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "https://auth.afip.gob.ar/*",
+    "https://serviciosjava2.afip.gob.ar/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://auth.afip.gob.ar/*",
+        "https://serviciosjava2.afip.gob.ar/*"
+      ],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "externally_connectable": {
+    "matches": ["http://127.0.0.1/*"]
+  }
+}
