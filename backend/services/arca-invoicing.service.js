@@ -95,6 +95,7 @@ function createArcaInvoicingService({
         fecha_entrega_prevista: order.fecha_entrega || "",
         cliente: client.nombre_cliente || "",
         id_cliente: backendId(order.id_cliente),
+        tipo_comprobante_configurado: normalizeReceiptType(client.tipo_comprobante),
         cuit: client.cuit || "",
         domicilio: [client.direccion, client.localidad].filter(Boolean).join(", "),
         entrega: delivery ? {
@@ -363,6 +364,11 @@ function suggestReceiptType(issuerCondition, recipientCondition) {
   ) || "";
 }
 
+function normalizeReceiptType(value) {
+  const match = normalizeText(value).match(/^factura[ _-]*([ab])$/);
+  return match ? `Factura_${match[1].toUpperCase()}` : "";
+}
+
 function missingSourceFields({ client, details }) {
   const missing = [];
   if (digits(client.cuit).length !== 11) missing.push("CUIT del cliente");
@@ -509,6 +515,7 @@ module.exports = {
   compareExpectedDelivery,
   createArcaInvoicingService,
   missingSourceFields,
+  normalizeReceiptType,
   realDeliveriesByOrder,
   suggestReceiptType
 };

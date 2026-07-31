@@ -4926,7 +4926,7 @@ test("la preparación se invalida y el ciclo de vida cancela contexto, revalida 
   const source = fs.readFileSync(path.join(root, "assets/js/modules/arca-invoicing.js"), "utf8");
   const app = fs.readFileSync(path.join(root, "assets/js/app.js"), "utf8");
 
-  assert.match(source, /arca-products-body"\)\?\.addEventListener\("change", clearPreparedState\)/);
+  assert.match(source, /arca-receipt-type"\)\?\.addEventListener\("change", renderCompactReview\)/);
   assert.match(source, /MAX_POLL_FAILURES = 3/);
   assert.match(source, /POLL_TIMEOUT_MS = 5 \* 60 \* 1000/);
   assert.match(source, /discardPreparedContext\("timeout"/);
@@ -4964,6 +4964,43 @@ test("la preparación se invalida y el ciclo de vida cancela contexto, revalida 
   assert.match(frontend.extensionStatusLabel("waiting_representative"), /SunNutrition/);
   assert.match(frontend.extensionStatusLabel("service_recognized"), /Comprobantes en línea/);
   assert.match(frontend.extensionStatusLabel("completing_stage", "recipient"), /datos del receptor/);
+});
+
+test("la revisión compacta reutiliza unidades, descripción e importes del payload ARCA", () => {
+  const order = {
+    domicilio: "Miralla 235, Liniers",
+    productos: [{
+      clasificacion_arca: "units",
+      cantidad_cajas: 20,
+      unidades_por_caja: 140,
+      cantidad_arca: 2800,
+      unidad_arca: "unidades",
+      producto: "Barra Pop 140Ud",
+      precio_unidad_individual: 1.5,
+      bonificacion: 0
+    }]
+  };
+  const lines = frontend.compactReviewLines(order, "Factura_A");
+  assert.equal(lines[0].description, "20 Barra Pop 140Ud - Entrega: Miralla 235, Liniers");
+  assert.equal(lines[0].quantity, 2800);
+  assert.equal(lines[0].unitPrice, 1.5);
+  assert.equal(lines[0].netSubtotal, 4200);
+  assert.equal(lines[0].total, 5082);
+});
+
+test("cambiar de pedido reemplaza cliente, comprobante y fecha sin conservar valores previos", () => {
+  const first = frontend.reviewDefaultsForOrder({
+    cliente: "Cliente A",
+    tipo_comprobante_configurado: "Factura_A",
+    fecha_entrega_prevista: "2026-07-30"
+  });
+  const second = frontend.reviewDefaultsForOrder({
+    cliente: "Cliente B",
+    tipo_comprobante_configurado: "Factura_B",
+    fecha_entrega_prevista: "2026-07-31"
+  });
+  assert.deepEqual(first, { client: "Cliente A", receiptType: "Factura_A", invoiceDate: "2026-07-30" });
+  assert.deepEqual(second, { client: "Cliente B", receiptType: "Factura_B", invoiceDate: "2026-07-31" });
 });
 
 test("una preparación tardía se cancela y cierra sólo la pestaña creada por esa carrera", () => {
@@ -5040,8 +5077,9 @@ test("el código persiste sólo ciphertext local, no expone secretos y reintenta
   );
 });
 
-test("la UI contiene estados, bloqueos y textos de control manual", () => {
+test("la UI ARCA conserva seguridad y muestra sólo la revisión compacta", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
+  const frontendSource = fs.readFileSync(path.join(root, "assets/js/modules/arca-invoicing.js"), "utf8");
   const view = html.match(/id="view-arca-invoicing"([\s\S]*?)id="view-sales-invoice-entry"/)?.[1] || "";
 
   assert.match(view, /<th scope="col">Entrega prevista<\/th>/);
@@ -5049,13 +5087,16 @@ test("la UI contiene estados, bloqueos y textos de control manual", () => {
   assert.doesNotMatch(view, /Entregado sin factura/);
   assert.match(view, /Datos incompletos/);
   assert.doesNotMatch(view, /Ya facturados/);
-  assert.match(view, /extensión usa la clave cifrada guardada; MFA y CAPTCHA siempre son manuales/);
-  assert.match(view, /Confirmar, Emitir, Generar,\s+Obtener CAE, Firmar o Presentar/);
+  assert.match(view, /se detiene en ARCA antes de la emisión final/);
   assert.doesNotMatch(view, /id="arca-(issuer-condition|recipient-condition|point-of-sale)"/);
   assert.doesNotMatch(view, /data-arca-vat|id="arca-summary-condition"/);
   assert.doesNotMatch(view, /Factura C/);
   assert.match(view, /id="arca-receipt-type"/);
   assert.match(view, /id="arca-invoice-date" type="date"/);
+  assert.match(view, /<button type="submit">Crear factura<\/button>/);
+  assert.doesNotMatch(view, /id="arca-extension-id"|Verificar extensión|Actualizar estado|Cancelar asistencia/);
+  assert.doesNotMatch(view, /Auditoría local no sensible|Resumen final local|Revisar y preparar factura/);
+  assert.match(frontendSource, /type="radio" name="arca-selected-order"/);
 });
 
 test("Datos de la operacion usa el fixture sanitizado y completa el ejemplo exacto una sola vez", () => {

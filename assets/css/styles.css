@@ -8239,247 +8239,30 @@ button.danger {
   .production-period-form { align-items: stretch; flex-direction: column; }
 }
 
-/* Facturación asistida: preparación local y handoff seguro a ARCA. */
-.arca-invoicing-layout {
-  display: grid;
-  gap: 20px;
-}
-
-.arca-orders-panel,
-.arca-review-panel,
-.arca-extension-panel,
-.arca-audit-panel {
-  min-width: 0;
-}
-
-.arca-filter-form {
-  display: grid;
-  grid-template-columns: minmax(240px, 1.4fr) minmax(170px, .8fr) auto;
-  align-items: end;
-  gap: 12px;
-  margin: 18px 0;
-}
-
-.arca-filter-form label,
-.arca-prepare-form label,
-.arca-extension-controls label {
-  display: grid;
-  gap: 6px;
-  min-width: 0;
-  font-weight: 700;
-}
-
-.arca-orders-table table {
-  min-width: 1050px;
-}
-
-.arca-products-table table,
-.arca-prepared-summary table {
-  min-width: 940px;
-}
-
-.arca-orders-table tr.is-selected td {
-  background: #ecfdf5;
-}
-
-.arca-orders-table tr.is-delivery-today td {
-  background: #fff7ed;
-}
-
-.arca-orders-table tr.is-delivery-tomorrow td {
-  background: #fffbeb;
-}
-
-.arca-orders-table tr.is-delivery-today td:first-child,
-.arca-orders-table tr.is-delivery-tomorrow td:first-child {
-  box-shadow: inset 4px 0 #b45309;
-}
-
-.arca-orders-table tr.is-selected.is-delivery-today td,
-.arca-orders-table tr.is-selected.is-delivery-tomorrow td {
-  background: #ecfdf5;
-}
-
-.arca-delivery-date {
-  display: grid;
-  gap: 4px;
-  justify-items: start;
-  white-space: nowrap;
-}
-
-.arca-delivery-priority {
-  font-size: .76rem;
-  font-weight: 800;
-  color: #92400e;
-}
-
-.arca-badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: #eef2f6;
-  color: #334155;
-  font-size: .78rem;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.arca-badge.entrega_pendiente,
-.arca-badge.datos_incompletos {
-  background: #fff7ed;
-  color: #9a3412;
-}
-
-.arca-badge.listo {
-  background: #ecfdf5;
-  color: #047857;
-}
-
-.arca-pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 14px;
-}
-
-.arca-order-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin: 18px 0;
-}
-
-.arca-order-summary div {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #f8fafc;
-}
-
-.arca-order-summary dt {
-  color: var(--muted);
-  font-size: .76rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.arca-order-summary dd {
-  margin: 5px 0 0;
-  overflow-wrap: anywhere;
-  font-weight: 700;
-}
-
-.arca-prepare-form {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.arca-suggestion {
-  grid-column: span 2;
-  align-self: end;
-  margin: 0;
-  padding: 11px 12px;
-  border-radius: 7px;
-  background: #eff6ff;
-  color: #1e3a8a;
-}
-
-.arca-prepare-actions {
-  display: flex;
-  align-items: end;
-  justify-content: flex-end;
-}
-
-.arca-prepared-summary {
-  display: grid;
-  gap: 14px;
-  margin-top: 20px;
-  padding: 18px;
-  border: 2px solid #0f766e;
-  border-radius: 10px;
-  background: #f0fdfa;
-}
-
-.arca-prepared-summary[hidden] {
-  display: none;
-}
-
-.arca-prepared-summary h3,
-.arca-prepared-summary p {
-  margin: 0;
-}
-
-.arca-prepared-summary p {
-  margin-top: 5px;
-  color: var(--muted);
-}
-
-.arca-extension-controls {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) repeat(4, auto);
-  align-items: end;
-  gap: 10px;
-  margin-top: 18px;
-}
-
-.arca-safety-note {
-  margin-top: 16px;
-  padding: 14px 16px;
-  border-left: 4px solid #b45309;
-  border-radius: 6px;
-  background: #fffbeb;
-  color: #78350f;
-}
-
-.compact-button {
-  min-height: 34px;
-  padding: 6px 10px;
-}
-
-@media (max-width: 1050px) {
-  .arca-filter-form,
-  .arca-prepare-form {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .arca-order-summary {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .arca-extension-controls {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .arca-suggestion {
-    grid-column: 1 / -1;
-  }
-}
-
-@media (max-width: 680px) {
-  .arca-filter-form,
-  .arca-prepare-form,
-  .arca-order-summary,
-  .arca-extension-controls {
-    grid-template-columns: 1fr;
-  }
-
-  .arca-filter-form button,
-  .arca-prepare-actions button,
-  .arca-extension-controls button {
-    width: 100%;
-  }
-
-  .arca-prepare-actions,
-  .arca-pagination {
-    align-items: stretch;
-    flex-direction: column;
-  }
-}
+/* Facturación asistida: selección y revisión compacta. */
+.arca-invoicing-layout { display: grid; gap: 20px; }
+.arca-orders-panel, .arca-review-panel { min-width: 0; }
+.arca-filter-form { display: grid; grid-template-columns: minmax(240px, 1.4fr) minmax(170px, .8fr) auto; align-items: end; gap: 12px; margin: 18px 0; }
+.arca-filter-form label, .arca-review-fields label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+.arca-orders-table table { min-width: 1050px; }
+.arca-orders-table tr.is-selected td { background: #ecfdf5; }
+.arca-orders-table tr.is-delivery-today td { background: #fff7ed; }
+.arca-orders-table tr.is-delivery-tomorrow td { background: #fffbeb; }
+.arca-orders-table tr.is-delivery-today td:first-child, .arca-orders-table tr.is-delivery-tomorrow td:first-child { box-shadow: inset 4px 0 #b45309; }
+.arca-orders-table tr.is-selected.is-delivery-today td, .arca-orders-table tr.is-selected.is-delivery-tomorrow td { background: #ecfdf5; }
+.arca-order-selector { text-align: center; }
+.arca-order-selector input { width: 19px; height: 19px; margin: 0; accent-color: var(--primary); cursor: pointer; }
+.arca-delivery-date { display: grid; gap: 4px; justify-items: start; white-space: nowrap; }
+.arca-delivery-priority { font-size: .76rem; font-weight: 800; color: #92400e; }
+.arca-badge { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 9px; border-radius: 999px; background: #eef2f6; color: #334155; font-size: .78rem; font-weight: 800; white-space: nowrap; }
+.arca-badge.entrega_pendiente, .arca-badge.datos_incompletos { background: #fff7ed; color: #9a3412; }
+.arca-badge.listo { background: #ecfdf5; color: #047857; }
+.arca-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; }
+.arca-compact-review { display: grid; gap: 16px; margin-top: 16px; }
+.arca-review-fields { display: grid; grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(180px, .8fr)); gap: 14px; align-items: end; }
+.arca-review-client { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+.arca-review-client span { color: var(--muted); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
+.arca-review-table table { min-width: 760px; }
+.arca-create-action { display: flex; justify-content: flex-end; }
+.arca-create-action button { min-width: 180px; }
+@media (max-width: 800px) { .arca-filter-form, .arca-review-fields { grid-template-columns: 1fr; } .arca-filter-form button, .arca-create-action button { width: 100%; } .arca-create-action, .arca-pagination { align-items: stretch; flex-direction: column; } }

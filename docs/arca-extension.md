@@ -10,8 +10,14 @@ comprobantes, no obtiene CAE y no confirma, firma ni presenta información fisca
 1. Abrir `chrome://extensions` o `edge://extensions`.
 2. Activar **Modo de desarrollador**.
 3. Elegir **Cargar extensión sin empaquetar** y seleccionar `tools/arca-extension`.
-4. Copiar el identificador de 32 caracteres mostrado por el navegador.
-5. En ERP > Ventas > Facturación ARCA, pegar ese identificador y usar **Verificar extensión**.
+4. La pantalla simplificada reutiliza el identificador que la instalación vigente ya guardó en el
+   caché local del navegador (`sunnutrition.arcaExtensionId`); el identificador no se muestra ni se
+   edita en la interfaz ordinaria.
+
+En un perfil nuevo, después de limpiar el almacenamiento del sitio o si una reinstalación cambia el
+identificador, la asistencia queda bloqueada con un mensaje claro. Esta versión no agrega una fuente
+de configuración paralela ni almacenamiento inseguro: hasta disponer de configuración administrada,
+debe conservarse el caché de la instalación ya validada.
 
 La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.26`
 negocia el contrato fiscal `5` con el ERP antes de preparar o abrir una sesión; después de modificar

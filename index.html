@@ -2370,131 +2370,51 @@
           <section class="panel arca-review-panel" aria-labelledby="arca-review-title">
             <div class="panel-heading">
               <div>
-                <h2 id="arca-review-title">Revisar y preparar factura</h2>
-                <p>Preparar no registra una venta ni modifica el pedido. La emisión final ocurre únicamente en ARCA y por acción manual.</p>
+                <h2 id="arca-review-title">Revisión de factura</h2>
+                <p>La asistencia prepara los datos y se detiene en ARCA antes de la emisión final.</p>
               </div>
             </div>
-            <p id="arca-selection-empty" class="empty-state">Seleccioná un pedido para revisar todos sus datos.</p>
+            <p id="arca-selection-empty" class="empty-state">Seleccioná un pedido para revisar la factura.</p>
             <div id="arca-selection-content" hidden>
-              <dl class="arca-order-summary">
-                <div><dt>Pedido</dt><dd id="arca-summary-order">-</dd></div>
-                <div><dt>Cliente</dt><dd id="arca-summary-client">-</dd></div>
-                <div><dt>CUIT</dt><dd id="arca-summary-cuit">-</dd></div>
-                <div><dt>Domicilio</dt><dd id="arca-summary-address">-</dd></div>
-                <div><dt>Fecha de pedido</dt><dd id="arca-summary-date">-</dd></div>
-                <div><dt>Entrega</dt><dd id="arca-summary-delivery">-</dd></div>
-              </dl>
-
-              <div class="table-wrap arca-products-table">
-                <table>
-                  <thead>
-                    <tr>
-                      <th scope="col">Producto</th>
-                      <th scope="col" class="num">Cantidad pedido</th>
-                      <th scope="col" class="num">U/caja</th>
-                      <th scope="col" class="num">Cantidad ARCA</th>
-                      <th scope="col">Unidad ARCA</th>
-                      <th scope="col" class="num">Precio unitario</th>
-                      <th scope="col" class="num">Bonificación</th>
-                    </tr>
-                  </thead>
-                  <tbody id="arca-products-body"></tbody>
-                </table>
-              </div>
-
-              <form id="arca-prepare-form" class="arca-prepare-form">
-                <label>
-                  Tipo de comprobante *
-                  <select id="arca-receipt-type" required>
-                    <option value="">Seleccionar</option>
-                    <option value="Factura_A">Factura A</option>
-                    <option value="Factura_B">Factura B</option>
-                  </select>
-                </label>
-                <label>
-                  Fecha del comprobante *
-                  <input id="arca-invoice-date" type="date" required>
-                </label>
-                <p id="arca-receipt-suggestion" class="arca-suggestion" role="status">Seleccioná Factura A o Factura B.</p>
-                <div class="arca-prepare-actions">
-                  <button type="submit">Revisar y preparar factura</button>
+              <form id="arca-prepare-form" class="arca-compact-review">
+                <div class="arca-review-fields">
+                  <div class="arca-review-client"><span>Cliente</span><strong id="arca-summary-client">-</strong></div>
+                  <label>
+                    Tipo de comprobante *
+                    <select id="arca-receipt-type" required>
+                      <option value="">Seleccionar</option>
+                      <option value="Factura_A">Factura A</option>
+                      <option value="Factura_B">Factura B</option>
+                    </select>
+                  </label>
+                  <label>
+                    Fecha del comprobante *
+                    <input id="arca-invoice-date" type="date" required>
+                  </label>
                 </div>
-              </form>
-
-              <section id="arca-prepared-summary" class="arca-prepared-summary" aria-labelledby="arca-prepared-title" hidden>
-                <div>
-                  <h3 id="arca-prepared-title">Resumen final local</h3>
-                  <p>Factura B interpreta el precio individual como IVA incluido; Factura A lo interpreta como neto. Revisá cada línea.</p>
-                </div>
-                <div class="table-wrap">
+                <div class="table-wrap arca-review-table">
                   <table>
-                    <thead>
-                      <tr>
-                        <th scope="col">Producto</th>
-                        <th scope="col" class="num">Cantidad ARCA</th>
-                        <th scope="col" class="num">Precio</th>
-                        <th scope="col" class="num">Bonif.</th>
-                        <th scope="col" class="num">IVA %</th>
-                        <th scope="col" class="num">Neto</th>
-                        <th scope="col" class="num">IVA</th>
-                        <th scope="col" class="num">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody id="arca-prepared-lines"></tbody>
-                    <tfoot>
-                      <tr>
-                        <th colspan="5" scope="row">Totales</th>
-                        <td id="arca-total-net" class="num">-</td>
-                        <td id="arca-total-vat" class="num">-</td>
-                        <td id="arca-total-final" class="num">-</td>
-                      </tr>
-                    </tfoot>
+                    <thead><tr>
+                      <th scope="col">Producto</th>
+                      <th scope="col" class="num">Unidades</th>
+                      <th scope="col" class="num">Precio unitario</th>
+                      <th scope="col" class="num">Subtotal</th>
+                      <th scope="col" class="num">Total</th>
+                    </tr></thead>
+                    <tbody id="arca-review-lines"></tbody>
+                    <tfoot><tr>
+                      <th colspan="3" scope="row">Totales</th>
+                      <td id="arca-review-subtotal" class="num">-</td>
+                      <td id="arca-review-total" class="num">-</td>
+                    </tr></tfoot>
                   </table>
                 </div>
-              </section>
-            </div>
-          </section>
-
-          <section class="panel arca-extension-panel" aria-labelledby="arca-extension-title">
-            <div class="panel-heading">
-              <div>
-                <h2 id="arca-extension-title">Extensión local y acceso a ARCA</h2>
-                <p>Instalación manual desde <code>tools/arca-extension</code>. La extensión usa la clave cifrada guardada; MFA y CAPTCHA siempre son manuales.</p>
-              </div>
-            </div>
-            <div class="arca-extension-controls">
-              <label>
-                ID de la extensión *
-                <input id="arca-extension-id" type="text" maxlength="32" pattern="[a-p]{32}" spellcheck="false" autocomplete="off" placeholder="32 caracteres">
-              </label>
-              <button id="arca-extension-check" type="button" class="secondary">Verificar extensión</button>
-              <button id="arca-open" type="button" disabled>Abrir ARCA con datos preparados</button>
-              <button id="arca-refresh-status" type="button" class="secondary">Actualizar estado</button>
-              <button id="arca-cancel" type="button" class="secondary">Cancelar asistencia</button>
-            </div>
-            <div class="arca-safety-note" role="note">
-              <strong>Detención obligatoria:</strong>
-              la extensión selecciona la empresa configurada, abre “Generar comprobantes” y usa “Continuar”
-              sólo en etapas reconocidas. Nunca ejecuta la acción final Confirmar, Emitir, Generar,
-              Obtener CAE, Firmar o Presentar.
-              Si una pantalla o selector no coincide, aborta y vuelve a este flujo.
+                <div class="arca-create-action">
+                  <button type="submit">Crear factura</button>
+                </div>
+              </form>
             </div>
             <p id="arca-status" class="form-status" role="status" aria-live="polite"></p>
-          </section>
-
-          <section class="panel arca-audit-panel" aria-labelledby="arca-audit-title">
-            <div class="panel-heading">
-              <div>
-                <h2 id="arca-audit-title">Auditoría local no sensible</h2>
-                <p>Sólo registra pedido, fecha, llegada a revisión o motivo de interrupción.</p>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table>
-                <thead><tr><th scope="col">Fecha</th><th scope="col">Pedido</th><th scope="col">Estado</th><th scope="col">Motivo</th></tr></thead>
-                <tbody id="arca-audit-body"><tr><td class="empty" colspan="4">Cargando auditoría...</td></tr></tbody>
-              </table>
-            </div>
           </section>
         </div>
       </section>
