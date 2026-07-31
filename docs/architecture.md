@@ -50,7 +50,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 
 Antes del despacho, `access-control.service.js` valida el origen y concentra el punto futuro de autenticacion, sesion, roles y autorizacion. `backend/config/access.js` fuerza por defecto modo local y bind `127.0.0.1`; el modo LAN no puede arrancar mientras autenticacion/autorizacion no esten implementadas.
 
-`GET /api/health` agrega la identidad pública del runtime: instancia, PID, inicio, checkout, working directory, host, puerto, Node y huella del código. `backend/utils/server-runtime.js` calcula esa identidad y administra un lock ignorado por Git. `POST /api/runtime/shutdown` es un control local interno: exige el token secreto del lock y hace que la instancia verificada se cierre a sí misma; el token nunca se publica en health.
+`GET /api/health` agrega la identidad pública del runtime: instancia, PID, inicio, checkout, working directory, ejecutable, línea de comando, host, puerto, Node y huella del código. `backend/utils/server-runtime.js` calcula esa identidad y administra un lock ignorado por Git. `POST /api/runtime/shutdown` es un control local interno: exige el token secreto del lock y hace que la instancia verificada se cierre a sí misma; el token nunca se publica en health.
 
 ## Dominios extraidos
 
@@ -118,6 +118,7 @@ La extraccion del markup a fragmentos requiere primero convertir el arranque en 
 
 ```powershell
 npm.cmd start
+npm.cmd run server:ensure
 npm.cmd run server:status
 npm.cmd run server:restart
 npm.cmd run server:stop

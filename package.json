@@ -5,6 +5,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node tools/erp-server.js start",
+    "server:ensure": "node tools/erp-server.js ensure",
     "server:status": "node tools/erp-server.js status",
     "server:ocr-status": "node tools/erp-server.js ocr-status",
     "server:restart": "node tools/erp-server.js restart",

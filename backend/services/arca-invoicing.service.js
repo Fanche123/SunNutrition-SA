@@ -10,9 +10,13 @@ const AUDIT_STATUSES = new Set(["prepared", "review_reached", "interrupted"]);
 const SESSION_TTL_MS = 5 * 60 * 1000;
 const INTERRUPTION_REASONS = new Set([
   "extension_unavailable",
+  "association_failed",
+  "contract_incompatible",
   "invalid_extension_response",
   "manual_abort",
   "network_error",
+  "origin_rejected",
+  "payload_invalid",
   "screen_unrecognized",
   "selector_changed",
   "session_expired",

@@ -36,7 +36,7 @@ Pedir confirmación humana adicional únicamente cuando falte una decisión cont
 - No modificar datos reales durante pruebas. Usar lecturas, payloads inválidos, fixtures o repositorios/copias temporales aisladas.
 - No tocar `.env`, adjuntos, caches ni temporales reales.
 - Validar según riesgo: sintaxis y vista para frontend localizado; sintaxis, servidor y endpoint para backend; casos representativos y consumidores para cálculos; regresión amplia solo para cambios transversales.
-- Antes de validar contra un servidor local, ejecutar `npm.cmd run server:status` desde el checkout/puerto esperado y exigir `running_fresh`. En Worktrees usar puerto aislado, timeout y cleanup en `finally`. Un `404` de una ruta nueva no puede aprobarse como “runtime viejo”: se resuelve o se declara bloqueo real. Para cerrar, aplicar además sin excepciones el “Gate operativo obligatorio de cierre” de `AGENTS.md`; `running_fresh` sin `ocr_reachable` no alcanza. Ver `docs/local-server.md`.
+- Antes de validar contra un servidor local, ejecutar `npm.cmd run server:status` desde el checkout/puerto esperado y exigir `running_fresh`. En Worktrees registrar cada hijo propio, usar puerto aislado, timeout y cleanup en `finally`; nunca detener o reemplazar el Local principal. Un `404` de una ruta nueva no puede aprobarse como “runtime viejo”: se resuelve o se declara bloqueo real. Para cerrar, limpiar primero los procesos temporales propios y ejecutar como última acción técnica, desde el Local principal y sin overrides, el único gate `npm.cmd run server:ensure`. Solo exit code `0` con `running_fresh` y `ocr_reachable` permite declarar éxito. Ver `docs/local-server.md`.
 - Informar con honestidad toda prueba no ejecutada.
 
 ## Mantenimiento obligatorio de AGENTS
@@ -91,7 +91,7 @@ Antes de cerrar, el ejecutor debe:
 7. distinguir archivos propios de cambios preexistentes o concurrentes;
 8. informar comandos o casos, resultados, evidencia verificable, riesgos y toda prueba no ejecutada.
 
-Además, toda tarea aplica antes de responder el “Gate operativo obligatorio de cierre” de `AGENTS.md`, aunque no haya tocado servidores. El ejecutor restaura si hace falta, limpia únicamente sus procesos temporales e informa la evidencia completa. Los controles read-only no operan servidores.
+Además, toda tarea aplica antes de responder el “Gate operativo obligatorio de cierre” de `AGENTS.md`, aunque no haya tocado servidores. El ejecutor limpia únicamente sus procesos temporales y ejecuta `npm.cmd run server:ensure`; el comando restaura si hace falta y emite la evidencia completa. Está prohibido matar Node por nombre o por puerto sin verificar health, lock, PID, línea de comando y `cwd`. Los controles read-only no operan servidores.
 
 Para riesgo bajo o medio se cierra con esa validación simple, salvo solicitud expresa o señal concreta. Para riesgo alto —dinero, contabilidad, datos reales, base de datos, migraciones, integraciones complejas o arquitectura transversal—:
 

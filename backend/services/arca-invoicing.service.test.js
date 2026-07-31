@@ -291,6 +291,30 @@ test("preparar y auditar no crea ventas ni guarda payload o secretos", async () 
   assert.doesNotMatch(auditText, /cuit|precio|payload|cookie|token|clave|cae/i);
 });
 
+test("auditoría conserva motivos seguros del rechazo de preparación", async () => {
+  const fixture = serviceFixture();
+  for (const reason of [
+    "association_failed",
+    "contract_incompatible",
+    "origin_rejected",
+    "payload_invalid",
+    "session_expired"
+  ]) {
+    await fixture.service.handleAuditPost({
+      body: { orderId: 1, status: "interrupted", reason }
+    }, {});
+  }
+  assert.equal(fixture.responses.every((response) => response.status === 200), true);
+  const entries = fixture.service.readAudit();
+  assert.deepEqual(entries.map((entry) => entry.reason), [
+    "association_failed",
+    "contract_incompatible",
+    "origin_rejected",
+    "payload_invalid",
+    "session_expired"
+  ]);
+});
+
 test("rechaza pedido facturado por carrera sin alterar datos", () => {
   const fixture = serviceFixture();
   assert.throws(() => fixture.service.prepare(validPrepare(3), fixture.cache), /ya fue facturado/);

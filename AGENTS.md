@@ -230,20 +230,19 @@ No ejecutar automáticamente toda la suite, builds completos o auditorías gener
 
 ### Gate operativo obligatorio de cierre
 
-Esta sección es la fuente normativa transversal para toda tarea ERP. Antes de emitir su respuesta final, el ejecutor debe dejar el servidor principal Local de `C:\Users\benja\Documents\ERP` encendido en `127.0.0.1:3000` y verificar desde ese checkout:
+Esta sección es la fuente normativa transversal para toda tarea ERP. El único gate de cierre es `npm.cmd run server:ensure`, ejecutado desde `C:\Users\benja\Documents\ERP`, sin overrides de `PORT`, `ERP_HOST` ni modo. Debe ser la última acción técnica del ejecutor después de limpiar sus procesos temporales.
 
-1. identidad, `cwd`, host y puerto correctos;
-2. `npm.cmd run server:status` con resultado `running_fresh`;
-3. `npm.cmd run server:ocr-status` con resultado `ocr_reachable`;
-4. ausencia de servidores temporales o procesos huérfanos creados por la tarea.
+`server:ensure` opera exclusivamente sobre el Local principal `127.0.0.1:3000`. Verifica checkout, identidad autenticada, PID, línea de comando, `cwd`, host y puerto antes de controlar un proceso; no reinicia un servidor que ya tenga `running_fresh` y `ocr_reachable`; y restaura en background una instancia detenida, obsoleta o sin conectividad OCR únicamente mediante el shutdown autenticado existente. Después exige, en orden, `running_fresh` y `ocr_reachable`. El probe OCR no envía facturas, credenciales ni documentos.
 
-`running_fresh` por sí solo nunca habilita el cierre. El diagnóstico OCR existente no envía facturas ni credenciales. Si el servidor principal está apagado, obsoleto o sin conectividad OCR, el ejecutor debe restaurarlo desde un contexto con acceso normal de red mediante la escalación no sandboxeada necesaria. Si no puede obtener ambos estados correctos, la tarea permanece `blocked` y explica exactamente qué necesita del usuario.
+Un exit code distinto de cero, `ensure_needs_restore`, `ensure_failed` o cualquier salida que no contenga simultáneamente `server=running_fresh` y `ocr=ocr_reachable` prohíbe declarar éxito. El ejecutor restaura desde un contexto con acceso normal de red mediante la escalación no sandboxeada necesaria; si aun así falla, la tarea permanece `blocked` y explica el diagnóstico exacto.
 
-La garantía es global: una tarea que no tocó servidores también ejecuta el gate final; si tocó, detuvo o reemplazó alguno, además conserva o restaura el estado operativo. El informe final siempre incluye PID, host/puerto, checkout/`cwd`, resultados de ambos comandos y procesos temporales limpiados.
+Cada tarea registra los procesos temporales que crea y garantiza su cleanup con handle propio, timeout y `finally`. En Worktrees, toda validación usa puerto aislado y nunca detiene, reemplaza ni reinicia el Local principal. Después del cleanup, el ejecutor cambia explícitamente al checkout Local principal y ejecuta allí `server:ensure`; si el Worktree no está integrado, informa que el Local conserva una versión anterior válida y no sirve el Worktree en 3000. Solo Integración actualiza el Local con cambios de Worktrees.
 
-En Worktrees, toda validación usa puerto aislado, timeout y cleanup garantizado. Nunca reemplaza, detiene ni reinicia el servidor principal Local. Antes de cerrar elimina sus procesos temporales y ejecuta el gate sobre el Local principal. Si el código del Worktree aún no está integrado, informa que `127.0.0.1:3000` conserva una versión Local anterior válida y no sirve el Worktree allí. Solo una tarea de integración actualiza el servidor principal con cambios provenientes de Worktrees.
+Está prohibido cerrar Node por nombre, usar `taskkill /IM node.exe`, `Stop-Process` genérico o matar el PID descubierto solo por puerto. Tampoco se libera el puerto 3000 sin comprobar primero health, lock autenticado, PID, línea de comando y `cwd`. El fallback de una prueba se limita al handle exacto del hijo que esa misma prueba creó.
 
-El ejecutor es el único responsable de restaurar y comprobar este gate. Watchdog, validadores, consolidadores y demás controles read-only no reinician servidores. En riesgo alto, el ejecutor realiza el gate después de liberar los tres validadores y antes de crear el consolidador; este verifica la evidencia informada sin repetirlo. Si la única corrección posterior al consolidado altera código servido o estado del runtime, el ejecutor repite el gate antes de responder.
+La garantía es global y rápida cuando el servidor ya está sano: una tarea que no tocó runtime también ejecuta un único `server:ensure`, que devuelve `action=no_op`. El informe final siempre incluye PID, línea de comando, host/puerto, checkout/`cwd`, `running_fresh`, `ocr_reachable` y procesos temporales limpiados.
+
+El ejecutor es el único responsable del gate. Coordinador, Watchdog, validadores, consolidadores y demás controles read-only no restauran ni reinician servidores. En riesgo alto, el ejecutor lo realiza después de liberar los tres validadores y antes del consolidador, que solo verifica la evidencia. Si una corrección posterior modifica código servido o runtime, el ejecutor limpia nuevamente sus temporales y repite `server:ensure` antes de responder.
 
 ---
 

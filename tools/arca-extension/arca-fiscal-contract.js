@@ -26,6 +26,7 @@
     pointOfSale: "00001",
     concept: "Productos",
     activity: "Elaboración de alimentos o bases de cereales",
+    activityCode: "106131",
     saleCondition: "Cheque",
     productCode: "4",
     productCodeLabel: "Producto o servicio",
@@ -33,7 +34,7 @@
     unit: "Unidades"
   });
   const CONTRACT = Object.freeze({
-    version: 3,
+    version: 4,
     issuerCondition: "responsable_inscripto",
     issuerConditionLabel: "IVA Responsable Inscripto",
     pointOfSale: AUTOMATION.pointOfSale,

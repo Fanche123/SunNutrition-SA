@@ -112,6 +112,8 @@ function createRuntimeSession({ rootDir, host, port, now = new Date(), pid = pro
     startedAt: now.toISOString(),
     projectRoot,
     workingDirectory: path.resolve(process.cwd()),
+    executablePath: process.execPath,
+    commandLine: process.argv.map(quoteCommandPart).join(" "),
     sourceFingerprint: computeSourceFingerprint(projectRoot),
     host,
     port,
@@ -204,7 +206,20 @@ function runtimeLockMatchesIdentity(lockRecord, publicIdentity) {
     && lockRecord.host === publicIdentity.host
     && lockRecord.startedAt === publicIdentity.startedAt
     && lockRecord.sourceFingerprint === publicIdentity.sourceFingerprint
+    && lockRecord.workingDirectory === publicIdentity.workingDirectory
+    && optionalIdentityFieldMatches(lockRecord, publicIdentity, "executablePath")
+    && optionalIdentityFieldMatches(lockRecord, publicIdentity, "commandLine")
     && projectRootsEqual(lockRecord.projectRoot, publicIdentity.projectRoot);
+}
+
+function optionalIdentityFieldMatches(left, right, field) {
+  return !left[field] && !right[field] || left[field] === right[field];
+}
+
+function quoteCommandPart(value) {
+  const text = String(value || "");
+  if (text && !/[\s"]/u.test(text)) return text;
+  return `"${text.replace(/(\\*)"/gu, "$1$1\\\"").replace(/(\\+)$/u, "$1$1")}"`;
 }
 
 function removeRuntimeLockIfOwned(rootDir, session) {

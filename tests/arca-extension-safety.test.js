@@ -70,6 +70,7 @@ test("manifest limita hosts y usa sólo almacenamiento efímero de sesión", () 
   assert.deepEqual(manifest.externally_connectable.matches, ["http://127.0.0.1/*"]);
   assert.equal(manifest.content_scripts[0].all_frames, undefined);
   assert.equal(manifest.minimum_chrome_version, "102");
+  assert.equal(manifest.version, "1.1.6");
   assert.equal(JSON.stringify(manifest).includes("<all_urls>"), false);
 });
 
@@ -121,6 +122,7 @@ test("mensajes externos sólo aceptan loopback explícito", () => {
 });
 
 test("PING negocia la versión vigente antes de preparar una sesión", async () => {
+  assert.equal(fiscal.CONTRACT.version, 4);
   const response = await background.externalMessage(
     { type: "PING" },
     { url: "http://127.0.0.1:3000/" }
@@ -133,12 +135,149 @@ test("PING negocia la versión vigente antes de preparar una sesión", async () 
   assert.equal(frontend.extensionContractCompatibilityError(response), "");
   assert.match(frontend.extensionContractCompatibilityError({
     ...response,
-    contractVersion: response.contractVersion - 1
+    contractVersion: 3
   }), /Recargala desde chrome:\/\/extensions/);
   assert.equal(
     frontend.extensionContractCompatibilityError({ ok: true, mode: "review_only" }),
     "Contrato incompatible."
   );
+});
+
+test("PING contrato 4 distingue y limpia una preparación contrato 3 de un backend stale", async () => {
+  const originalChrome = global.chrome;
+  const stored = {};
+  global.chrome = {
+    runtime: { lastError: null },
+    storage: {
+      session: {
+        get(key, callback) {
+          callback({ [key]: stored[key] ? structuredClone(stored[key]) : undefined });
+        },
+        set(values, callback) {
+          Object.assign(stored, structuredClone(values));
+          callback();
+        }
+      }
+    },
+    tabs: {
+      create(_options, callback) {
+        callback({ id: 73 });
+      },
+      sendMessage(_tabId, _message, callback) {
+        callback();
+      }
+    }
+  };
+  try {
+    const staleSession = safeMessage();
+    await background.writeSessionRecords({
+      stale: {
+        id: "stale",
+        payload: staleSession.payload,
+        orderId: "9",
+        status: "waiting_login",
+        stage: "login",
+        reason: "",
+        tabId: 41,
+        updatedAt: new Date().toISOString(),
+        expiresAt: Date.now() + 60_000
+      }
+    });
+    const staleContract = safeMessage();
+    staleContract.payload.contractVersion = 3;
+    const response = await background.externalMessage(
+      staleContract,
+      { url: "http://127.0.0.1:3000/" }
+    );
+    assert.deepEqual(response, {
+      ok: false,
+      status: "rejected",
+      reason: "contract_incompatible",
+      contractVersion: 4
+    });
+    assert.deepEqual(stored[background.SESSION_STORAGE_KEY], {});
+    assert.match(frontend.extensionPreparationError(response), /Reiniciá el servidor local/);
+    assert.doesNotMatch(frontend.extensionPreparationError(response), /payload|cuit|revision/i);
+
+    const fresh = safeMessage();
+    fresh.sessionId = "22345678-1234-1234-1234-123456789012";
+    const accepted = await background.externalMessage(
+      fresh,
+      { url: "http://127.0.0.1:3000/" }
+    );
+    assert.equal(accepted.ok, true);
+    assert.equal(accepted.status, "waiting_login");
+    assert.equal(stored[background.SESSION_STORAGE_KEY][fresh.sessionId].tabId, 73);
+  } finally {
+    global.chrome = originalChrome;
+  }
+});
+
+test("preparación diferencia payload inválido, vencimiento, origen y asociación fallida", async () => {
+  const missingPayload = { type: "PREPARE_SESSION", sessionId: safeMessage().sessionId };
+  assert.equal(background.preparedMessageRejectionReason(missingPayload), "payload_invalid");
+
+  const invalidPayload = safeMessage();
+  invalidPayload.payload.automation.activityCode = "999999";
+  assert.equal(background.preparedMessageRejectionReason(invalidPayload), "payload_invalid");
+  assert.match(frontend.extensionPreparationError({ reason: "payload_invalid" }), /contrato fiscal vigente/);
+
+  const expired = safeMessage();
+  expired.payload.expiresAt = new Date(Date.now() - 1).toISOString();
+  assert.equal(background.preparedMessageRejectionReason(expired), "session_expired");
+  assert.match(frontend.extensionPreparationError({ reason: "session_expired" }), /venció/);
+
+  const originRejected = await background.externalMessage(
+    safeMessage(),
+    { url: "http://localhost:3000/" }
+  );
+  assert.equal(originRejected.reason, "origin_rejected");
+  assert.match(frontend.extensionPreparationError(originRejected), /127\.0\.0\.1:3000/);
+  assert.match(frontend.extensionPreparationError({ reason: "association_failed" }), /asociarse/);
+  assert.equal(frontend.safePreparationRejectionReason("association_failed"), "association_failed");
+  assert.equal(frontend.safePreparationRejectionReason("dato_interno"), "extension_unavailable");
+});
+
+test("fallo al asociar pestaña se devuelve fail-closed y limpia el payload", async () => {
+  const originalChrome = global.chrome;
+  const stored = {};
+  global.chrome = {
+    runtime: { lastError: null },
+    storage: {
+      session: {
+        get(key, callback) {
+          callback({ [key]: stored[key] ? structuredClone(stored[key]) : undefined });
+        },
+        set(values, callback) {
+          Object.assign(stored, structuredClone(values));
+          callback();
+        }
+      }
+    },
+    tabs: {
+      create(_options, callback) {
+        callback(null);
+      },
+      sendMessage(_tabId, _message, callback) {
+        callback();
+      }
+    }
+  };
+  try {
+    const response = await background.externalMessage(
+      safeMessage(),
+      { url: "http://127.0.0.1:3000/" }
+    );
+    assert.equal(response.ok, false);
+    assert.equal(response.status, "interrupted");
+    assert.equal(response.reason, "association_failed");
+    assert.equal(
+      stored[background.SESSION_STORAGE_KEY][safeMessage().sessionId].payload,
+      null
+    );
+  } finally {
+    global.chrome = originalChrome;
+  }
 });
 
 test("openArca conserva la preparación y no llama al backend con una extensión obsoleta", async () => {
@@ -777,6 +916,931 @@ test("cada etapa intermedia se reclama una sola vez", () => {
   assert.equal(guard.claim("initial"), true);
   assert.equal(guard.claim("initial"), false);
   assert.equal(guard.claim("emission"), true);
+});
+
+test("Datos de emisión usa el DOM real sanitizado, aplica payload exacto y continúa una sola vez", () => {
+  const originalDocument = global.document;
+  const originalEvent = global.Event;
+  const originalMouseEvent = global.MouseEvent;
+  const originalLocation = global.location;
+  const fixture = fs.readFileSync(
+    path.join(root, "tests/fixtures/arca/emission-fields-legacy.html"),
+    "utf8"
+  );
+  assert.match(fixture, /form name="datosEmisorForm" method="post" action="\/rcel\/jsp\/genComDatosReceptor\.do"/);
+  assert.match(fixture, /id="fc" name="fechaEmisionComprobante"/);
+  assert.match(fixture, /id="idconcepto" name="idConcepto"/);
+  assert.match(fixture, /id="monedaextranjera" name="monedaExtranjera" type="checkbox"/);
+  assert.match(fixture, /id="actiAsociadaId" name="actiAsociadaId"/);
+  assert.match(fixture, /id="refComEmisor" name="refComEmisor"/);
+  assert.match(fixture, /id="cancelacionMonedaExtranjera"/);
+  assert.match(fixture, /id="moneda" name="moneda"/);
+  assert.match(fixture, /id="tipocambio" name="tipoCambio"/);
+
+  const createDom = () => {
+    const events = [];
+    const clicks = [];
+    const field = (tagName, extra = {}) => ({
+      tagName,
+      id: extra.id || "",
+      name: extra.name || "",
+      type: extra.type || "",
+      value: extra.value || "",
+      checked: Boolean(extra.checked),
+      indeterminate: Boolean(extra.indeterminate),
+      disabled: Boolean(extra.disabled),
+      readOnly: Boolean(extra.readOnly),
+      options: extra.options || [],
+      dispatchEvent(event) {
+        events.push(`${this.id}:${event.type}`);
+        extra.onDispatch?.(this, event);
+        return true;
+      }
+    });
+    const date = field("INPUT", {
+      id: "fc",
+      name: "fechaEmisionComprobante",
+      type: "text"
+    });
+    const concept = field("SELECT", {
+      id: "idconcepto",
+      name: "idConcepto",
+      options: [
+        { value: "", textContent: "seleccionar..." },
+        { value: "1", textContent: "Productos" },
+        { value: "2", textContent: "Servicios" },
+        { value: "3", textContent: "Productos y Servicios" }
+      ]
+    });
+    const currency = field("INPUT", {
+      id: "monedaextranjera",
+      name: "monedaExtranjera",
+      type: "checkbox"
+    });
+    const activity = field("SELECT", {
+      id: "actiAsociadaId",
+      name: "actiAsociadaId",
+      options: [
+        { value: "", textContent: "seleccionar..." },
+        { value: "106131", textContent: "106131 - ELABORACIÓN DE ALIMENTOS A BASE..." }
+      ]
+    });
+    const reference = field("INPUT", {
+      id: "refComEmisor",
+      name: "refComEmisor",
+      type: "text",
+      value: "debe limpiarse"
+    });
+    const untouchedCurrencyControls = {
+      cancellation: field("INPUT", {
+        id: "cancelacionMonedaExtranjera",
+        type: "checkbox"
+      }),
+      currency: field("SELECT", {
+        id: "moneda",
+        name: "moneda",
+        value: "",
+        options: [{ value: "", textContent: "seleccionar..." }]
+      }),
+      exchangeRate: field("INPUT", {
+        id: "tipocambio",
+        name: "tipoCambio",
+        type: "text",
+        value: ""
+      })
+    };
+    const selectors = {
+      'input#fc[name="fechaEmisionComprobante"]': [date],
+      'select#idconcepto[name="idConcepto"]': [concept],
+      'input#monedaextranjera[name="monedaExtranjera"][type="checkbox"]': [currency],
+      'select#actiAsociadaId[name="actiAsociadaId"]': [activity],
+      'input#refComEmisor[name="refComEmisor"]': [reference]
+    };
+    const button = (value, outside = false) => ({
+      value,
+      outside,
+      disabled: false,
+      getAttribute: () => null,
+      dispatchEvent(event) {
+        clicks.push(`${value}:${event.type}`);
+        return true;
+      }
+    });
+    const plus = button("+");
+    const minus = button("-");
+    const back = button("< Volver");
+    const next = button("Continuar >");
+    const menu = button("Menú Principal", true);
+    const form = {
+      name: "datosEmisorForm",
+      method: "post",
+      action: "https://fe.afip.gob.ar/rcel/jsp/genComDatosReceptor.do",
+      getAttribute(name) {
+        if (name === "method") return this.method;
+        if (name === "action") return this.action;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === "input[type='button']") return [plus, minus, back, next];
+        return selectors[selector] || [];
+      }
+    };
+    const forms = [form];
+    const banner = { dataset: {}, textContent: "" };
+    const document = {
+      title: "RCEL",
+      body: { innerText: fixture },
+      documentElement: { appendChild: () => {} },
+      querySelectorAll(selector) {
+        if (selector === 'form[name="datosEmisorForm"]') return forms;
+        return [];
+      },
+      getElementById: (id) => id === "sunnutrition-arca-assistant" ? banner : null
+    };
+    return {
+      activity,
+      banner,
+      buttons: { back, menu, minus, next, plus },
+      clicks,
+      concept,
+      currency,
+      date,
+      document,
+      events,
+      form,
+      forms,
+      reference,
+      selectors,
+      untouchedCurrencyControls
+    };
+  };
+  const installDom = (dom) => {
+    global.document = dom.document;
+    global.location = {
+      href: "https://fe.afip.gob.ar/rcel/jsp/genComDatosEmisor.do"
+    };
+  };
+  global.Event = class Event { constructor(type) { this.type = type; } };
+  global.MouseEvent = class MouseEvent { constructor(type) { this.type = type; } };
+  try {
+    const payload = safeMessage().payload;
+    payload.invoice.invoiceDate = "2026-08-04";
+
+    let dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    assert.equal(dom.date.value, "04/08/2026");
+    assert.equal(dom.concept.value, "1");
+    assert.equal(dom.currency.checked, false);
+    assert.equal(dom.activity.value, "106131");
+    assert.equal(dom.reference.value, "");
+    assert.deepEqual(dom.events, ["idconcepto:change", "actiAsociadaId:change"]);
+    assert.deepEqual(
+      Object.values(dom.untouchedCurrencyControls).map((control) => ({
+        checked: control.checked,
+        value: control.value
+      })),
+      [
+        { checked: false, value: "" },
+        { checked: false, value: "" },
+        { checked: false, value: "" }
+      ]
+    );
+
+    global.location.href = "https://fe.afip.gob.ar/rcel/jsp/otraPantalla.do";
+    assert.equal(content.completeEmissionFields(payload).reason, "emission_path_mismatch");
+
+    for (const href of [
+      "https://fe.afip.gob.ar:444/rcel/jsp/genComDatosEmisor.do",
+      "https://fe.afip.gob.ar/rcel/jsp/genComDatosEmisor.do?inesperado=1",
+      "https://fe.afip.gob.ar/rcel/jsp/genComDatosEmisor.do#inesperado"
+    ]) {
+      dom = createDom();
+      installDom(dom);
+      global.location.href = href;
+      assert.equal(content.completeEmissionFields(payload).reason, "emission_path_mismatch");
+      assert.deepEqual(dom.clicks, []);
+    }
+
+    dom = createDom();
+    installDom(dom);
+    dom.forms.length = 0;
+    assert.equal(content.completeEmissionFields(payload).reason, "datosEmisorForm_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.form.action = "https://fe.afip.gob.ar/rcel/jsp/actionInesperada.do";
+    assert.equal(content.completeEmissionFields(payload).reason, "datosEmisorForm_action_mismatch");
+
+    for (const action of [
+      "https://fe.afip.gob.ar:444/rcel/jsp/genComDatosReceptor.do",
+      "https://fe.afip.gob.ar/rcel/jsp/genComDatosReceptor.do?inesperado=1",
+      "https://fe.afip.gob.ar/rcel/jsp/genComDatosReceptor.do#inesperado"
+    ]) {
+      dom = createDom();
+      installDom(dom);
+      dom.form.action = action;
+      assert.equal(content.completeEmissionFields(payload).reason, "datosEmisorForm_action_mismatch");
+      assert.deepEqual(dom.clicks, []);
+    }
+
+    dom = createDom();
+    installDom(dom);
+    dom.selectors['input#fc[name="fechaEmisionComprobante"]'] = [];
+    assert.equal(content.completeEmissionFields(payload).reason, "fc_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.concept.options = [{ value: "", textContent: "seleccionar..." }, { value: "2", textContent: "Servicios" }];
+    assert.equal(content.completeEmissionFields(payload).reason, "idconcepto_productos_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.concept.options.push({ value: "99", textContent: "Productos" });
+    assert.equal(content.completeEmissionFields(payload).reason, "idconcepto_productos_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.concept.disabled = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "idconcepto_disabled");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.concept.options[1].disabled = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "idconcepto_productos_disabled");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.activity.options = [{ value: "", textContent: "seleccionar..." }];
+    assert.equal(content.completeEmissionFields(payload).reason, "actiAsociadaId_106131_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.activity.options.push({ value: "106131", textContent: "106131 - DUPLICADA" });
+    assert.equal(content.completeEmissionFields(payload).reason, "actiAsociadaId_106131_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.activity.disabled = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "actiAsociadaId_disabled");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.activity.options[1].disabled = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "actiAsociadaId_106131_disabled");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.currency.checked = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "monedaextranjera_not_unchecked");
+
+    dom = createDom();
+    installDom(dom);
+    dom.currency.indeterminate = true;
+    assert.equal(content.completeEmissionFields(payload).reason, "monedaextranjera_not_unchecked");
+
+    dom = createDom();
+    installDom(dom);
+    let lockedReference = "no se puede vaciar";
+    Object.defineProperty(dom.reference, "value", {
+      configurable: true,
+      get: () => lockedReference,
+      set: (value) => {
+        if (value !== "") lockedReference = value;
+      }
+    });
+    assert.equal(content.completeEmissionFields(payload).reason, "refComEmisor_value_rejected");
+
+    dom = createDom();
+    installDom(dom);
+    const conceptDispatch = dom.concept.dispatchEvent;
+    dom.concept.dispatchEvent = function dispatchAndRevert(event) {
+      conceptDispatch.call(this, event);
+      if (event.type === "change") this.value = "2";
+      return true;
+    };
+    assert.equal(content.completeEmissionFields(payload).reason, "idconcepto_value_rejected");
+
+    dom = createDom();
+    installDom(dom);
+    const activityDispatch = dom.activity.dispatchEvent;
+    dom.activity.dispatchEvent = function dispatchAndRevert(event) {
+      activityDispatch.call(this, event);
+      if (event.type === "change") this.value = "";
+      return true;
+    };
+    assert.equal(content.completeEmissionFields(payload).reason, "actiAsociadaId_value_rejected");
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    dom.form.querySelectorAll = (selector) => (
+      selector === "input[type='button']" ? [] : dom.selectors[selector] || []
+    );
+    content.setCurrentStageForTesting("emission");
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    assert.deepEqual(dom.clicks, []);
+    assert.match(dom.banner.textContent, /datosEmisorForm.*Continuar >/);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    const duplicateContinue = {
+      ...dom.buttons.next,
+      dispatchEvent(event) {
+        dom.clicks.push(`duplicado:${event.type}`);
+        return true;
+      }
+    };
+    dom.form.querySelectorAll = (selector) => (
+      selector === "input[type='button']"
+        ? [dom.buttons.plus, dom.buttons.minus, dom.buttons.back, dom.buttons.next, duplicateContinue]
+        : dom.selectors[selector] || []
+    );
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    dom.concept.disabled = true;
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    assert.deepEqual(dom.clicks, []);
+    assert.match(dom.banner.textContent, /idconcepto_disabled/);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    dom.activity.options[1].disabled = true;
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    assert.deepEqual(dom.clicks, []);
+    assert.match(dom.banner.textContent, /actiAsociadaId_106131_disabled/);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeEmissionFields(payload), { ok: true, pending: false });
+    content.setCurrentStageForTesting("emission");
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    content.continueFromEmissionStage(payload, "Datos de emisión completos.");
+    assert.deepEqual(dom.clicks, ["Continuar >:click"]);
+    assert.equal(dom.clicks.some((click) => /^[+\-<]|Menú Principal/.test(click)), false);
+    assert.equal(content.FINAL_ACTION_PATTERN.test("Obtener CAE"), true);
+  } finally {
+    global.document = originalDocument;
+    global.Event = originalEvent;
+    global.MouseEvent = originalMouseEvent;
+    global.location = originalLocation;
+  }
+});
+
+test("Datos del receptor usa el DOM real sanitizado, espera ARCA y continúa una sola vez", () => {
+  const originalDocument = global.document;
+  const originalEvent = global.Event;
+  const originalMouseEvent = global.MouseEvent;
+  const originalLocation = global.location;
+  const fixture = fs.readFileSync(
+    path.join(root, "tests/fixtures/arca/recipient-fields-legacy.html"),
+    "utf8"
+  );
+  assert.match(fixture, /form id="formulario" name="datosReceptorForm" method="post"/);
+  assert.match(fixture, /id="idivareceptor" name="idIVAReceptor"/);
+  assert.match(fixture, /id="idtipodocreceptor" name="idTipoDocReceptor" type="hidden"/);
+  assert.match(fixture, /id="nrodocreceptor" name="nroDocReceptor"/);
+  assert.match(fixture, /id="razonsocialreceptor" name="razonSocialReceptor"/);
+  assert.match(fixture, /id="domicilioreceptor" name="domicilioReceptor"/);
+  assert.match(fixture, /id="formadepago5" name="formaDePago" type="checkbox"/);
+  assert.match(fixture, /id="selectCompradoresMultiples" name="selectCompradoresMultiples"/);
+  assert.match(fixture, /id="cmp_asoc_tipo" name="cmpAsociadoTipo"/);
+  assert.match(fixture, /id="datoadicionaltipo" name="datoAdicionalTipo"/);
+  assert.doesNotMatch(fixture, /\b30-?\d{8}-?\d\b|raz[oó]n social de prueba|cookie|token/i);
+
+  const createDom = ({ autoComplete = true } = {}) => {
+    const events = [];
+    const clicks = [];
+    const field = (tagName, extra = {}) => {
+      const control = {
+        tagName,
+        id: extra.id || "",
+        name: extra.name || "",
+        type: extra.type || "",
+        value: extra.value || "",
+        checked: Boolean(extra.checked),
+        indeterminate: Boolean(extra.indeterminate),
+        disabled: Boolean(extra.disabled),
+        readOnly: Boolean(extra.readOnly),
+        options: extra.options || [],
+        dispatchEvent(event) {
+          events.push(`${this.id || this.name}:${event.type}`);
+          extra.onDispatch?.(this, event);
+          return true;
+        }
+      };
+      return control;
+    };
+    const condition = field("SELECT", {
+      id: "idivareceptor",
+      name: "idIVAReceptor",
+      options: [
+        { value: "", textContent: "seleccionar..." },
+        { value: "1", textContent: "IVA Responsable Inscripto" },
+        { value: "6", textContent: "Responsable Monotributo" }
+      ]
+    });
+    const documentType = field("INPUT", {
+      id: "idtipodocreceptor",
+      name: "idTipoDocReceptor",
+      type: "hidden",
+      value: "80"
+    });
+    const legalName = field("INPUT", {
+      id: "razonsocialreceptor",
+      name: "razonSocialReceptor",
+      type: "text",
+      readOnly: true
+    });
+    const address = field("SELECT", {
+      id: "domicilioreceptor",
+      name: "domicilioReceptor",
+      options: []
+    });
+    const cuit = field("INPUT", {
+      id: "nrodocreceptor",
+      name: "nroDocReceptor",
+      type: "text",
+      onDispatch: (_control, event) => {
+        if (autoComplete && event.type === "blur") {
+          legalName.value = "AUTOCOMPLETADO POR ARCA";
+          address.options = [{ value: "domicilio-arca", textContent: "AUTOCOMPLETADO POR ARCA" }];
+          address.value = "domicilio-arca";
+        }
+      }
+    });
+    const email = field("INPUT", {
+      id: "email",
+      name: "emailReceptor",
+      type: "text",
+      value: "correo-existente@example.invalid"
+    });
+    const payments = {};
+    for (let index = 1; index <= 8; index += 1) {
+      payments[index] = field("INPUT", {
+        id: `formadepago${index}`,
+        name: index === 2 || index === 3 ? "formaDePagoTarjeta" : "formaDePago",
+        type: "checkbox",
+        checked: index === 1
+      });
+    }
+    const buyers = field("SELECT", {
+      id: "selectCompradoresMultiples",
+      name: "selectCompradoresMultiples",
+      value: "S",
+      options: [
+        { value: "N", textContent: "No" },
+        { value: "S", textContent: "Sí" }
+      ]
+    });
+    const associatedType = field("SELECT", {
+      id: "cmp_asoc_tipo",
+      name: "cmpAsociadoTipo",
+      value: "91",
+      options: [{ value: "91", textContent: "Remito R" }]
+    });
+    const associated = {
+      point: field("INPUT", { name: "cmpAsociadoPtoVta", type: "text" }),
+      number: field("INPUT", { name: "cmpAsociadoNro", type: "text" }),
+      issuer: field("INPUT", { name: "cmpAsociadoCuitEmisor", type: "text" }),
+      date: field("INPUT", { name: "cmpAsociadoFechaEmision", type: "text" })
+    };
+    const additionalType = field("SELECT", {
+      id: "datoadicionaltipo",
+      name: "datoAdicionalTipo",
+      value: "0",
+      options: [
+        { value: "0", textContent: "Seleccionar..." },
+        { value: "2", textContent: "Empresas Promovidas" }
+      ]
+    });
+    const selectors = {
+      'select#idivareceptor[name="idIVAReceptor"]': [condition],
+      'input#idtipodocreceptor[name="idTipoDocReceptor"][type="hidden"]': [documentType],
+      'input#nrodocreceptor[name="nroDocReceptor"]': [cuit],
+      'input#razonsocialreceptor[name="razonSocialReceptor"]': [legalName],
+      'select#domicilioreceptor[name="domicilioReceptor"]': [address],
+      'input#email[name="emailReceptor"]': [email],
+      'select#selectCompradoresMultiples[name="selectCompradoresMultiples"]': [buyers],
+      'select#cmp_asoc_tipo[name="cmpAsociadoTipo"]': [associatedType],
+      'select#datoadicionaltipo[name="datoAdicionalTipo"]': [additionalType],
+      'input#formadepago5[name="formaDePago"][type="checkbox"]': [payments[5]],
+      'input[name="cmpAsociadoPtoVta"]': [associated.point],
+      'input[name="cmpAsociadoNro"]': [associated.number],
+      'input[name="cmpAsociadoCuitEmisor"]': [associated.issuer],
+      'input[name="cmpAsociadoFechaEmision"]': [associated.date]
+    };
+    for (const id of [1, 2, 3, 4, 6, 7, 8]) {
+      selectors[`input#formadepago${id}[type="checkbox"]`] = [payments[id]];
+    }
+    const button = (value, outside = false) => ({
+      value,
+      outside,
+      disabled: false,
+      getAttribute: () => null,
+      dispatchEvent(event) {
+        clicks.push(`${value}:${event.type}`);
+        return true;
+      }
+    });
+    const buttons = {
+      add: button("Agregar"),
+      plus: button("+"),
+      minus: button("-"),
+      back: button("< Volver"),
+      next: button("Continuar >"),
+      menu: button("Menú Principal", true)
+    };
+    const form = {
+      id: "formulario",
+      name: "datosReceptorForm",
+      method: "post",
+      action: "https://fe.afip.gob.ar/rcel/jsp/genComDatosOperacion.do",
+      getAttribute(name) {
+        if (name === "method") return this.method;
+        if (name === "action") return this.action;
+        return null;
+      },
+      querySelectorAll(selector) {
+        if (selector === "input[type='button']") {
+          return [buttons.add, buttons.plus, buttons.minus, buttons.back, buttons.next];
+        }
+        if (selector === 'input[id^="formadepago"][type="checkbox"]') {
+          return Object.values(payments);
+        }
+        return selectors[selector] || [];
+      }
+    };
+    const forms = [form];
+    const banner = { dataset: {}, textContent: "" };
+    const document = {
+      title: "RCEL",
+      body: { innerText: fixture },
+      documentElement: { appendChild: () => {} },
+      querySelectorAll(selector) {
+        if (selector === 'form#formulario[name="datosReceptorForm"]') return forms;
+        return [];
+      },
+      getElementById: (id) => id === "sunnutrition-arca-assistant" ? banner : null
+    };
+    return {
+      additionalType,
+      address,
+      associated,
+      associatedType,
+      banner,
+      buttons,
+      buyers,
+      clicks,
+      condition,
+      cuit,
+      document,
+      documentType,
+      email,
+      events,
+      form,
+      forms,
+      legalName,
+      payments,
+      selectors
+    };
+  };
+  const installDom = (dom) => {
+    global.document = dom.document;
+    global.location = {
+      href: "https://fe.afip.gob.ar/rcel/jsp/genComDatosReceptor.do"
+    };
+  };
+  global.Event = class Event {
+    constructor(type, options = {}) {
+      this.type = type;
+      this.bubbles = options.bubbles;
+    }
+  };
+  global.MouseEvent = class MouseEvent { constructor(type) { this.type = type; } };
+
+  try {
+    const payload = safeMessage().payload;
+    payload.customer.cuit = "30-12345678-9";
+    payload.customer.fiscalCondition = "responsable_inscripto";
+    payload.invoice.receiptType = "Factura_A";
+    payload.invoice.recipientCondition = "responsable_inscripto";
+
+    let dom = createDom();
+    installDom(dom);
+    const untouched = {
+      documentType: dom.documentType.value,
+      legalNameBeforeLookup: dom.legalName.value,
+      addressOptionsBeforeLookup: dom.address.options.length,
+      email: dom.email.value,
+      associatedType: dom.associatedType.value
+    };
+    assert.deepEqual(content.completeRecipientFields(payload), { ok: true, pending: false });
+    assert.equal(dom.condition.value, "1");
+    assert.equal(dom.cuit.value, "30123456789");
+    assert.equal(dom.legalName.value, "AUTOCOMPLETADO POR ARCA");
+    assert.equal(dom.address.value, "domicilio-arca");
+    assert.equal(dom.email.value, untouched.email);
+    assert.equal(dom.documentType.value, untouched.documentType);
+    assert.equal(dom.associatedType.value, untouched.associatedType);
+    assert.equal(untouched.legalNameBeforeLookup, "");
+    assert.equal(untouched.addressOptionsBeforeLookup, 0);
+    assert.equal(dom.payments[5].checked, true);
+    assert.equal([1, 2, 3, 4, 6, 7, 8].some((id) => dom.payments[id].checked), false);
+    assert.equal(dom.buyers.value, "N");
+    assert.equal(Object.values(dom.associated).some((field) => field.value), false);
+    assert.equal(dom.additionalType.value, "0");
+    assert.deepEqual(dom.clicks, []);
+    assert.deepEqual(
+      dom.events.filter((event) => event.startsWith("nrodocreceptor:")),
+      ["nrodocreceptor:input", "nrodocreceptor:change", "nrodocreceptor:blur"]
+    );
+    assert.equal(
+      dom.events.some((event) => /^(razonsocialreceptor|domicilioreceptor|email):/.test(event)),
+      false
+    );
+
+    global.location.href = "https://fe.afip.gob.ar/rcel/jsp/otraPantalla.do";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_path_mismatch");
+
+    dom = createDom();
+    installDom(dom);
+    dom.forms.length = 0;
+    assert.equal(content.completeRecipientFields(payload).reason, "datosReceptorForm_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.form.action = "https://fe.afip.gob.ar/rcel/jsp/otraAccion.do";
+    assert.equal(content.completeRecipientFields(payload).reason, "datosReceptorForm_action_mismatch");
+
+    dom = createDom();
+    installDom(dom);
+    dom.condition.disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "idivareceptor_disabled");
+
+    dom = createDom();
+    installDom(dom);
+    dom.condition.options = [{ value: "", textContent: "seleccionar..." }];
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_condition_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.condition.options.push({ value: "1", textContent: "IVA Responsable Inscripto" });
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_condition_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    payload.customer.cuit = "CUIT 30-12345678-9";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_cuit_invalid");
+    payload.customer.cuit = "30123456789";
+
+    dom = createDom({ autoComplete: false });
+    installDom(dom);
+    assert.deepEqual(content.completeRecipientFields(payload), {
+      ok: false,
+      pending: true,
+      reason: "recipient_legal_name_empty"
+    });
+    assert.equal(dom.legalName.value, "");
+    assert.equal(dom.address.options.length, 0);
+    assert.equal(dom.email.value, "correo-existente@example.invalid");
+
+    dom = createDom({ autoComplete: false });
+    installDom(dom);
+    dom.legalName.value = "AUTOCOMPLETADO POR ARCA";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_address_empty");
+
+    dom = createDom({ autoComplete: false });
+    installDom(dom);
+    dom.legalName.value = "AUTOCOMPLETADO POR ARCA";
+    dom.address.options = [
+      { value: "uno", textContent: "DOMICILIO UNO" },
+      { value: "dos", textContent: "DOMICILIO DOS" }
+    ];
+    dom.address.value = "uno";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_address_ambiguous");
+
+    dom = createDom();
+    installDom(dom);
+    dom.selectors['input#formadepago5[name="formaDePago"][type="checkbox"]'] = [];
+    assert.equal(content.completeRecipientFields(payload).reason, "formadepago5_not_unique");
+
+    dom = createDom();
+    installDom(dom);
+    dom.address.disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "domicilioreceptor_disabled");
+
+    dom = createDom();
+    installDom(dom);
+    dom.payments[5].disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_cheque_not_checked");
+
+    dom = createDom();
+    installDom(dom);
+    dom.payments[1].disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_other_payment_checked");
+
+    dom = createDom();
+    installDom(dom);
+    dom.buyers.disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "selectCompradoresMultiples_disabled");
+
+    dom = createDom();
+    installDom(dom);
+    dom.buyers.value = "N";
+    dom.buyers.disabled = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "selectCompradoresMultiples_disabled");
+
+    dom = createDom();
+    installDom(dom);
+    dom.payments[9] = {
+      id: "formadepago9",
+      name: "formaDePago",
+      type: "checkbox",
+      checked: false
+    };
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_payment_controls_unexpected");
+    assert.deepEqual(dom.clicks, []);
+    dom.payments[9].checked = true;
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_payment_controls_unexpected");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.payments[2].name = "formaDePago";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_payment_controls_unexpected");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    dom.associated.point.value = "00001";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_associated_fields_not_empty");
+
+    dom = createDom();
+    installDom(dom);
+    dom.additionalType.value = "2";
+    assert.equal(content.completeRecipientFields(payload).reason, "recipient_additional_type_active");
+
+    dom = createDom();
+    installDom(dom);
+    payload.invoice.receiptType = "Factura_B";
+    payload.invoice.recipientCondition = "exento";
+    payload.customer.fiscalCondition = "exento";
+    dom.condition.options.push({ value: "4", textContent: "IVA Sujeto Exento" });
+    assert.deepEqual(content.completeRecipientFields(payload), { ok: true, pending: false });
+    assert.equal(dom.condition.value, "4");
+    payload.invoice.receiptType = "Factura_A";
+    payload.invoice.recipientCondition = "responsable_inscripto";
+    payload.customer.fiscalCondition = "responsable_inscripto";
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeRecipientFields(payload), { ok: true, pending: false });
+    dom.form.querySelectorAll = (selector) => (
+      selector === "input[type='button']" ? [] : dom.selectors[selector] || []
+    );
+    content.setCurrentStageForTesting("recipient");
+    content.continueFromRecipientStage(payload, "Datos del receptor completos.");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeRecipientFields(payload), { ok: true, pending: false });
+    const duplicateContinue = {
+      ...dom.buttons.next,
+      dispatchEvent(event) {
+        dom.clicks.push(`duplicado:${event.type}`);
+        return true;
+      }
+    };
+    dom.form.querySelectorAll = (selector) => (
+      selector === "input[type='button']"
+        ? [
+          dom.buttons.add,
+          dom.buttons.plus,
+          dom.buttons.minus,
+          dom.buttons.back,
+          dom.buttons.next,
+          duplicateContinue
+        ]
+        : dom.selectors[selector] || []
+    );
+    content.continueFromRecipientStage(payload, "Datos del receptor completos.");
+    assert.deepEqual(dom.clicks, []);
+
+    dom = createDom();
+    installDom(dom);
+    assert.deepEqual(content.completeRecipientFields(payload), { ok: true, pending: false });
+    content.setCurrentStageForTesting("recipient");
+    content.continueFromRecipientStage(payload, "Datos del receptor completos.");
+    content.continueFromRecipientStage(payload, "Datos del receptor completos.");
+    assert.deepEqual(dom.clicks, ["Continuar >:click"]);
+    assert.equal(
+      dom.clicks.some((click) => /^(Agregar|\+|-|< Volver|Menú Principal):/.test(click)),
+      false
+    );
+  } finally {
+    global.document = originalDocument;
+    global.Event = originalEvent;
+    global.MouseEvent = originalMouseEvent;
+    global.location = originalLocation;
+  }
+});
+
+test("Factura B exige IVA Sujeto Exento exacto y no adivina una opción ausente", () => {
+  const select = {
+    tagName: "SELECT",
+    options: [
+      { value: "", textContent: "seleccionar..." },
+      { value: "1", textContent: "IVA Responsable Inscripto" }
+    ]
+  };
+  const payload = safeMessage().payload;
+  payload.invoice.receiptType = "Factura_B";
+  payload.invoice.recipientCondition = "exento";
+  payload.customer.fiscalCondition = "exento";
+  assert.equal(content.recipientValuesMatch({
+    conditionField: select
+  }, payload), "recipient_condition_not_unique");
+
+  select.options.push({ value: "4", textContent: "IVA Sujeto Exento" });
+  select.value = "4";
+  const contract = {
+    conditionField: select,
+    cuitField: { value: "30123456789" },
+    legalNameField: { value: "AUTOCOMPLETADO POR ARCA" },
+    addressField: {
+      value: "domicilio-arca",
+      options: [{ value: "domicilio-arca", textContent: "AUTOCOMPLETADO POR ARCA" }]
+    },
+    chequeField: { checked: true, disabled: false, indeterminate: false },
+    otherPaymentFields: Array.from({ length: 7 }, () => ({ checked: false, indeterminate: false })),
+    multipleBuyersField: { value: "N" },
+    associatedFields: Array.from({ length: 4 }, () => ({ value: "" })),
+    additionalTypeField: { value: "0" }
+  };
+  assert.equal(content.recipientValuesMatch(contract, payload), "");
+  select.options.push({ value: "99", textContent: "IVA Sujeto Exento" });
+  assert.equal(content.recipientValuesMatch(contract, payload), "recipient_condition_not_unique");
+  select.options.pop();
+  select.options.push({ value: "4", textContent: "Otra condición" });
+  assert.equal(content.recipientValuesMatch(contract, payload), "recipient_condition_not_unique");
+});
+
+test("la espera del receptor usa un deadline real de cinco segundos y un único timer", () => {
+  const originalNow = Date.now;
+  const originalSetTimeout = global.setTimeout;
+  const originalClearTimeout = global.clearTimeout;
+  let now = 1000;
+  let nextHandle = 1;
+  const activeTimers = new Map();
+  const cleared = [];
+  Date.now = () => now;
+  global.setTimeout = (callback, delay) => {
+    const handle = nextHandle;
+    nextHandle += 1;
+    activeTimers.set(handle, { callback, delay });
+    return handle;
+  };
+  global.clearTimeout = (handle) => {
+    if (activeTimers.delete(handle)) cleared.push(handle);
+  };
+  try {
+    content.resetRecipientLookupWait();
+    assert.equal(content.RECIPIENT_LOOKUP_TIMEOUT_MS, 5000);
+    assert.equal(content.scheduleRecipientLookupRetry(() => {}), true);
+    assert.equal(activeTimers.size, 1);
+    assert.equal([...activeTimers.values()][0].delay, 250);
+
+    now = 1100;
+    assert.equal(content.scheduleRecipientLookupRetry(() => {}), true);
+    assert.equal(activeTimers.size, 1);
+    assert.deepEqual(cleared, [1]);
+
+    now = 5999;
+    assert.equal(content.scheduleRecipientLookupRetry(() => {}), true);
+    assert.equal(activeTimers.size, 1);
+    assert.equal([...activeTimers.values()][0].delay, 1);
+
+    now = 6000;
+    assert.equal(content.scheduleRecipientLookupRetry(() => {}), false);
+    assert.equal(activeTimers.size, 0);
+  } finally {
+    Date.now = originalNow;
+    global.setTimeout = originalSetTimeout;
+    global.clearTimeout = originalClearTimeout;
+    content.resetRecipientLookupWait();
+  }
 });
 
 test("fixture DOM completa campos exactos, eventos y líneas sin clicks ni submits", () => {

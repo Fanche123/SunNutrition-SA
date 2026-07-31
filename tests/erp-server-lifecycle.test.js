@@ -8,6 +8,9 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const test = require("node:test");
 const {
+  ensureOperational
+} = require("../tools/erp-server");
+const {
   APP_ID,
   RUNTIME_SCHEMA_VERSION,
   computeSourceFingerprint,
@@ -86,6 +89,137 @@ test("ocr-status distingue frescura de conectividad y consulta al proceso admini
       await cleanupOwnedProcess(port, serverProcess, environment);
     }
   }
+});
+
+test("ensure hace no-op solo con identidad completa, runtime fresco y OCR accesible", async () => {
+  const port = await freePort();
+  const environment = isolatedEnvironment(port);
+  const runtime = fakeRuntime({
+    port,
+    projectRoot: PROJECT_ROOT,
+    sourceFingerprint: computeSourceFingerprint(PROJECT_ROOT)
+  });
+  const controlToken = crypto.randomBytes(32).toString("hex");
+  let serverProcess;
+
+  try {
+    serverProcess = spawnFakeServer(runtime, controlToken, true, {
+      FAKE_OCR_REACHABLE: "1"
+    });
+    const health = await waitForHealth(port, (body) => body?.runtime?.instanceId, serverProcess);
+    writeLock(port, { ...health.runtime, controlToken });
+
+    const result = await ensureOperational({
+      rootDir: PROJECT_ROOT,
+      host: "127.0.0.1",
+      port,
+      mode: "local"
+    });
+    assert.equal(result.state, "operational");
+    assert.equal(result.action, "no_op");
+    assert.equal(result.server, "running_fresh");
+    assert.equal(result.ocr, "ocr_reachable");
+    assert.equal(result.pid, health.runtime.pid);
+    assert.equal(result.workingDirectory, PROJECT_ROOT);
+    assert.match(result.commandLine, /erp-server\.js/u);
+    assert.equal(
+      (await requestJson(port, "GET", "/api/health")).body.runtime.instanceId,
+      health.runtime.instanceId
+    );
+  } finally {
+    await cleanupOwnedProcess(port, serverProcess, environment);
+  }
+});
+
+test("ensure --check diagnostica OCR inaccesible sin reiniciar el proceso", async () => {
+  const port = await freePort();
+  const environment = isolatedEnvironment(port);
+  const runtime = fakeRuntime({
+    port,
+    projectRoot: PROJECT_ROOT,
+    sourceFingerprint: computeSourceFingerprint(PROJECT_ROOT)
+  });
+  const controlToken = crypto.randomBytes(32).toString("hex");
+  let serverProcess;
+
+  try {
+    serverProcess = spawnFakeServer(runtime, controlToken, true, {
+      FAKE_OCR_REACHABLE: "0"
+    });
+    const health = await waitForHealth(port, (body) => body?.runtime?.instanceId, serverProcess);
+    writeLock(port, { ...health.runtime, controlToken });
+
+    const result = await ensureOperational({
+      rootDir: PROJECT_ROOT,
+      host: "127.0.0.1",
+      port,
+      mode: "local"
+    }, { checkOnly: true });
+    assert.equal(result.state, "ensure_needs_restore");
+    assert.equal(result.action, "none");
+    assert.equal(result.server, "running_fresh");
+    assert.equal(result.ocr, "ocr_unreachable");
+    assert.equal(
+      (await requestJson(port, "GET", "/api/health")).body.runtime.instanceId,
+      health.runtime.instanceId
+    );
+  } finally {
+    await cleanupOwnedProcess(port, serverProcess, environment);
+  }
+});
+
+test("ensure rechaza una linea de comando ajena sin detener el proceso", async () => {
+  const port = await freePort();
+  const environment = isolatedEnvironment(port);
+  const runtime = {
+    ...fakeRuntime({
+      port,
+      projectRoot: PROJECT_ROOT,
+      sourceFingerprint: computeSourceFingerprint(PROJECT_ROOT)
+    }),
+    commandLine: `${process.execPath} worker-ajeno.js`
+  };
+  const controlToken = crypto.randomBytes(32).toString("hex");
+  let serverProcess;
+
+  try {
+    serverProcess = spawnFakeServer(runtime, controlToken, true, {
+      FAKE_OCR_REACHABLE: "1"
+    });
+    const health = await waitForHealth(port, (body) => body?.runtime?.instanceId, serverProcess);
+    writeLock(port, { ...health.runtime, controlToken });
+
+    await assert.rejects(
+      ensureOperational({
+        rootDir: PROJECT_ROOT,
+        host: "127.0.0.1",
+        port,
+        mode: "local"
+      }),
+      /linea de comando del PID no corresponde/u
+    );
+    assert.equal(
+      (await requestJson(port, "GET", "/api/health")).body.runtime.instanceId,
+      health.runtime.instanceId
+    );
+  } finally {
+    await cleanupOwnedProcess(port, serverProcess, environment);
+  }
+});
+
+test("ensure rechaza overrides de puerto antes de inspeccionar o actuar", async () => {
+  const port = await freePort();
+  const environment = isolatedEnvironment(port);
+  const result = await runNode([MANAGER_PATH, "ensure", "--check", "--json"], environment);
+
+  assert.equal(result.code, 2);
+  const parsed = parseJsonOutput(result.stdout);
+  assert.equal(parsed.state, "ensure_invalid_configuration");
+  assert.equal(parsed.action, "none");
+  assert.equal(parsed.expected.port, 3000);
+  assert.equal(parsed.actual.port, port);
+  assert.match(parsed.error, /127\.0\.0\.1:3000/u);
+  assert.equal(await portIsOpen(port), false);
 });
 
 test("la huella cambia con codigo fuente y no con runtime temporal", () => {
@@ -424,6 +558,8 @@ function fakeRuntime({
     startedAt: new Date().toISOString(),
     projectRoot,
     workingDirectory: projectRoot,
+    executablePath: process.execPath,
+    commandLine: `${process.execPath} ${path.join(PROJECT_ROOT, MANAGER_PATH)} start`,
     sourceFingerprint,
     host: "127.0.0.1",
     port,

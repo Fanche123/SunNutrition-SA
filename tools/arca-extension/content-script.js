@@ -10,13 +10,50 @@
   const NETWORK_ERROR_PATTERN = /(sin conexi[oó]n|no se puede acceder|error de red|err_(connection|network|internet))/i;
   const MAX_SESSION_LOOKUP_ATTEMPTS = 12;
   const SESSION_LOOKUP_RETRY_MS = 250;
+  const MAX_EMISSION_OPTION_ATTEMPTS = 12;
+  const EMISSION_OPTION_RETRY_MS = 250;
+  const RECIPIENT_LOOKUP_TIMEOUT_MS = 5000;
+  const RECIPIENT_LOOKUP_RETRY_MS = 250;
   const ARCA_SERVICE_HOSTS = new Set(["fe.afip.gob.ar", "serviciosjava2.afip.gob.ar"]);
+  const EMISSION_HOST = "fe.afip.gob.ar";
+  const EMISSION_PATH = "/rcel/jsp/genComDatosEmisor.do";
+  const EMISSION_ACTION_PATH = "/rcel/jsp/genComDatosReceptor.do";
+  const RECIPIENT_PATH = "/rcel/jsp/genComDatosReceptor.do";
+  const RECIPIENT_ACTION_PATH = "/rcel/jsp/genComDatosOperacion.do";
+  const OTHER_PAYMENT_IDS = Object.freeze([
+    "formadepago1",
+    "formadepago2",
+    "formadepago3",
+    "formadepago4",
+    "formadepago6",
+    "formadepago7",
+    "formadepago8"
+  ]);
+  const PAYMENT_FIELD_NAMES = Object.freeze({
+    formadepago1: "formaDePago",
+    formadepago2: "formaDePagoTarjeta",
+    formadepago3: "formaDePagoTarjeta",
+    formadepago4: "formaDePago",
+    formadepago5: "formaDePago",
+    formadepago6: "formaDePago",
+    formadepago7: "formaDePago",
+    formadepago8: "formaDePago"
+  });
+  const ASSOCIATED_FIELD_NAMES = Object.freeze([
+    "cmpAsociadoPtoVta",
+    "cmpAsociadoNro",
+    "cmpAsociadoCuitEmisor",
+    "cmpAsociadoFechaEmision"
+  ]);
   let activeSession = null;
   let lastPageSignature = "";
   let observerTimer = null;
   let expiryTimer = null;
   let terminalStatus = "";
   let currentStage = "";
+  let emissionOptionAttempts = 0;
+  let recipientLookupStartedAt = null;
+  let recipientLookupTimer = null;
   const stageGuard = createStageGuard();
 
   function normalize(value) {
@@ -115,6 +152,388 @@
     const receiptField = findUniqueInitialField("Tipo de Comprobante");
     if (!pointField || !receiptField || pointField === receiptField) return null;
     return { pointField, receiptField };
+  }
+
+  function uniqueFormControl(form, selector, reason) {
+    const matches = [...form.querySelectorAll(selector)];
+    return matches.length === 1
+      ? { ok: true, field: matches[0] }
+      : { ok: false, reason };
+  }
+
+  function exactEmissionUrl(url, pathname) {
+    return url.protocol === "https:"
+      && url.hostname === EMISSION_HOST
+      && url.port === ""
+      && url.pathname === pathname
+      && url.search === ""
+      && url.hash === "";
+  }
+
+  function emissionScreenContract() {
+    let pageUrl;
+    try {
+      pageUrl = new URL(root.location?.href || "");
+    } catch {
+      return { ok: false, reason: "emission_path_mismatch" };
+    }
+    if (!exactEmissionUrl(pageUrl, EMISSION_PATH)) {
+      return { ok: false, reason: "emission_path_mismatch" };
+    }
+
+    const forms = [...document.querySelectorAll('form[name="datosEmisorForm"]')];
+    if (forms.length !== 1) return { ok: false, reason: "datosEmisorForm_not_unique" };
+    const form = forms[0];
+    if (normalize(form.method || form.getAttribute?.("method")) !== "post") {
+      return { ok: false, reason: "datosEmisorForm_method_mismatch" };
+    }
+    let actionUrl;
+    try {
+      actionUrl = new URL(form.getAttribute?.("action") || form.action || "", pageUrl.href);
+    } catch {
+      return { ok: false, reason: "datosEmisorForm_action_mismatch" };
+    }
+    if (!exactEmissionUrl(actionUrl, EMISSION_ACTION_PATH)) {
+      return { ok: false, reason: "datosEmisorForm_action_mismatch" };
+    }
+
+    const definitions = [
+      ["dateField", 'input#fc[name="fechaEmisionComprobante"]', "fc_not_unique"],
+      ["conceptField", 'select#idconcepto[name="idConcepto"]', "idconcepto_not_unique"],
+      [
+        "foreignCurrencyField",
+        'input#monedaextranjera[name="monedaExtranjera"][type="checkbox"]',
+        "monedaextranjera_not_unique"
+      ],
+      ["activityField", 'select#actiAsociadaId[name="actiAsociadaId"]', "actiAsociadaId_not_unique"],
+      ["referenceField", 'input#refComEmisor[name="refComEmisor"]', "refComEmisor_not_unique"]
+    ];
+    const result = { ok: true, form };
+    for (const [key, selector, reason] of definitions) {
+      const control = uniqueFormControl(form, selector, reason);
+      if (!control.ok) return control;
+      result[key] = control.field;
+    }
+    if (
+      result.dateField.type !== "text"
+      || result.dateField.disabled
+      || result.dateField.readOnly
+    ) return { ok: false, reason: "fc_not_editable" };
+    if (
+      result.referenceField.type !== "text"
+      || result.referenceField.disabled
+      || result.referenceField.readOnly
+    ) return { ok: false, reason: "refComEmisor_not_editable" };
+    if (result.conceptField.disabled) return { ok: false, reason: "idconcepto_disabled" };
+    if (result.activityField.disabled) return { ok: false, reason: "actiAsociadaId_disabled" };
+    return result;
+  }
+
+  function emissionScreenFields() {
+    const contract = emissionScreenContract();
+    if (!contract.ok) return null;
+    const {
+      dateField,
+      conceptField,
+      foreignCurrencyField,
+      activityField,
+      referenceField
+    } = contract;
+    return { dateField, conceptField, foreignCurrencyField, activityField, referenceField };
+  }
+
+  function recipientScreenContract() {
+    let pageUrl;
+    try {
+      pageUrl = new URL(root.location?.href || "");
+    } catch {
+      return { ok: false, reason: "recipient_path_mismatch" };
+    }
+    if (!exactEmissionUrl(pageUrl, RECIPIENT_PATH)) {
+      return { ok: false, reason: "recipient_path_mismatch" };
+    }
+    if (String(document.title || "") !== "RCEL") {
+      return { ok: false, reason: "recipient_title_mismatch" };
+    }
+
+    const forms = [...document.querySelectorAll('form#formulario[name="datosReceptorForm"]')];
+    if (forms.length !== 1) return { ok: false, reason: "datosReceptorForm_not_unique" };
+    const form = forms[0];
+    if (normalize(form.method || form.getAttribute?.("method")) !== "post") {
+      return { ok: false, reason: "datosReceptorForm_method_mismatch" };
+    }
+    let actionUrl;
+    try {
+      actionUrl = new URL(form.getAttribute?.("action") || form.action || "", pageUrl.href);
+    } catch {
+      return { ok: false, reason: "datosReceptorForm_action_mismatch" };
+    }
+    if (!exactEmissionUrl(actionUrl, RECIPIENT_ACTION_PATH)) {
+      return { ok: false, reason: "datosReceptorForm_action_mismatch" };
+    }
+
+    const definitions = [
+      ["conditionField", 'select#idivareceptor[name="idIVAReceptor"]', "idivareceptor_not_unique"],
+      [
+        "documentTypeField",
+        'input#idtipodocreceptor[name="idTipoDocReceptor"][type="hidden"]',
+        "idtipodocreceptor_not_unique"
+      ],
+      ["cuitField", 'input#nrodocreceptor[name="nroDocReceptor"]', "nrodocreceptor_not_unique"],
+      [
+        "legalNameField",
+        'input#razonsocialreceptor[name="razonSocialReceptor"]',
+        "razonsocialreceptor_not_unique"
+      ],
+      [
+        "addressField",
+        'select#domicilioreceptor[name="domicilioReceptor"]',
+        "domicilioreceptor_not_unique"
+      ],
+      ["emailField", 'input#email[name="emailReceptor"]', "emailReceptor_not_unique"],
+      [
+        "multipleBuyersField",
+        'select#selectCompradoresMultiples[name="selectCompradoresMultiples"]',
+        "selectCompradoresMultiples_not_unique"
+      ],
+      ["associatedTypeField", 'select#cmp_asoc_tipo[name="cmpAsociadoTipo"]', "cmp_asoc_tipo_not_unique"],
+      [
+        "additionalTypeField",
+        'select#datoadicionaltipo[name="datoAdicionalTipo"]',
+        "datoadicionaltipo_not_unique"
+      ]
+    ];
+    const result = { ok: true, form, otherPaymentFields: [], associatedFields: [] };
+    for (const [key, selector, reason] of definitions) {
+      const control = uniqueFormControl(form, selector, reason);
+      if (!control.ok) return control;
+      result[key] = control.field;
+    }
+    const cheque = uniqueFormControl(
+      form,
+      'input#formadepago5[name="formaDePago"][type="checkbox"]',
+      "formadepago5_not_unique"
+    );
+    if (!cheque.ok) return cheque;
+    result.chequeField = cheque.field;
+    for (const id of OTHER_PAYMENT_IDS) {
+      const control = uniqueFormControl(
+        form,
+        `input#${id}[type="checkbox"]`,
+        `${id}_not_unique`
+      );
+      if (!control.ok) return control;
+      result.otherPaymentFields.push(control.field);
+    }
+    const paymentFields = [...form.querySelectorAll('input[id^="formadepago"][type="checkbox"]')];
+    if (
+      paymentFields.length !== Object.keys(PAYMENT_FIELD_NAMES).length
+      || paymentFields.some((field) => (
+        !Object.prototype.hasOwnProperty.call(PAYMENT_FIELD_NAMES, field.id)
+        || field.name !== PAYMENT_FIELD_NAMES[field.id]
+      ))
+    ) return { ok: false, reason: "recipient_payment_controls_unexpected" };
+    for (const name of ASSOCIATED_FIELD_NAMES) {
+      const control = uniqueFormControl(
+        form,
+        `input[name="${name}"]`,
+        `${name}_not_unique`
+      );
+      if (!control.ok) return control;
+      result.associatedFields.push(control.field);
+    }
+    if (
+      result.cuitField.type !== "text"
+      || result.cuitField.disabled
+      || result.cuitField.readOnly
+    ) return { ok: false, reason: "nrodocreceptor_not_editable" };
+    if (!result.legalNameField.readOnly || result.legalNameField.disabled) {
+      return { ok: false, reason: "razonsocialreceptor_not_readonly" };
+    }
+    if (result.conditionField.disabled) return { ok: false, reason: "idivareceptor_disabled" };
+    if (result.addressField.disabled) return { ok: false, reason: "domicilioreceptor_disabled" };
+    if (result.multipleBuyersField.disabled) {
+      return { ok: false, reason: "selectCompradoresMultiples_disabled" };
+    }
+    return result;
+  }
+
+  function recipientConditionOption(field, payload) {
+    const condition = payload?.customer?.fiscalCondition;
+    const expectedLabel = recipientLabel(condition);
+    if (!expectedLabel || field?.tagName !== "SELECT") return null;
+    const options = [...field.options];
+    if (condition === "responsable_inscripto") {
+      const candidates = options.filter((option) => (
+        String(option.value) === "1"
+        || normalize(option.textContent) === normalize(expectedLabel)
+      ));
+      const matches = candidates.filter((option) => (
+        String(option.value) === "1"
+        && normalize(option.textContent) === normalize(expectedLabel)
+      ));
+      return candidates.length === 1 && matches.length === 1 ? matches[0] : null;
+    }
+    if (condition !== "exento") return null;
+    const matches = options.filter((option) => (
+      normalize(option.textContent) === normalize(expectedLabel)
+      && String(option.value || "").trim() !== ""
+    ));
+    if (matches.length !== 1) return null;
+    const value = String(matches[0].value);
+    return options.filter((option) => String(option.value) === value).length === 1
+      ? matches[0]
+      : null;
+  }
+
+  function normalizedRecipientCuit(value) {
+    const source = String(value || "").trim();
+    if (!/^[0-9.\-\s]+$/.test(source)) return "";
+    const digits = source.replace(/\D/g, "");
+    return digits.length === 11 ? digits : "";
+  }
+
+  function applyRecipientCuit(field, value) {
+    if (String(field.value) === value) return true;
+    field.value = value;
+    if (String(field.value) !== value) return false;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    field.dispatchEvent(new Event("blur", { bubbles: false }));
+    return String(field.value) === value;
+  }
+
+  function usableAddressOptions(field) {
+    return [...(field?.options || [])].filter((option) => (
+      !option.disabled
+      && String(option.value || "").trim() !== ""
+      && normalize(option.textContent)
+      && !normalize(option.textContent).includes("seleccionar")
+    ));
+  }
+
+  function setCheckboxState(field, checked, rejectedReason) {
+    if (field.indeterminate) return rejectedReason;
+    if (Boolean(field.checked) === checked) return "";
+    if (field.disabled) return rejectedReason;
+    field.checked = checked;
+    if (Boolean(field.checked) !== checked) return rejectedReason;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return Boolean(field.checked) === checked ? "" : rejectedReason;
+  }
+
+  function recipientValuesMatch(contract, payload) {
+    const conditionOption = recipientConditionOption(contract.conditionField, payload);
+    if (!conditionOption) return "recipient_condition_not_unique";
+    if (conditionOption.disabled) return "recipient_condition_disabled";
+    if (String(contract.conditionField.value) !== String(conditionOption.value)) {
+      return "recipient_condition_value_rejected";
+    }
+    const cuit = normalizedRecipientCuit(payload?.customer?.cuit);
+    if (!cuit) return "recipient_cuit_invalid";
+    if (String(contract.cuitField.value) !== cuit) return "recipient_cuit_value_rejected";
+    if (!String(contract.legalNameField.value || "").trim()) return "recipient_legal_name_empty";
+    const addresses = usableAddressOptions(contract.addressField);
+    if (addresses.length === 0) return "recipient_address_empty";
+    if (addresses.length !== 1) return "recipient_address_ambiguous";
+    if (String(contract.addressField.value) !== String(addresses[0].value)) {
+      return "recipient_address_not_selected";
+    }
+    if (
+      contract.chequeField.disabled
+      || contract.chequeField.indeterminate
+      || !contract.chequeField.checked
+    ) return "recipient_cheque_not_checked";
+    if (contract.otherPaymentFields.some((field) => field.checked || field.indeterminate)) {
+      return "recipient_other_payment_checked";
+    }
+    if (String(contract.multipleBuyersField.value) !== "N") {
+      return "recipient_multiple_buyers_not_no";
+    }
+    if (contract.associatedFields.some((field) => String(field.value || "").trim() !== "")) {
+      return "recipient_associated_fields_not_empty";
+    }
+    if (String(contract.additionalTypeField.value) !== "0") {
+      return "recipient_additional_type_active";
+    }
+    return "";
+  }
+
+  function completeRecipientFields(payload) {
+    let contract = recipientScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+
+    const conditionOption = recipientConditionOption(contract.conditionField, payload);
+    if (!conditionOption) {
+      return { ok: false, pending: false, reason: "recipient_condition_not_unique" };
+    }
+    if (conditionOption.disabled) {
+      return { ok: false, pending: false, reason: "recipient_condition_disabled" };
+    }
+    if (String(contract.conditionField.value) !== String(conditionOption.value)) {
+      contract.conditionField.value = conditionOption.value;
+      if (String(contract.conditionField.value) !== String(conditionOption.value)) {
+        return { ok: false, pending: false, reason: "recipient_condition_value_rejected" };
+      }
+      contract.conditionField.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    const cuit = normalizedRecipientCuit(payload?.customer?.cuit);
+    if (!cuit) return { ok: false, pending: false, reason: "recipient_cuit_invalid" };
+    if (!applyRecipientCuit(contract.cuitField, cuit)) {
+      return { ok: false, pending: false, reason: "recipient_cuit_value_rejected" };
+    }
+
+    contract = recipientScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+    if (!String(contract.legalNameField.value || "").trim()) {
+      return { ok: false, pending: true, reason: "recipient_legal_name_empty" };
+    }
+    const addresses = usableAddressOptions(contract.addressField);
+    if (addresses.length === 0) {
+      return { ok: false, pending: true, reason: "recipient_address_empty" };
+    }
+    if (addresses.length !== 1) {
+      return { ok: false, pending: false, reason: "recipient_address_ambiguous" };
+    }
+    if (String(contract.addressField.value) !== String(addresses[0].value)) {
+      return { ok: false, pending: true, reason: "recipient_address_not_selected" };
+    }
+
+    let reason = setCheckboxState(contract.chequeField, true, "recipient_cheque_not_checked");
+    if (reason) return { ok: false, pending: false, reason };
+    for (const field of contract.otherPaymentFields) {
+      reason = setCheckboxState(field, false, "recipient_other_payment_checked");
+      if (reason) return { ok: false, pending: false, reason };
+    }
+
+    const noOption = exactEmissionOption(contract.multipleBuyersField, "N", "No");
+    if (!noOption) {
+      return { ok: false, pending: false, reason: "recipient_multiple_buyers_no_not_unique" };
+    }
+    if (String(contract.multipleBuyersField.value) !== "N") {
+      if (contract.multipleBuyersField.disabled) {
+        return { ok: false, pending: false, reason: "recipient_multiple_buyers_not_no" };
+      }
+      contract.multipleBuyersField.value = "N";
+      if (String(contract.multipleBuyersField.value) !== "N") {
+        return { ok: false, pending: false, reason: "recipient_multiple_buyers_not_no" };
+      }
+      contract.multipleBuyersField.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    if (contract.associatedFields.some((field) => String(field.value || "").trim() !== "")) {
+      return { ok: false, pending: false, reason: "recipient_associated_fields_not_empty" };
+    }
+    if (String(contract.additionalTypeField.value) !== "0") {
+      return { ok: false, pending: false, reason: "recipient_additional_type_active" };
+    }
+
+    contract = recipientScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+    reason = recipientValuesMatch(contract, payload);
+    return reason
+      ? { ok: false, pending: false, reason }
+      : { ok: true, pending: false };
   }
 
   function exactOption(field, value, optionText = "", matchBy = "exact") {
@@ -231,6 +650,146 @@
       return { ok: false, pending: false, reason: "receipt_type_rejected" };
     }
     return { ok: true, pending: false };
+  }
+
+  function exactEmissionOption(field, expectedValue, expectedText = "") {
+    const value = String(expectedValue);
+    const text = normalize(expectedText);
+    const candidates = [...(field?.options || [])].filter((option) => (
+      String(option.value) === value
+      || (text && normalize(option.textContent) === text)
+    ));
+    const matches = candidates.filter((option) => (
+      String(option.value) === value
+      && (!text || normalize(option.textContent) === text)
+    ));
+    return candidates.length === 1 && matches.length === 1 ? matches[0] : null;
+  }
+
+  function exactActivityOption(field, activityCode) {
+    return exactEmissionOption(field, String(activityCode || "").trim());
+  }
+
+  function setEmissionTextValue(field, value, reason) {
+    field.value = value;
+    return String(field.value) === String(value) ? "" : reason;
+  }
+
+  function setEmissionSelectValue(field, value, reason) {
+    if (String(field.value) === String(value)) return "";
+    field.value = value;
+    if (String(field.value) !== String(value)) return reason;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return String(field.value) === String(value) ? "" : reason;
+  }
+
+  function emissionValuesMatch(contract, dateValue, activityCode) {
+    const conceptOption = exactEmissionOption(contract.conceptField, "1", "Productos");
+    if (!conceptOption) return "idconcepto_productos_not_unique";
+    if (conceptOption.disabled) return "idconcepto_productos_disabled";
+    const activityOption = exactActivityOption(contract.activityField, activityCode);
+    if (!activityOption) return "actiAsociadaId_106131_not_unique";
+    if (activityOption.disabled) return "actiAsociadaId_106131_disabled";
+    if (String(contract.dateField.value) !== String(dateValue)) return "fc_value_rejected";
+    if (String(contract.conceptField.value) !== "1") return "idconcepto_value_rejected";
+    if (contract.foreignCurrencyField.checked || contract.foreignCurrencyField.indeterminate) {
+      return "monedaextranjera_not_unchecked";
+    }
+    if (String(contract.activityField.value) !== "106131") return "actiAsociadaId_value_rejected";
+    if (String(contract.referenceField.value) !== "") return "refComEmisor_value_rejected";
+    return "";
+  }
+
+  function completeEmissionFields(payload) {
+    let contract = emissionScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+    if (contract.foreignCurrencyField.checked || contract.foreignCurrencyField.indeterminate) {
+      return { ok: false, pending: false, reason: "monedaextranjera_not_unchecked" };
+    }
+    const dateValue = resolvedFieldValue(
+      contract.dateField,
+      payload?.invoice?.invoiceDate,
+      "",
+      "exact",
+      "date"
+    );
+    if (dateValue === null) return { ok: false, pending: false, reason: "fc_payload_date_invalid" };
+    const conceptOption = exactEmissionOption(contract.conceptField, "1", "Productos");
+    if (!conceptOption) {
+      const pending = [...(contract.conceptField.options || [])].length === 0;
+      return {
+        ok: false,
+        pending,
+        reason: pending
+          ? "emission_options_pending"
+          : "idconcepto_productos_not_unique"
+      };
+    }
+    if (conceptOption.disabled) {
+      return { ok: false, pending: false, reason: "idconcepto_productos_disabled" };
+    }
+
+    let reason = setEmissionTextValue(contract.dateField, dateValue, "fc_value_rejected");
+    if (!reason) {
+      reason = setEmissionSelectValue(contract.conceptField, conceptOption.value, "idconcepto_value_rejected");
+    }
+    if (reason) return { ok: false, pending: false, reason };
+
+    contract = emissionScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+    if (contract.foreignCurrencyField.checked || contract.foreignCurrencyField.indeterminate) {
+      return { ok: false, pending: false, reason: "monedaextranjera_not_unchecked" };
+    }
+    const activityOption = exactActivityOption(contract.activityField, payload?.automation?.activityCode);
+    if (!activityOption) {
+      const pending = [...(contract.activityField.options || [])].length === 0;
+      return {
+        ok: false,
+        pending,
+        reason: pending
+          ? "emission_options_pending"
+          : "actiAsociadaId_106131_not_unique"
+      };
+    }
+    if (activityOption.disabled) {
+      return { ok: false, pending: false, reason: "actiAsociadaId_106131_disabled" };
+    }
+    reason = setEmissionSelectValue(
+      contract.activityField,
+      activityOption.value,
+      "actiAsociadaId_value_rejected"
+    );
+    if (!reason) {
+      reason = setEmissionTextValue(contract.referenceField, "", "refComEmisor_value_rejected");
+    }
+    if (reason) return { ok: false, pending: false, reason };
+
+    contract = emissionScreenContract();
+    if (!contract.ok) return { ok: false, pending: false, reason: contract.reason };
+    reason = emissionValuesMatch(contract, dateValue, payload?.automation?.activityCode);
+    return reason
+      ? { ok: false, pending: false, reason }
+      : { ok: true, pending: false };
+  }
+
+  function resetRecipientLookupWait() {
+    clearTimeout(recipientLookupTimer);
+    recipientLookupTimer = null;
+    recipientLookupStartedAt = null;
+  }
+
+  function scheduleRecipientLookupRetry(callback) {
+    const now = Date.now();
+    if (recipientLookupStartedAt === null) recipientLookupStartedAt = now;
+    const remaining = RECIPIENT_LOOKUP_TIMEOUT_MS - (now - recipientLookupStartedAt);
+    clearTimeout(recipientLookupTimer);
+    recipientLookupTimer = null;
+    if (remaining <= 0) return false;
+    recipientLookupTimer = setTimeout(() => {
+      recipientLookupTimer = null;
+      callback();
+    }, Math.min(RECIPIENT_LOOKUP_RETRY_MS, remaining));
+    return true;
   }
 
   function receiptLabel(receiptType) {
@@ -375,17 +934,105 @@
     }
     if (stage === "emission") {
       updateSession("completing_stage", "", "emission");
-      const completed = completeExactFields(buildFieldPlan(stage, payload));
-      return completed
-        ? continueFromStage("Datos de emisión completos.", "emission")
-        : interrupt("selector_changed", "ARCA cambió los campos de datos de emisión.");
+      const result = completeEmissionFields(payload);
+      if (result.ok) {
+        emissionOptionAttempts = 0;
+        return continueFromEmissionStage(payload, "Datos de emisión completos.");
+      }
+      if (result.pending && emissionOptionAttempts < MAX_EMISSION_OPTION_ATTEMPTS) {
+        emissionOptionAttempts += 1;
+        lastPageSignature = "";
+        setTimeout(runRecognizedStage, EMISSION_OPTION_RETRY_MS);
+        return showBanner("Esperando opciones de datos de emisión provistas por ARCA.", "waiting");
+      }
+      emissionOptionAttempts = 0;
+      const messages = {
+        emission_path_mismatch: `El path actual no es ${EMISSION_PATH}.`,
+        datosEmisorForm_not_unique: "No existe un único form[name=\"datosEmisorForm\"].",
+        datosEmisorForm_method_mismatch: "datosEmisorForm no usa el método POST esperado.",
+        datosEmisorForm_action_mismatch: `datosEmisorForm no apunta a ${EMISSION_ACTION_PATH}.`,
+        emission_options_pending: "Las opciones de #idconcepto o #actiAsociadaId no terminaron de cargar.",
+        fc_not_unique: "No existe un único input#fc[name=\"fechaEmisionComprobante\"].",
+        fc_not_editable: "input#fc[name=\"fechaEmisionComprobante\"] no es editable.",
+        fc_payload_date_invalid: "La fecha preparada por el ERP no tiene formato ISO válido.",
+        fc_value_rejected: "input#fc[name=\"fechaEmisionComprobante\"] revirtió la fecha preparada.",
+        idconcepto_not_unique: "No existe un único select#idconcepto[name=\"idConcepto\"].",
+        idconcepto_disabled: "select#idconcepto está deshabilitado y no sería enviado por el formulario.",
+        idconcepto_productos_not_unique: "Productos value 1 no existe de forma única en #idconcepto.",
+        idconcepto_productos_disabled: "Productos value 1 está deshabilitado en #idconcepto.",
+        idconcepto_value_rejected: "select#idconcepto revirtió Productos value 1.",
+        monedaextranjera_not_unique: "No existe un único checkbox #monedaextranjera.",
+        monedaextranjera_not_unchecked: "input#monedaextranjera no permanece desmarcado.",
+        actiAsociadaId_not_unique: "No existe un único select#actiAsociadaId[name=\"actiAsociadaId\"].",
+        actiAsociadaId_disabled: "select#actiAsociadaId está deshabilitado y no sería enviado por el formulario.",
+        actiAsociadaId_106131_not_unique: "Actividad value 106131 no existe de forma única en #actiAsociadaId.",
+        actiAsociadaId_106131_disabled: "Actividad value 106131 está deshabilitada en #actiAsociadaId.",
+        actiAsociadaId_value_rejected: "select#actiAsociadaId revirtió la actividad value 106131.",
+        refComEmisor_not_unique: "No existe un único input#refComEmisor[name=\"refComEmisor\"].",
+        refComEmisor_not_editable: "input#refComEmisor[name=\"refComEmisor\"] no es editable.",
+        refComEmisor_value_rejected: "input#refComEmisor no pudo quedar vacío."
+      };
+      return interrupt(
+        "selector_changed",
+        messages[result.reason] || `Falló el contrato DOM de Datos de emisión: ${result.reason}.`
+      );
     }
     if (stage === "recipient") {
       updateSession("completing_stage", "", "recipient");
-      const completed = completeExactFields(buildFieldPlan(stage, payload));
-      return completed
-        ? continueFromStage("Datos del receptor completos.", "recipient")
-        : interrupt("selector_changed", "ARCA cambió los campos del receptor.");
+      const result = completeRecipientFields(payload);
+      if (result.ok) {
+        resetRecipientLookupWait();
+        return continueFromRecipientStage(payload, "Datos del receptor completos.");
+      }
+      if (result.pending && scheduleRecipientLookupRetry(runRecognizedStage)) {
+        lastPageSignature = "";
+        return showBanner("Esperando razón social y domicilio provistos por ARCA.", "waiting");
+      }
+      resetRecipientLookupWait();
+      const messages = {
+        recipient_path_mismatch: `El path actual no es ${RECIPIENT_PATH}.`,
+        recipient_title_mismatch: "La pantalla Datos del receptor no conserva el título RCEL.",
+        datosReceptorForm_not_unique: "No existe un único form#formulario[name=\"datosReceptorForm\"].",
+        datosReceptorForm_method_mismatch: "datosReceptorForm no usa el método POST esperado.",
+        datosReceptorForm_action_mismatch: `datosReceptorForm no apunta a ${RECIPIENT_ACTION_PATH}.`,
+        idivareceptor_not_unique: "No existe un único select#idivareceptor[name=\"idIVAReceptor\"].",
+        idivareceptor_disabled: "La condición frente al IVA está deshabilitada y no sería enviada.",
+        idtipodocreceptor_not_unique: "ARCA cambió el campo oculto de tipo de documento.",
+        nrodocreceptor_not_unique: "No existe un único input#nrodocreceptor[name=\"nroDocReceptor\"].",
+        nrodocreceptor_not_editable: "El CUIT del receptor no es editable.",
+        razonsocialreceptor_not_unique: "No existe un único campo de razón social del receptor.",
+        razonsocialreceptor_not_readonly: "La razón social dejó de ser un dato autocompletado read-only.",
+        domicilioreceptor_not_unique: "No existe un único select#domicilioreceptor[name=\"domicilioReceptor\"].",
+        domicilioreceptor_disabled: "El domicilio comercial está deshabilitado y no sería enviado.",
+        emailReceptor_not_unique: "ARCA cambió el campo de email del receptor.",
+        formadepago5_not_unique: "No existe un único checkbox Cheque #formadepago5.",
+        recipient_payment_controls_unexpected: "ARCA cambió el conjunto o el nombre de los medios de pago esperados.",
+        recipient_condition_not_unique: payload?.customer?.fiscalCondition === "exento"
+          ? "ARCA no expone de forma exacta y única IVA Sujeto Exento para esta Factura B; se requiere exportar ese DOM real."
+          : "ARCA no expone de forma exacta y única IVA Responsable Inscripto value 1.",
+        recipient_condition_disabled: "La condición fiscal exacta del receptor está deshabilitada.",
+        recipient_condition_value_rejected: "ARCA revirtió la condición fiscal preparada por el ERP.",
+        recipient_cuit_invalid: "El CUIT preparado por el ERP no tiene un formato de 11 dígitos válido.",
+        recipient_cuit_value_rejected: "ARCA revirtió el CUIT normalizado preparado por el ERP.",
+        recipient_legal_name_empty: "ARCA no completó la razón social dentro del tiempo esperado.",
+        recipient_address_empty: "ARCA no completó el domicilio comercial dentro del tiempo esperado.",
+        recipient_address_ambiguous: "ARCA devolvió más de un domicilio comercial y requiere una decisión manual.",
+        recipient_address_not_selected: "ARCA no seleccionó de forma inequívoca el domicilio comercial autocompletado.",
+        recipient_cheque_not_checked: "Cheque está ausente, deshabilitado o no permanece marcado.",
+        recipient_other_payment_checked: "Otro medio de pago no pudo permanecer desmarcado.",
+        recipient_multiple_buyers_no_not_unique: "La opción exacta No value N no existe de forma única.",
+        recipient_multiple_buyers_not_no: "Compradores múltiples no pudo permanecer en No.",
+        recipient_associated_fields_not_empty: "Hay datos en Comprobantes asociados; no se modificaron ni agregaron.",
+        recipient_additional_type_active: "Datos adicionales tiene una selección activa; no se modificó.",
+        selectCompradoresMultiples_not_unique: "ARCA cambió el selector de compradores múltiples.",
+        selectCompradoresMultiples_disabled: "Compradores múltiples está deshabilitado y no sería enviado.",
+        cmp_asoc_tipo_not_unique: "ARCA cambió el selector de comprobantes asociados.",
+        datoadicionaltipo_not_unique: "ARCA cambió el selector de datos adicionales."
+      };
+      return interrupt(
+        "selector_changed",
+        messages[result.reason] || `Falló el contrato DOM de Datos del receptor: ${result.reason}.`
+      );
     }
     if (stage === "lines") {
       updateSession("completing_stage", "", "lines");
@@ -506,6 +1153,73 @@
     }
   }
 
+  function continueFromEmissionStage(payload, message) {
+    const contract = emissionScreenContract();
+    if (!contract.ok) {
+      return interrupt(
+        "selector_changed",
+        `${message} Falló la verificación previa al clic: ${contract.reason}.`
+      );
+    }
+    const dateValue = resolvedFieldValue(
+      contract.dateField,
+      payload?.invoice?.invoiceDate,
+      "",
+      "exact",
+      "date"
+    );
+    const stateReason = dateValue === null
+      ? "fc_payload_date_invalid"
+      : emissionValuesMatch(contract, dateValue, payload?.automation?.activityCode);
+    if (stateReason) {
+      return interrupt(
+        "selector_changed",
+        `${message} Falló la reverificación previa al clic: ${stateReason}.`
+      );
+    }
+    const controls = [...contract.form.querySelectorAll("input[type='button']")]
+      .filter((control) => normalize(elementText(control)) === "continuar >");
+    if (controls.length !== 1) {
+      return interrupt(
+        "selector_changed",
+        `${message} datosEmisorForm no contiene un único input[type="button"] Continuar >.`
+      );
+    }
+    fieldsCompleted(`${message} Avanzando a la siguiente etapa segura.`, "emission");
+    if (!activateInterimAction(controls[0], "emission")) {
+      return interrupt("unexpected_response", `${message} ARCA no aceptó la navegación intermedia.`);
+    }
+  }
+
+  function continueFromRecipientStage(payload, message) {
+    const contract = recipientScreenContract();
+    if (!contract.ok) {
+      return interrupt(
+        "selector_changed",
+        `${message} Falló la verificación previa al clic: ${contract.reason}.`
+      );
+    }
+    const stateReason = recipientValuesMatch(contract, payload);
+    if (stateReason) {
+      return interrupt(
+        "selector_changed",
+        `${message} Falló la reverificación previa al clic: ${stateReason}.`
+      );
+    }
+    const controls = [...contract.form.querySelectorAll("input[type='button']")]
+      .filter((control) => String(control.value || "").trim() === "Continuar >");
+    if (controls.length !== 1) {
+      return interrupt(
+        "selector_changed",
+        `${message} datosReceptorForm no contiene un único input[type="button"] Continuar >.`
+      );
+    }
+    fieldsCompleted(`${message} Avanzando a la siguiente etapa segura.`, "recipient");
+    if (!activateInterimAction(controls[0], "recipient")) {
+      return interrupt("unexpected_response", `${message} ARCA no aceptó la navegación intermedia.`);
+    }
+  }
+
   function completeLineRows(lines, automation = activeSession?.payload?.automation) {
     if (!automation) {
       return {
@@ -594,6 +1308,7 @@
 
   function interrupt(reason, message) {
     terminalStatus = "interrupted";
+    resetRecipientLookupWait();
     showBanner(`${message} La automatización se detuvo de forma segura.`, "error");
     updateSession("interrupted", reason, currentStage);
   }
@@ -603,6 +1318,7 @@
     activeSession = null;
     clearTimeout(observerTimer);
     clearTimeout(expiryTimer);
+    resetRecipientLookupWait();
     showBanner(`${message} La automatización se detuvo de forma segura.`, "error");
   }
 
@@ -693,6 +1409,8 @@
   if (typeof module === "object" && module.exports) {
     module.exports = {
       FINAL_ACTION_PATTERN,
+      MAX_EMISSION_OPTION_ATTEMPTS,
+      RECIPIENT_LOOKUP_TIMEOUT_MS,
       MAX_SESSION_LOOKUP_ATTEMPTS,
       NETWORK_ERROR_PATTERN,
       SECRET_FIELD_PATTERN,
@@ -700,13 +1418,25 @@
       buildFieldPlan,
       classifyPage,
       completeExactFields,
+      completeEmissionFields,
       completeInitialFields,
       completeLineRows,
+      completeRecipientFields,
       createStageGuard,
       authorizeInterimAction,
+      continueFromEmissionStage,
+      continueFromRecipientStage,
       continueFromStage,
       exactOption,
+      exactActivityOption,
+      exactEmissionOption,
+      emissionScreenContract,
+      emissionScreenFields,
       initialScreenFields,
+      normalizedRecipientCuit,
+      recipientScreenContract,
+      recipientValuesMatch,
+      resetRecipientLookupWait,
       findFieldByExactLabel,
       findRepresentativeControl,
       findUniqueAction,
@@ -720,6 +1450,8 @@
       receiptLabel,
       resolvedFieldValue,
       setFieldValue,
+      scheduleRecipientLookupRetry,
+      usableAddressOptions,
       setCurrentStageForTesting(stage) {
         currentStage = stage;
       }

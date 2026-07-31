@@ -278,13 +278,17 @@
         await recordTerminalStatus("interrupted", "manual_abort", preparedForExtension.orderId);
         return;
       }
-      if (!response?.ok) throw new Error("La extensión rechazó la sesión.");
+      if (!response?.ok) {
+        const preparationError = new Error(extensionPreparationError(response));
+        preparationError.reason = safePreparationRejectionReason(response?.reason);
+        throw preparationError;
+      }
       state.sessionActive = true;
       setStatus("ARCA abierto. Login, MFA y CAPTCHA son manuales. El ERP seguirá el estado sin leer secretos.", "pending");
       startPolling();
     } catch (error) {
       if (state.launchSequence === launchSequence && state.prepared === preparedForExtension) {
-        await discardPreparedContext("extension_unavailable", { auditPrepared: true });
+        await discardPreparedContext(error.reason || "extension_unavailable", { auditPrepared: true });
         setStatus(`No se pudo iniciar la extensión: ${error.message}`, "error");
       }
     }
@@ -523,6 +527,34 @@
     return "Contrato incompatible.";
   }
 
+  function extensionPreparationError(response) {
+    const reason = String(response?.reason || "");
+    if (reason === "contract_incompatible") {
+      const extensionContract = Number.isInteger(response?.contractVersion)
+        ? ` La extensión espera el contrato ${response.contractVersion}.`
+        : "";
+      return `El ERP preparó una sesión con un contrato incompatible.${extensionContract} `
+        + "Reiniciá el servidor local y volvé a preparar la factura.";
+    }
+    return {
+      payload_invalid: "Los datos preparados no cumplen el contrato fiscal vigente. Volvé a preparar la factura.",
+      session_expired: "La sesión preparada venció. Volvé a preparar la factura.",
+      origin_rejected: "La extensión rechazó el origen. Abrí el ERP desde http://127.0.0.1:3000.",
+      association_failed: "La pestaña abierta no pudo asociarse a la sesión nueva. Cancelá y volvé a preparar."
+    }[reason] || "La extensión devolvió una respuesta no reconocida al preparar la sesión.";
+  }
+
+  function safePreparationRejectionReason(reason) {
+    const allowed = new Set([
+      "association_failed",
+      "contract_incompatible",
+      "origin_rejected",
+      "payload_invalid",
+      "session_expired"
+    ]);
+    return allowed.has(String(reason || "")) ? String(reason) : "extension_unavailable";
+  }
+
   function cancelExtensionSession(extensionId, sessionId, { closeTab = false } = {}) {
     return extensionMessage(extensionId, {
       type: "CANCEL_SESSION",
@@ -701,6 +733,8 @@
       expectedDeliveryMarkup,
       expectedDeliveryTiming,
       extensionContractCompatibilityError,
+      extensionPreparationError,
+      safePreparationRejectionReason,
       extensionStatusLabel,
       fiscalSummaryForReceipt,
       invoiceDateFromOrder,

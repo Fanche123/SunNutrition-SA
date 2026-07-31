@@ -13,9 +13,12 @@ comprobantes, no obtiene CAE y no confirma, firma ni presenta información fisca
 4. Copiar el identificador de 32 caracteres mostrado por el navegador.
 5. En ERP > Ventas > Facturación ARCA, pegar ese identificador y usar **Verificar extensión**.
 
-La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.3`
-negocia el contrato fiscal `3` con el ERP antes de preparar o abrir una sesión; después de modificar
+La instalación es manual. No se distribuye ni actualiza automáticamente. La versión `1.1.6`
+negocia el contrato fiscal `4` con el ERP antes de preparar o abrir una sesión; después de modificar
 o actualizar estos archivos hay que presionar **Recargar** en `chrome://extensions`.
+Si la extensión informa que el ERP preparó un contrato incompatible aunque la verificación sea
+correcta, el proceso backend local sigue ejecutando una versión anterior: reiniciar el servidor,
+recargar el ERP y preparar nuevamente. El rechazo limpia cualquier sesión efímera anterior.
 
 ## Permisos exactos
 
@@ -64,6 +67,29 @@ La pantalla inicial también admite el HTML legado observado en ARCA, donde los 
 campos están en celdas de tabla y no en elementos `label`. Para operar exige conjuntamente el
 título completo de esa pantalla, una única fila para cada texto exacto y un único `select` por fila;
 la carga asincrónica del segundo selector se reevalúa al incorporarse sus opciones.
+
+El paso **Datos de emisión (paso 1 de 4)** exige el path
+`/rcel/jsp/genComDatosEmisor.do`, un único `datosEmisorForm` POST con action
+`/rcel/jsp/genComDatosReceptor.do` y los IDs/names exportados por el DOM real. Aplica en `#fc` la
+fecha preparada por el ERP en formato `dd/mm/aaaa`, selecciona `#idconcepto` por value `1` y texto
+normalizado `Productos`, exige `#monedaextranjera` desmarcada, selecciona `#actiAsociadaId` por el
+value único `106131` y deja `#refComEmisor` vacío. No toca moneda, tipo de cambio ni cancelación en
+moneda extranjera. Solo tras reverificar los cinco estados acciona una vez el único
+`input[type="button"]` con value exacto `Continuar >` dentro del formulario; ante path/action,
+controles, opciones o valores inesperados se detiene con el selector técnico concreto.
+
+El paso **Datos del receptor (paso 2 de 4)** exige el path
+`/rcel/jsp/genComDatosReceptor.do`, el título `RCEL` y un único
+`form#formulario[name="datosReceptorForm"]` POST con action
+`/rcel/jsp/genComDatosOperacion.do`. Selecciona la condición fiscal canónica del payload: para
+Factura A exige conjuntamente texto `IVA Responsable Inscripto` y value `1`; para Factura B acepta
+`IVA Sujeto Exento` solo cuando ARCA expone una única opción con ese texto, sin adivinar su value.
+Normaliza el CUIT a once dígitos, dispara sus eventos de edición y espera hasta cinco segundos a que
+ARCA complete la razón social read-only y un único domicilio seleccionado. No escribe razón social,
+domicilio ni email. Marca exclusivamente `Cheque`, mantiene compradores múltiples en `N`, exige
+vacíos los campos de comprobantes asociados y conserva datos adicionales en `0`. Tras reverificar
+todo, acciona una vez el único `input[type="button"]` con value exacto `Continuar >` dentro del
+formulario. Nunca pulsa `Agregar`, `+`, `-`, `< Volver` ni `Menú Principal`.
 
 ## Invariante de no emisión
 

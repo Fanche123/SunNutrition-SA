@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="es">
+  <head><title>RCEL</title></head>
+  <body>
+    <h2>RCEL - GENERACIÓN DE COMPROBANTES - FACTURA A</h2>
+    <h3>DATOS DE EMISIÓN (PASO 1 DE 4)</h3>
+    <form name="datosEmisorForm" method="post" action="/rcel/jsp/genComDatosReceptor.do">
+      <input id="fc" name="fechaEmisionComprobante" type="text" value="">
+      <input id="fc_btn" type="button" value="...">
+      <select id="idconcepto" name="idConcepto">
+        <option value="">seleccionar...</option>
+        <option value="1">Productos</option>
+        <option value="2">Servicios</option>
+        <option value="3">Productos y Servicios</option>
+      </select>
+      <input id="monedaextranjera" name="monedaExtranjera" type="checkbox">
+      <input id="cancelacionMonedaExtranjera" type="checkbox">
+      <input id="cancelacionMonedaExtranjeraHidden" name="cancelacionMonedaExtranjera" type="hidden">
+      <select id="moneda" name="moneda"><option value="">seleccionar...</option></select>
+      <input id="tipocambio" name="tipoCambio" type="text">
+      <select id="actiAsociadaId" name="actiAsociadaId">
+        <option value="">seleccionar...</option>
+        <option value="106131">106131 - ELABORACIÓN DE ALIMENTOS A BASE...</option>
+      </select>
+      <input type="button" value="+">
+      <input type="button" value="-">
+      <input id="refComEmisor" name="refComEmisor" type="text" value="">
+      <input type="button" value="+">
+      <input type="button" value="-">
+      <input type="button" value="&lt; Volver">
+      <input type="button" value="Continuar &gt;">
+    </form>
+    <input type="button" value="Menú Principal">
+  </body>
+</html>

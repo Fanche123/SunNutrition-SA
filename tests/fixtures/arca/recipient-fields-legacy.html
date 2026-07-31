@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head><title>RCEL</title></head>
+<body>
+  <h1>Datos del receptor (paso 2 de 4)</h1>
+  <form id="formulario" name="datosReceptorForm" method="post" action="/rcel/jsp/genComDatosOperacion.do">
+    <select id="idivareceptor" name="idIVAReceptor">
+      <option value="">seleccionar...</option>
+      <option value="1">IVA Responsable Inscripto</option>
+      <option value="6">Responsable Monotributo</option>
+    </select>
+    <input id="idtipodocreceptor" name="idTipoDocReceptor" type="hidden">
+    <input id="nrodocreceptor" name="nroDocReceptor" type="text" value="">
+    <input id="razonsocialreceptor" name="razonSocialReceptor" type="text" value="" readonly>
+    <select id="domicilioreceptor" name="domicilioReceptor"></select>
+    <input id="email" name="emailReceptor" type="text" value="">
+
+    <input id="formadepago1" name="formaDePago" type="checkbox">
+    <input id="formadepago2" name="formaDePagoTarjeta" type="checkbox">
+    <input id="formadepago3" name="formaDePagoTarjeta" type="checkbox">
+    <input id="formadepago4" name="formaDePago" type="checkbox">
+    <input id="formadepago5" name="formaDePago" type="checkbox">
+    <input id="formadepago6" name="formaDePago" type="checkbox">
+    <input id="formadepago7" name="formaDePago" type="checkbox">
+    <input id="formadepago8" name="formaDePago" type="checkbox">
+
+    <select id="selectCompradoresMultiples" name="selectCompradoresMultiples">
+      <option value="N" selected>No</option>
+      <option value="S">Sí</option>
+    </select>
+
+    <select id="cmp_asoc_tipo" name="cmpAsociadoTipo">
+      <option value="91" selected>Remito R</option>
+    </select>
+    <input name="cmpAsociadoPtoVta" type="text" value="">
+    <input name="cmpAsociadoNro" type="text" value="">
+    <input name="cmpAsociadoCuitEmisor" type="text" value="">
+    <input name="cmpAsociadoFechaEmision" type="text" value="">
+    <input type="button" value="Agregar">
+    <input type="button" value="+">
+    <input type="button" value="-">
+
+    <select id="datoadicionaltipo" name="datoAdicionalTipo">
+      <option value="0" selected>Seleccionar...</option>
+      <option value="2">Empresas Promovidas</option>
+    </select>
+
+    <input type="button" value="&lt; Volver">
+    <input type="button" value="Continuar &gt;">
+  </form>
+  <input type="button" value="Menú Principal">
+</body>
+</html>

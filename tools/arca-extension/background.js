@@ -15,23 +15,33 @@
   const fallbackSessions = new Map();
   let operationQueue = Promise.resolve();
 
-  function validatePreparedMessage(message) {
-    if (!message || message.type !== "PREPARE_SESSION") return false;
-    if (!/^[0-9a-f-]{36}$/i.test(String(message.sessionId || ""))) return false;
-    if (!message.payload || message.payload.contractVersion !== ARCA_FISCAL.CONTRACT.version) return false;
-    if (message.payload.mode !== "review_only" || message.payload.finalSubmissionAllowed !== false) return false;
-    if (!/^[a-f0-9]{64}$/i.test(String(message.payload.revision || ""))) return false;
+  function preparedMessageRejectionReason(message, now = Date.now()) {
+    if (!message || message.type !== "PREPARE_SESSION") return "payload_invalid";
+    if (!/^[0-9a-f-]{36}$/i.test(String(message.sessionId || ""))) return "payload_invalid";
+    if (!message.payload) return "payload_invalid";
+    if (message.payload.contractVersion !== ARCA_FISCAL.CONTRACT.version) {
+      return "contract_incompatible";
+    }
     const expiresAt = Date.parse(message.payload.expiresAt);
-    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() || expiresAt > Date.now() + SESSION_TTL_MS + 5000) return false;
-    if (containsForbiddenKey(message.payload)) return false;
-    if (!ARCA_FISCAL.preparedPayloadIsValid(message.payload)) return false;
+    if (!Number.isFinite(expiresAt) || expiresAt <= now) return "session_expired";
+    if (expiresAt > now + SESSION_TTL_MS + 5000) return "payload_invalid";
+    if (message.payload.mode !== "review_only" || message.payload.finalSubmissionAllowed !== false) {
+      return "payload_invalid";
+    }
+    if (!/^[a-f0-9]{64}$/i.test(String(message.payload.revision || ""))) return "payload_invalid";
+    if (containsForbiddenKey(message.payload)) return "payload_invalid";
+    if (!ARCA_FISCAL.preparedPayloadIsValid(message.payload)) return "payload_invalid";
     return Boolean(
       message.payload.order?.id
       && message.payload.customer?.cuit
       && message.payload.invoice?.pointOfSale
       && Array.isArray(message.payload.lines)
       && message.payload.lines.length
-    );
+    ) ? "" : "payload_invalid";
+  }
+
+  function validatePreparedMessage(message) {
+    return preparedMessageRejectionReason(message) === "";
   }
 
   function containsForbiddenKey(value) {
@@ -184,14 +194,24 @@
   }
 
   async function prepareSession(message, sender) {
-    if (!trustedExternalSender(sender) || !validatePreparedMessage(message)) {
-      return { ok: false, status: "rejected", reason: "invalid_extension_response" };
+    if (!trustedExternalSender(sender)) {
+      return { ok: false, status: "rejected", reason: "origin_rejected" };
     }
     const records = await readSessionRecords();
+    const rejectionReason = preparedMessageRejectionReason(message);
     Object.values(records).forEach((existing) => {
       cancelSession(existing, "manual_abort");
       clearExpiryAlarm(existing.id);
     });
+    if (rejectionReason) {
+      await writeSessionRecords({});
+      return {
+        ok: false,
+        status: "rejected",
+        reason: rejectionReason,
+        contractVersion: ARCA_FISCAL.CONTRACT.version
+      };
+    }
     const session = {
       id: message.sessionId,
       payload: message.payload,
@@ -226,11 +246,13 @@
       const latestRecords = await readSessionRecords();
       const latestSession = latestRecords[session.id];
       if (latestSession) {
-        cancelSession(latestSession, "extension_unavailable");
+        cancelSession(latestSession, "association_failed");
         clearExpiryAlarm(latestSession.id);
         await writeSessionRecords(latestRecords);
       }
-      return publicStatus(latestSession);
+      return latestSession
+        ? { ...publicStatus(latestSession), ok: false }
+        : { ok: false, status: "rejected", reason: "association_failed" };
     }
   }
 
@@ -403,6 +425,7 @@
       externalMessage,
       internalMessage,
       prepareSession,
+      preparedMessageRejectionReason,
       publicStatus,
       readSessionRecords,
       trustedExternalSender,
