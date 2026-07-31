@@ -4,6 +4,9 @@
   const ARCA_FISCAL = typeof module === "object" && module.exports
     ? require("../../../tools/arca-extension/arca-fiscal-contract")
     : root.ArcaFiscalContract;
+  const ORDER_PRICING = typeof module === "object" && module.exports
+    ? require("../../../shared/order-pricing")
+    : root.OrderPricing;
   const state = {
     bound: false,
     rows: [],
@@ -42,15 +45,12 @@
     byId("arca-previous")?.addEventListener("click", () => changePage(-1));
     byId("arca-next")?.addEventListener("click", () => changePage(1));
     byId("arca-prepare-form")?.addEventListener("submit", prepareInvoice);
-    byId("arca-open")?.addEventListener("click", openArca);
     byId("arca-extension-check")?.addEventListener("click", verifyExtension);
     byId("arca-refresh-status")?.addEventListener("click", refreshExtensionStatus);
     byId("arca-cancel")?.addEventListener("click", () => cancelActiveSession("manual_abort"));
-    byId("arca-receipt-type")?.addEventListener("change", updateReceiptSuggestion);
-    byId("arca-extension-id")?.addEventListener("change", saveExtensionId);
+    byId("arca-receipt-type")?.addEventListener("change", renderCompactReview);
     byId("arca-prepare-form")?.addEventListener("input", clearPreparedState);
     byId("arca-prepare-form")?.addEventListener("change", clearPreparedState);
-    byId("arca-products-body")?.addEventListener("change", clearPreparedState);
     root.addEventListener?.("pagehide", cancelOnPageHide);
   }
 
@@ -95,8 +95,9 @@
         deliveryTiming ? `is-delivery-${deliveryTiming}` : ""
       ].filter(Boolean).join(" ");
       return `<tr class="${rowClasses}">
-        <td><button type="button" class="secondary compact-button" data-arca-order="${escapeHtml(row.id_pedido)}"
-          >${selected ? "Elegido" : "Revisar"}</button></td>
+        <td class="arca-order-selector"><input type="radio" name="arca-selected-order"
+          data-arca-order="${escapeHtml(row.id_pedido)}" value="${escapeHtml(row.id_pedido)}"
+          aria-label="Seleccionar pedido ${escapeHtml(row.id_pedido)} de ${escapeHtml(displayNameLabel(row.cliente) || "cliente sin nombre")}"${selected ? " checked" : ""}></td>
         <td>#${escapeHtml(row.id_pedido)}</td>
         <td>${escapeHtml(displayNameLabel(row.cliente) || "-")}</td>
         <td>${expectedDeliveryMarkup(row.fecha_entrega_prevista, deliveryTiming)}</td>
@@ -113,9 +114,9 @@
   }
 
   async function selectOrderFromEvent(event) {
-    const button = event.target.closest("[data-arca-order]");
-    if (!button) return;
-    const next = state.rows.find((row) => row.id_pedido === button.dataset.arcaOrder) || null;
+    const selector = event.target.closest("[data-arca-order]");
+    if (!selector) return;
+    const next = state.rows.find((row) => row.id_pedido === selector.dataset.arcaOrder) || null;
     if (next?.id_pedido === state.selected?.id_pedido) return;
     await discardPreparedContext("manual_abort");
     state.selected = next;
@@ -131,38 +132,73 @@
     if (empty) empty.hidden = Boolean(state.selected);
     if (content) content.hidden = !state.selected;
     if (!state.selected || !content) return;
-    const order = state.selected;
-    text("arca-summary-order", `#${order.id_pedido}`);
-    text("arca-summary-client", order.cliente || "-");
-    text("arca-summary-cuit", order.cuit || "Falta CUIT");
-    text("arca-summary-address", order.domicilio || "Falta domicilio");
-    text("arca-summary-date", formatDate(order.fecha_pedido));
-    text("arca-summary-delivery", `Prevista ${formatDate(order.fecha_entrega_prevista)}`);
+    const defaults = reviewDefaultsForOrder(state.selected);
+    text("arca-summary-client", defaults.client);
     const receiptSelect = byId("arca-receipt-type");
-    if (receiptSelect) receiptSelect.value = "";
-    setInvoiceDateFromOrder(order);
-    renderProducts(order.productos || []);
-    updateReceiptSuggestion();
-    renderPreparedSummary();
+    if (receiptSelect) receiptSelect.value = defaults.receiptType;
+    if (byId("arca-invoice-date")) byId("arca-invoice-date").value = defaults.invoiceDate;
+    renderCompactReview();
   }
 
-  function renderProducts(products) {
-    const body = byId("arca-products-body");
+  function renderCompactReview() {
+    clearPreparedState();
+    const body = byId("arca-review-lines");
     if (!body) return;
-    body.innerHTML = products.map((product) => `<tr>
-      <td>${escapeHtml(displayNameLabel(product.producto) || "-")}</td>
-      <td class="num">${escapeHtml(formatNumber(product.cantidad_cajas))}</td>
-      <td class="num">${escapeHtml(product.unidades_por_caja == null ? "-" : formatNumber(product.unidades_por_caja))}</td>
-      <td class="num">${escapeHtml(formatNumber(product.cantidad_arca))}</td>
-      <td>${escapeHtml(product.unidad_arca || "-")}</td>
-      <td class="num">${escapeHtml(formatMoney(product.precio_unidad_individual))}</td>
-      <td class="num">${escapeHtml(`${formatNumber(product.bonificacion)}%`)}</td>
+    const receiptType = byId("arca-receipt-type")?.value || "";
+    let lines = [];
+    try {
+      lines = receiptType && state.selected && !state.selected.faltantes?.length
+        ? compactReviewLines(state.selected, receiptType)
+        : [];
+    } catch {
+      lines = [];
+    }
+    body.innerHTML = lines.map((line) => `<tr>
+      <td>${escapeHtml(line.description)}</td>
+      <td class="num">${escapeHtml(`${formatNumber(line.quantity)} ${line.unitText}`)}</td>
+      <td class="num">${escapeHtml(formatMoney(line.unitPrice))}</td>
+      <td class="num">${escapeHtml(formatMoney(line.netSubtotal))}</td>
+      <td class="num">${escapeHtml(formatMoney(line.total))}</td>
     </tr>`).join("");
+    const totals = ORDER_PRICING.calculateInvoice(lines);
+    text("arca-review-subtotal", lines.length ? formatMoney(totals.netSubtotal) : "-");
+    text("arca-review-total", lines.length ? formatMoney(totals.total) : "-");
   }
 
-  function updateReceiptSuggestion() {
-    const receiptType = byId("arca-receipt-type")?.value || "";
-    text("arca-receipt-suggestion", fiscalSummaryForReceipt(receiptType));
+  function compactReviewLines(order, receiptType) {
+    return (order?.productos || []).map((product) => {
+      const isUnits = product.clasificacion_arca === "units";
+      const calculation = isUnits
+        ? ORDER_PRICING.calculateLine({
+          boxes: product.cantidad_cajas,
+          unitsPerBox: product.unidades_por_caja,
+          unitPrice: product.precio_unidad_individual,
+          discountPercent: product.bonificacion,
+          vatRate: ARCA_FISCAL.CONTRACT.vatRate,
+          receiptType
+        })
+        : ORDER_PRICING.calculateMeasuredLine({
+          quantity: product.cantidad_arca,
+          unitPrice: product.precio_unidad_individual,
+          discountPercent: product.bonificacion,
+          vatRate: ARCA_FISCAL.CONTRACT.vatRate,
+          receiptType
+        });
+      return {
+        description: ARCA_FISCAL.buildLineDescription(product.cantidad_cajas, product.producto, order.domicilio),
+        quantity: product.cantidad_arca,
+        unitText: product.unidad_arca,
+        ...calculation
+      };
+    });
+  }
+
+  function reviewDefaultsForOrder(order) {
+    return Object.freeze({
+      client: String(order?.cliente || "-"),
+      receiptType: normalizeReceiptType(order?.tipo_comprobante_configurado),
+      invoiceDate: invoiceDateFromOrder(order)
+    });
   }
 
   async function prepareInvoice(event) {
@@ -193,9 +229,9 @@
         orderId: state.selected.id_pedido,
         prepareRequest
       };
-      renderPreparedSummary();
       await loadAudit();
-      setStatus("Factura preparada localmente. Revisá el resumen antes de abrir ARCA.", "success");
+      setStatus("Factura preparada de forma segura. Abriendo la asistencia ARCA hasta revisión.", "pending");
+      await openArca();
     } catch (error) {
       state.prepared = null;
       renderPreparedSummary();
@@ -205,28 +241,7 @@
     }
   }
 
-  function renderPreparedSummary() {
-    const panel = byId("arca-prepared-summary");
-    const openButton = byId("arca-open");
-    if (panel) panel.hidden = !state.prepared;
-    if (openButton) openButton.disabled = !state.prepared;
-    if (!state.prepared) return;
-    const { payload } = state.prepared;
-    text("arca-total-net", formatMoney(payload.invoice.totals.netSubtotal));
-    text("arca-total-vat", formatMoney(payload.invoice.totals.vat));
-    text("arca-total-final", formatMoney(payload.invoice.totals.total));
-    const body = byId("arca-prepared-lines");
-    if (body) body.innerHTML = payload.lines.map((line) => `<tr>
-      <td>${escapeHtml(line.description)}</td>
-      <td class="num">${escapeHtml(`${formatNumber(line.quantity)} ${line.unitText}`)}</td>
-      <td class="num">${escapeHtml(formatMoney(line.unitPrice))}</td>
-      <td class="num">${escapeHtml(`${formatNumber(line.discountPercent)}%`)}</td>
-      <td class="num">${escapeHtml(`${formatNumber(line.vatRate)}%`)}</td>
-      <td class="num">${escapeHtml(formatMoney(line.netSubtotal))}</td>
-      <td class="num">${escapeHtml(formatMoney(line.vat))}</td>
-      <td class="num">${escapeHtml(formatMoney(line.total))}</td>
-    </tr>`).join("");
-  }
+  function renderPreparedSummary() {}
 
   async function openArca() {
     if (!state.prepared) return setStatus("Prepará la factura antes de abrir ARCA.", "error");
@@ -234,7 +249,7 @@
     const launchSequence = ++state.launchSequence;
     const extensionId = extensionIdValue();
     if (!validExtensionId(extensionId)) {
-      return setStatus("Ingresá el ID válido de la extensión instalada.", "error");
+      return setStatus("No hay una extensión ARCA configurada en este navegador.", "error");
     }
     try {
       const compatibilityError = extensionContractCompatibilityError(
@@ -603,19 +618,15 @@
     });
   }
 
-  function saveExtensionId() {
-    const value = extensionIdValue();
-    if (validExtensionId(value)) root.localStorage?.setItem("sunnutrition.arcaExtensionId", value);
-  }
-
   function restoreExtensionId() {
-    const input = byId("arca-extension-id");
-    const saved = root.localStorage?.getItem("sunnutrition.arcaExtensionId") || "";
-    if (input && validExtensionId(saved)) input.value = saved;
+    return extensionIdValue();
   }
 
   function extensionIdValue() {
-    return String(byId("arca-extension-id")?.value || "").trim().toLowerCase();
+    const configured = root.localStorage?.getItem("sunnutrition.arcaExtensionId")
+      || byId("arca-extension-id")?.value
+      || "";
+    return String(configured).trim().toLowerCase();
   }
 
   function validExtensionId(value) {
@@ -630,7 +641,7 @@
   }
 
   function normalizeReceiptType(value) {
-    const match = normalizeText(value).match(/factura\s*([abc])\b/);
+    const match = normalizeText(value).match(/^factura[ _-]*([ab])$/);
     return match ? `Factura_${match[1].toUpperCase()}` : "";
   }
 
@@ -770,6 +781,7 @@
     module.exports = {
       argentinaCalendarIso,
       buildPrepareRequest,
+      compactReviewLines,
       expectedDeliveryMarkup,
       expectedDeliveryTiming,
       extensionContractCompatibilityError,
@@ -779,6 +791,7 @@
       fiscalSummaryForReceipt,
       invoiceDateFromOrder,
       normalizeReceiptType,
+      reviewDefaultsForOrder,
       setInvoiceDateFromOrder,
       suggestReceiptType,
       validExtensionId,

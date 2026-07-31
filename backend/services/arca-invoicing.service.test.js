@@ -4,7 +4,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { createArcaInvoicingService, suggestReceiptType } = require("./arca-invoicing.service");
+const {
+  createArcaInvoicingService,
+  normalizeReceiptType,
+  suggestReceiptType
+} = require("./arca-invoicing.service");
 
 function cacheFixture() {
   return {
@@ -100,7 +104,7 @@ test("lista únicamente pedidos sin entrega real y sin factura antes de paginar"
   assert.equal(firstPage.rows[0].fecha_entrega_prevista, "2026-07-05");
   assert.equal(firstPage.rows[0].fecha_pedido, "2026-07-01");
   assert.equal(Object.hasOwn(firstPage.rows[0], "condicion_fiscal"), false);
-  assert.equal(Object.hasOwn(firstPage.rows[0], "tipo_comprobante_configurado"), false);
+  assert.equal(firstPage.rows[0].tipo_comprobante_configurado, "Factura_A");
   assert.equal(firstPage.rows[0].entrega.estado, "entrega_pendiente");
   assert.equal(firstPage.rows[0].productos[0].unidades_individuales, 20);
   assert.equal(
@@ -270,6 +274,14 @@ test("sólo sugiere A o B con las condiciones explícitas autorizadas", () => {
   assert.equal(suggestReceiptType("responsable_inscripto", "monotributista"), "");
   assert.equal(suggestReceiptType("monotributista", "responsable_inscripto"), "");
   assert.equal(suggestReceiptType("", "exento"), "");
+});
+
+test("normaliza únicamente variantes equivalentes de Factura A/B configuradas en clientes", () => {
+  assert.equal(normalizeReceiptType("Factura A"), "Factura_A");
+  assert.equal(normalizeReceiptType("factura_b"), "Factura_B");
+  assert.equal(normalizeReceiptType("Factura-B"), "Factura_B");
+  assert.equal(normalizeReceiptType("Clasificación comercial"), "");
+  assert.equal(normalizeReceiptType("Factura C"), "");
 });
 
 test("preparar y auditar no crea ventas ni guarda payload o secretos", async () => {

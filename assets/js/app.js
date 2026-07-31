@@ -2006,6 +2006,10 @@ function switchView(view) {
         "tools/arca-extension/arca-fiscal-contract.js?v=20260730-operation-data",
         "initializeArcaFiscalContract"
       );
+      await loadDeferredScript(
+        "shared/order-pricing.js?v=20260724-money-contract",
+        "OrderPricing"
+      );
       const initialize = await loadDeferredScript(
         "assets/js/modules/arca-invoicing.js?v=20260730-operation-data",
         "initializeArcaInvoicing"
