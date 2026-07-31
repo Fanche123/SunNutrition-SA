@@ -30,11 +30,17 @@
     saleCondition: "Cheque",
     productCode: "4",
     productCodeLabel: "Producto o servicio",
-    lineDescription: "Barra Pop",
-    unit: "Unidades"
+    unitsValue: "7",
+    unitsText: "unidades",
+    kilogramsValue: "1",
+    kilogramsText: "kilogramos",
+    vatValue: "5",
+    vatText: "21%",
+    quantityPrecision: "2",
+    unitPricePrecision: "2"
   });
   const CONTRACT = Object.freeze({
-    version: 4,
+    version: 5,
     issuerCondition: "responsable_inscripto",
     issuerConditionLabel: "IVA Responsable Inscripto",
     pointOfSale: AUTOMATION.pointOfSale,
@@ -104,14 +110,18 @@
       || Object.entries(AUTOMATION).some(([key, value]) => payload?.automation?.[key] !== value)
       || !Array.isArray(lines)
       || !lines.length
-      || !lines.every((line) => invoiceLineIsValid(line, payload.invoice.receiptType))
+      || !lines.every((line) => invoiceLineIsValid(
+        line,
+        payload.invoice.receiptType,
+        payload.customer.address
+      ))
       || !invoiceTotalsAreValid(lines, totals)
     ) return false;
     return true;
   }
 
-  function invoiceLineIsValid(line, receiptType) {
-    const units = Number(line?.individualUnits);
+  function invoiceLineIsValid(line, receiptType, customerAddress) {
+    const quantity = Number(line?.quantity);
     const discountPercent = Number(line?.discountPercent);
     const gross = moneyCents(line?.gross);
     const discount = moneyCents(line?.discountAmount);
@@ -119,10 +129,12 @@
     const vat = moneyCents(line?.vat);
     const total = moneyCents(line?.total);
     const unitPrice = moneyCents(line?.unitPrice);
+    const quantityHundredths = Math.round(quantity * 100);
+    const unitIsValid = lineUnitIsValid(line);
     if (
-      !String(line?.description || "").trim()
-      || !Number.isSafeInteger(units)
-      || units <= 0
+      !unitIsValid
+      || line?.description !== buildLineDescription(line?.boxes, line?.productName, customerAddress)
+      || !validArcaQuantity(quantity)
       || unitPrice === null
       || unitPrice <= 0
       || !Number.isFinite(discountPercent)
@@ -133,11 +145,68 @@
       || gross <= 0
       || net <= 0
       || total <= 0
+      || gross !== Math.round((unitPrice * quantityHundredths) / 100)
       || total !== net + vat
     ) return false;
     const discountedBase = gross - discount;
-    return discountedBase >= 0
-      && discountedBase === (receiptType === "Factura_A" ? net : total);
+    if (discountedBase < 0 || discountedBase !== (receiptType === "Factura_A" ? net : total)) {
+      return false;
+    }
+    return receiptType === "Factura_A"
+      ? vat === Math.round((net * CONTRACT.vatRate) / 100)
+      : net === Math.round(total / (1 + (CONTRACT.vatRate / 100)));
+  }
+
+  function lineUnitIsValid(line) {
+    const classification = classifyProduct(line?.productName);
+    if (!classification) return false;
+    if (classification === "units") {
+      const boxes = Number(line?.boxes);
+      const unitsPerBox = Number(line?.unitsPerBox);
+      return line?.unitValue === AUTOMATION.unitsValue
+        && line?.unitText === AUTOMATION.unitsText
+        && Number.isFinite(boxes)
+        && boxes > 0
+        && Number.isFinite(unitsPerBox)
+        && unitsPerBox > 0
+        && Number.isSafeInteger(Number(line?.quantity))
+        && Number(line.quantity) === boxes * unitsPerBox;
+    }
+    return line?.unitValue === AUTOMATION.kilogramsValue
+      && line?.unitText === AUTOMATION.kilogramsText
+      && Number(line?.quantity) === Number(line?.boxes);
+  }
+
+  function classifyProduct(productName) {
+    const normalized = normalizeDisplayText(productName).toLowerCase();
+    if (normalized === "materia prima pochoclo dulce") return "kilograms";
+    if (/^barra(?:\s|$)/.test(normalized)) return "units";
+    return "";
+  }
+
+  function normalizeDisplayText(value) {
+    return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function buildLineDescription(boxes, productName, customerAddress) {
+    const quantity = displayQuantity(boxes);
+    const product = normalizeDisplayText(productName);
+    const address = normalizeDisplayText(customerAddress);
+    return quantity && product && address
+      ? `${quantity} ${product} - Entrega: ${address}`
+      : "";
+  }
+
+  function displayQuantity(value) {
+    const quantity = Number(value);
+    if (!validArcaQuantity(quantity)) return "";
+    return String(quantity);
+  }
+
+  function validArcaQuantity(value) {
+    if (!Number.isFinite(value) || value <= 0) return false;
+    const hundredths = Math.round(value * 100);
+    return Number.isSafeInteger(hundredths) && Math.abs((value * 100) - hundredths) < 1e-7;
   }
 
   function invoiceTotalsAreValid(lines, totals) {
@@ -166,7 +235,10 @@
     CONTRACT,
     RECEIPT_RULES,
     argentinaCalendarIso,
+    buildLineDescription,
     calendarDayDifference,
+    classifyProduct,
+    normalizeDisplayText,
     preparedPayloadIsValid,
     ruleForReceipt,
     validIsoCalendarDate,

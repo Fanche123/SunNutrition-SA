@@ -53,13 +53,56 @@
 
     const units = individualUnits(boxes, unitsPerBox);
     if (units <= 0) throw pricingError("INVALID_INDIVIDUAL_UNITS");
+    const calculation = calculateMeasuredLine({
+      quantity: units,
+      unitPrice,
+      discountPercent,
+      vatRate: normalizedVatRate,
+      receiptType
+    });
+
+    return Object.freeze({
+      boxes: Number(boxes),
+      unitsPerBox: Number(unitsPerBox),
+      individualUnits: units,
+      unitPrice: calculation.unitPrice,
+      discountPercent: calculation.discountPercent,
+      vatRate: calculation.vatRate,
+      gross: calculation.gross,
+      discountAmount: calculation.discountAmount,
+      netSubtotal: calculation.netSubtotal,
+      vat: calculation.vat,
+      total: calculation.total
+    });
+  }
+
+  function calculateMeasuredLine({
+    quantity,
+    unitPrice,
+    discountPercent = 0,
+    vatRate,
+    receiptType
+  }) {
+    if (!RECEIPT_TYPES.includes(receiptType)) throw pricingError("INVALID_RECEIPT_TYPE");
+    const normalizedVatRate = Number(vatRate);
+    if (!VAT_RATES.includes(normalizedVatRate)) throw pricingError("INVALID_VAT_RATE");
+    if (receiptType === "Factura_C" && normalizedVatRate !== 0) {
+      throw pricingError("VAT_NOT_ALLOWED_FOR_C");
+    }
+    const measuredQuantity = Number(quantity);
+    if (!Number.isFinite(measuredQuantity) || measuredQuantity <= 0) {
+      throw pricingError("INVALID_MEASURED_QUANTITY");
+    }
     const discount = Number(discountPercent);
     if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
       throw pricingError("INVALID_DISCOUNT");
     }
 
-    const grossCents = money.multiplyCents(unitPrice, units);
-    const discountedCents = discountedSubtotalCents(unitPrice, units, discount);
+    const grossCents = money.multiplyCents(unitPrice, measuredQuantity);
+    const discountedCents = money.multiplyCents(
+      unitPrice,
+      measuredQuantity * ((100 - discount) / 100)
+    );
     const discountCents = grossCents - discountedCents;
     let netCents = discountedCents;
     let vatCents = 0;
@@ -77,9 +120,7 @@
     }
 
     return Object.freeze({
-      boxes: Number(boxes),
-      unitsPerBox: Number(unitsPerBox),
-      individualUnits: units,
+      quantity: measuredQuantity,
       unitPrice: money.normalize(unitPrice),
       discountPercent: discount,
       vatRate: normalizedVatRate,
@@ -115,6 +156,7 @@
     individualUnits,
     discountedSubtotalCents,
     calculateLine,
+    calculateMeasuredLine,
     calculateInvoice
   });
 });

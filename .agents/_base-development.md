@@ -78,7 +78,7 @@ La consulta es estrictamente read-only: descubre y lee hilos con las herramienta
 
 ## Validación proporcional y control consolidado
 
-El mismo hilo o subagente que implementa ejecuta una sola vez las pruebas propias proporcionales. El hilo visible conserva la responsabilidad final y entrega una única respuesta al usuario. Todo prompt declara riesgo e impacto visual.
+El mismo hilo o subagente que implementa ejecuta una sola vez las pruebas propias proporcionales. El hilo visible conserva la responsabilidad final y entrega una única respuesta al usuario. Todo prompt declara riesgo, impacto visual, `coordinatorThreadId` y `coordinatorHostId` actuales.
 
 Antes de cerrar, el ejecutor debe:
 
@@ -91,14 +91,18 @@ Antes de cerrar, el ejecutor debe:
 7. distinguir archivos propios de cambios preexistentes o concurrentes;
 8. informar comandos o casos, resultados, evidencia verificable, riesgos y toda prueba no ejecutada.
 
+Una vez cumplidos esos controles y disponible el resultado de forma segura, el ejecutor envía directamente y exactamente una vez al `coordinatorThreadId`/`coordinatorHostId`, mediante `send_message_to_thread` y antes de validadores finales o del gate: **“Implementación lista para prueba del usuario; validaciones automáticas y gate todavía en curso”**. Este hito no significa tarea completada, aprobada ni finalizada. El aviso incluye taskId/título, modo, riesgo/impacto visual, cambio funcional, ruta, pantalla o comprobación concreta sin inventar UI, recarga/reinicio, pruebas propias y límites de seguridad/datos. En Local indica si ya está servido; en Worktree aclara que no está integrado ni disponible en el Local principal y solo ofrece un puerto aislado temporal seguro. Las pruebas de dinero, datos reales, contabilidad, migraciones o acciones externas se limitan a lectura/sandbox y nunca invitan a mutaciones no autorizadas.
+
+El aviso no crea agentes, timers, automations ni polling. El ejecutor continúa sin esperar al usuario. Si la herramienta cross-thread no está disponible o falla, registra el fallo y sigue con validaciones y gate sin crear hilos alternativos. El Coordinador comunica los pasos seguros de prueba mientras la tarea continúa, sin relanzar pruebas ni tratar el hito como aprobación final.
+
 Además, toda tarea aplica antes de responder el “Gate operativo obligatorio de cierre” de `AGENTS.md`, aunque no haya tocado servidores. El ejecutor limpia únicamente sus procesos temporales y ejecuta `npm.cmd run server:ensure`; el comando restaura si hace falta y emite la evidencia completa. Está prohibido matar Node por nombre o por puerto sin verificar health, lock, PID, línea de comando y `cwd`. Los controles read-only no operan servidores.
 
 Para riesgo bajo o medio se cierra con esa validación simple, salvo solicitud expresa o señal concreta. Para riesgo alto —dinero, contabilidad, datos reales, base de datos, migraciones, integraciones complejas o arquitectura transversal—:
 
 1. crear exactamente un `watchdog_tarea` read-only al iniciar y solicitar al mismo agente una revisión ultrarrápida al alcanzar cada ventana aproximada de cinco minutos mediante `followup_task`, o usar un mecanismo recurrente nativo equivalente;
 2. no usar sleeps ni prometer periodicidad autónoma no soportada; una tarea menor a cinco minutos puede terminar sin segunda revisión;
-3. detener el Watchdog después de las pruebas propias y antes de validar;
-4. crear en paralelo tres `validador_tarea` read-only con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual;
+3. detener el Watchdog después de las pruebas propias y antes del aviso temprano y de validar;
+4. enviar el único aviso temprano directo y luego crear en paralelo tres `validador_tarea` read-only con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual;
 5. esperar y liberar los tres, ejecutar el gate operativo obligatorio de `AGENTS.md` y reunir su evidencia;
 6. crear exactamente un `consolidador_validacion` read-only, que revisa esa evidencia sin operar el servidor.
 

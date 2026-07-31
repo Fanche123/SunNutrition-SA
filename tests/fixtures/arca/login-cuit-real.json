@@ -1,0 +1,27 @@
+{
+  "url": "https://auth.afip.gob.ar/contribuyente_/login.xhtml",
+  "title": "Acceso con Clave Fiscal - ARCA",
+  "form": {
+    "id": "F1",
+    "name": "F1",
+    "method": "post",
+    "action": "https://auth.afip.gob.ar/contribuyente_/login.xhtml",
+    "username": {
+      "id": "F1:username",
+      "name": "F1:username",
+      "type": "number"
+    },
+    "submit": {
+      "id": "F1:btnSiguiente",
+      "name": "F1:btnSiguiente",
+      "type": "submit",
+      "title": "Siguiente",
+      "buttonText": "Siguiente"
+    },
+    "hiddenInputs": [
+      { "id": "F1_SUBMIT", "name": "F1_SUBMIT", "type": "hidden" },
+      { "id": "javax.faces.ViewState", "name": "javax.faces.ViewState", "type": "hidden" },
+      { "id": "javax.faces.ClientWindow", "name": "javax.faces.ClientWindow", "type": "hidden" }
+    ]
+  }
+}

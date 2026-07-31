@@ -40,6 +40,8 @@ Cambiar una relación comercial que afecte cobros, reportes o inventario requier
 - `assets/js/modules/commissions-entry.js`
 - `backend/services/sales-*.service.js`
 - `tools/arca-extension/*.js`
+- `tools/arca-extension/manifest.json`
+- `tests/fixtures/arca/*.html`
 - `backend/services/order-*.service.js` (sin coincidencias actuales)
 - `backend/services/customer-*.service.js` (sin coincidencias actuales)
 - `.agents/ventas.md`
@@ -69,7 +71,7 @@ No existe actualmente un servicio backend específico de Ventas o Clientes.
 
 Compartidos e integraciones relevantes:
 
-- Facturación ARCA: `tools/arca-extension/arca-fiscal-contract.js` es la única fuente de constantes fiscales consumida por backend, frontend y extensión; `background.js` autoriza transiciones seguras y `content-script.js` completa únicamente etapas reconocidas hasta revisión, sin emisión.
+- Facturación ARCA: `tools/arca-extension/arca-fiscal-contract.js` es la única fuente de constantes fiscales consumida por backend, frontend y extensión; `shared/order-pricing.js` centraliza importes por unidades o cantidades medidas; `background.js` autoriza transiciones seguras y `content-script.js` completa únicamente etapas reconocidas hasta revisión, sin emisión. Los fixtures sanitizados viven en `tests/fixtures/arca/`.
 - Coordinación comercial: `assets/js/modules/operational-data-coordinator.js`, `assets/js/modules/operational-shared.js`, `assets/js/core/api.js`.
 - Cobros/retenciones: `assets/js/modules/collections-retentions.js` (propietario Tesorería).
 - Otros consumidores: `assets/js/modules/received-check-entry.js`, `assets/js/modules/inventory-theoretical-model.js`.

@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "SunNutrition - Asistente ARCA",
-  "version": "1.1.6",
+  "version": "1.1.26",
   "minimum_chrome_version": "102",
   "description": "Completa datos preparados por el ERP y se detiene antes de emitir comprobantes.",
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "clipboardWrite"],
   "host_permissions": [
     "https://auth.afip.gob.ar/*",
     "https://fe.afip.gob.ar/*",
@@ -12,6 +12,10 @@
   ],
   "background": {
     "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Administrar clave ARCA cifrada",
+    "default_popup": "popup.html"
   },
   "content_scripts": [
     {

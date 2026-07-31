@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <title>RCEL</title>
+</head>
+<body>
+  <h1>Datos de la operación</h1>
+  <form name="datosOperacionForm" method="post" action="/rcel/jsp/genComResumenDatos.do">
+    <section data-line="1">
+      <input name="detalleCodigoArticulo" type="text">
+      <input name="detalleNroLinea" type="hidden" value="">
+      <textarea id="detalle_descripcion1" name="detalleDescripcion"></textarea>
+      <input id="detalle_cantidad1" name="detalleCantidad" type="text">
+      <select id="detalle_medida1" name="detalleMedida">
+        <option value="7" selected>seleccionar...</option>
+        <option value="1">kilogramos</option>
+        <option value="7">unidades</option>
+      </select>
+      <input id="detalle_precio1" name="detallePrecio" type="text">
+      <input id="detalle_porcentaje1" name="detallePorcentajeBonificacion" type="text">
+      <input id="detalle_importe_bonificacion1" name="detalleImporteBonificacion" type="text">
+      <input id="detalle_subtotal11" name="detalleSubtotal1" type="text" readonly>
+      <select id="detalle_tipo_iva1" name="detalleTipoIVA">
+        <option value="0">seleccionar...</option>
+        <option value="5">21%</option>
+      </select>
+      <input id="detalle_importe_iva1" name="detalleImporteIVA" type="text" readonly>
+      <input id="detalle_subtotal21" name="detalleSubtotal2" type="text" readonly>
+      <input name="Eliminar" type="button" value="X">
+    </section>
+    <input type="button" value="Agregar línea descripción">
+
+    <section data-tribute="1">
+      <input id="impuesto_codigo1" name="impuestoCodigo" type="hidden">
+      <input name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle1" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible1" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota1" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto1" name="impuestoMonto" type="text">
+    </section>
+    <section data-tribute="2">
+      <input id="impuesto_codigo2" name="impuestoCodigo" type="hidden">
+      <input name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle2" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible2" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota2" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto2" name="impuestoMonto" type="text">
+    </section>
+    <section data-tribute="3">
+      <input id="impuesto_codigo3" name="impuestoCodigo" type="hidden">
+      <input name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle3" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible3" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota3" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto3" name="impuestoMonto" type="text">
+    </section>
+    <section data-tribute="4">
+      <input id="impuesto_codigo4" name="impuestoCodigo" type="hidden">
+      <input name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle4" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible4" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota4" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto4" name="impuestoMonto" type="text">
+    </section>
+    <section data-tribute="5">
+      <input id="impuesto_codigo5" name="impuestoCodigo" type="hidden">
+      <input name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle5" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible5" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota5" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto5" name="impuestoMonto" type="text">
+    </section>
+    <section data-tribute="6">
+      <select id="impuesto_6">
+        <option value="999" selected>Seleccionar...</option>
+        <option value="1">Impuestos Nacionales</option>
+      </select>
+      <input id="impuesto_codigo6" name="impuestoCodigo" type="hidden">
+      <input id="impuesto_descripcion6" name="impuestoDescripcion" type="hidden">
+      <input id="impuesto_detalle6" name="impuestoDetalle" type="text">
+      <input id="impuesto_baseimponible6" name="impuestoBaseImponible" type="text">
+      <input id="impuesto_alicuota6" name="impuestoAlicuota" type="text">
+      <input id="impuesto_monto6" name="impuestoMonto" type="text">
+      <input id="ef" name="Eliminar" type="button" value="X">
+    </section>
+    <input name="agregarImp" type="button" value="Agregar otro Tributo">
+
+    <select id="numdecimalescantidad" name="numDecimalesCantidad">
+      <option value="2" selected>2 decimales</option>
+      <option value="4">4 decimales</option>
+      <option value="6">6 decimales</option>
+    </select>
+    <select id="numdecimalespreciounit" name="numDecimalesPrecioUnit">
+      <option value="2" selected>2 decimales</option>
+      <option value="4">4 decimales</option>
+      <option value="6">6 decimales</option>
+    </select>
+    <input type="button" value="&lt; Volver">
+    <input type="button" value="Continuar &gt;">
+  </form>
+  <input type="button" value="Menú Principal">
+</body>
+</html>

@@ -2003,11 +2003,11 @@ function switchView(view) {
   if (view === "arca-invoicing") {
     runViewLoad(view, async () => {
       await loadDeferredScript(
-        "tools/arca-extension/arca-fiscal-contract.js?v=20260730-fixed-fiscal",
+        "tools/arca-extension/arca-fiscal-contract.js?v=20260730-operation-data",
         "initializeArcaFiscalContract"
       );
       const initialize = await loadDeferredScript(
-        "assets/js/modules/arca-invoicing.js?v=20260730-fixed-fiscal",
+        "assets/js/modules/arca-invoicing.js?v=20260730-operation-data",
         "initializeArcaInvoicing"
       );
       await initialize();

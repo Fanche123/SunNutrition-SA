@@ -152,8 +152,9 @@
     body.innerHTML = products.map((product) => `<tr>
       <td>${escapeHtml(displayNameLabel(product.producto) || "-")}</td>
       <td class="num">${escapeHtml(formatNumber(product.cantidad_cajas))}</td>
-      <td class="num">${escapeHtml(formatNumber(product.unidades_por_caja))}</td>
-      <td class="num">${escapeHtml(formatNumber(product.unidades_individuales))}</td>
+      <td class="num">${escapeHtml(product.unidades_por_caja == null ? "-" : formatNumber(product.unidades_por_caja))}</td>
+      <td class="num">${escapeHtml(formatNumber(product.cantidad_arca))}</td>
+      <td>${escapeHtml(product.unidad_arca || "-")}</td>
       <td class="num">${escapeHtml(formatMoney(product.precio_unidad_individual))}</td>
       <td class="num">${escapeHtml(`${formatNumber(product.bonificacion)}%`)}</td>
     </tr>`).join("");
@@ -217,7 +218,7 @@
     const body = byId("arca-prepared-lines");
     if (body) body.innerHTML = payload.lines.map((line) => `<tr>
       <td>${escapeHtml(line.description)}</td>
-      <td class="num">${escapeHtml(formatNumber(line.individualUnits))}</td>
+      <td class="num">${escapeHtml(`${formatNumber(line.quantity)} ${line.unitText}`)}</td>
       <td class="num">${escapeHtml(formatMoney(line.unitPrice))}</td>
       <td class="num">${escapeHtml(`${formatNumber(line.discountPercent)}%`)}</td>
       <td class="num">${escapeHtml(`${formatNumber(line.vatRate)}%`)}</td>
@@ -273,18 +274,35 @@
         sessionId: preparedForExtension.sessionId,
         payload: preparedForExtension.payload
       });
+      const responseGeneration = Number(response?.generation);
+      const hasValidGeneration = response?.ok === true
+        && Number.isSafeInteger(responseGeneration)
+        && responseGeneration > 0;
+      if (hasValidGeneration) preparedForExtension.generation = responseGeneration;
       if (state.launchSequence !== launchSequence || state.prepared !== preparedForExtension) {
-        await cancelExtensionSession(extensionId, preparedForExtension.sessionId, { closeTab: true });
+        if (hasValidGeneration) {
+          await cancelExtensionSession(extensionId, preparedForExtension.sessionId, {
+            closeTab: true,
+            revision: preparedForExtension.payload.revision,
+            generation: preparedForExtension.generation
+          });
+        }
         await recordTerminalStatus("interrupted", "manual_abort", preparedForExtension.orderId);
         return;
       }
-      if (!response?.ok) {
-        const preparationError = new Error(extensionPreparationError(response));
-        preparationError.reason = safePreparationRejectionReason(response?.reason);
+      if (!response?.ok || !hasValidGeneration) {
+        const rejectedResponse = response?.ok
+          ? { ...response, reason: "invalid_extension_response" }
+          : response;
+        const preparationError = new Error(extensionPreparationError(rejectedResponse));
+        preparationError.reason = safePreparationRejectionReason(rejectedResponse?.reason);
         throw preparationError;
       }
       state.sessionActive = true;
-      setStatus("ARCA abierto. Login, MFA y CAPTCHA son manuales. El ERP seguirá el estado sin leer secretos.", "pending");
+      setStatus(
+        "ARCA abierto. La extensión usa la clave cifrada; MFA y CAPTCHA siguen siendo manuales. El ERP no lee secretos.",
+        "pending"
+      );
       startPolling();
     } catch (error) {
       if (state.launchSequence === launchSequence && state.prepared === preparedForExtension) {
@@ -399,7 +417,10 @@
       const extensionId = extensionIdValue();
       if (validExtensionId(extensionId)) {
         try {
-          await cancelExtensionSession(extensionId, prepared.sessionId);
+          await cancelExtensionSession(extensionId, prepared.sessionId, {
+            revision: prepared.payload.revision,
+            generation: prepared.generation
+          });
         } catch {
           // La sesión local se invalida aunque la extensión ya no responda.
         }
@@ -419,10 +440,17 @@
     const prepared = state.prepared;
     if (!prepared || !state.sessionActive) return;
     const extensionId = extensionIdValue();
-    if (validExtensionId(extensionId) && root.chrome?.runtime?.sendMessage) {
+    if (
+      validExtensionId(extensionId)
+      && root.chrome?.runtime?.sendMessage
+      && Number.isSafeInteger(prepared.generation)
+      && prepared.generation > 0
+    ) {
       root.chrome.runtime.sendMessage(extensionId, {
         type: "CANCEL_SESSION",
-        sessionId: prepared.sessionId
+        sessionId: prepared.sessionId,
+        revision: prepared.payload.revision,
+        generation: prepared.generation
       }, () => void root.chrome.runtime.lastError);
     }
     root.fetch?.("/api/sales/arca/audit", {
@@ -540,7 +568,8 @@
       payload_invalid: "Los datos preparados no cumplen el contrato fiscal vigente. Volvé a preparar la factura.",
       session_expired: "La sesión preparada venció. Volvé a preparar la factura.",
       origin_rejected: "La extensión rechazó el origen. Abrí el ERP desde http://127.0.0.1:3000.",
-      association_failed: "La pestaña abierta no pudo asociarse a la sesión nueva. Cancelá y volvé a preparar."
+      association_failed: "La pestaña abierta no pudo asociarse a la sesión nueva. Cancelá y volvé a preparar.",
+      manual_action_required: "Guardá nuevamente la clave cifrada desde el ícono de la extensión."
     }[reason] || "La extensión devolvió una respuesta no reconocida al preparar la sesión.";
   }
 
@@ -548,17 +577,28 @@
     const allowed = new Set([
       "association_failed",
       "contract_incompatible",
+      "manual_action_required",
       "origin_rejected",
       "payload_invalid",
-      "session_expired"
+      "session_expired",
+      "invalid_extension_response"
     ]);
     return allowed.has(String(reason || "")) ? String(reason) : "extension_unavailable";
   }
 
-  function cancelExtensionSession(extensionId, sessionId, { closeTab = false } = {}) {
+  function cancelExtensionSession(
+    extensionId,
+    sessionId,
+    { closeTab = false, revision = "", generation = 0 } = {}
+  ) {
+    if (!Number.isSafeInteger(generation) || generation <= 0) {
+      return Promise.resolve({ ok: false, status: "rejected", reason: "invalid_extension_response" });
+    }
     return extensionMessage(extensionId, {
       type: "CANCEL_SESSION",
       sessionId,
+      revision,
+      generation,
       closeTab
     });
   }
@@ -635,7 +675,7 @@
     };
     return {
       prepared: "Datos preparados; abriendo ARCA...",
-      waiting_login: "Esperando el login manual en ARCA. La extensión no lee credenciales.",
+      waiting_login: "Completando el acceso con la clave cifrada. MFA y CAPTCHA requieren intervención manual.",
       waiting_representative: "Validando y eligiendo SunNutrition en ARCA.",
       service_recognized: "Comprobantes en línea reconocido; abriendo Generar comprobantes.",
       completing_stage: `Completando ${stageLabels[stage] || "una etapa reconocida"} en ARCA.`,
@@ -742,7 +782,7 @@
       setInvoiceDateFromOrder,
       suggestReceiptType,
       validExtensionId,
-      __testing: { openArca, state }
+      __testing: { cancelOnPageHide, openArca, state }
     };
   }
 })(typeof globalThis !== "undefined" ? globalThis : this);

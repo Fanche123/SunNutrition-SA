@@ -283,7 +283,10 @@ test("preparar y auditar no crea ventas ni guarda payload o secretos", async () 
   assert.equal(fixture.responses[0].status, 200);
   assert.equal(fixture.responses[0].payload.payload.automation.representativeCuit, "30717550419");
   assert.equal(fixture.responses[0].payload.payload.automation.pointOfSale, "00001");
-  assert.equal(fixture.responses[0].payload.payload.lines[0].description, "Barra Pop");
+  assert.equal(
+    fixture.responses[0].payload.payload.lines[0].description,
+    "2 Barra - Entrega: Calle 1, Rosario"
+  );
   assert.equal(JSON.stringify(fixture.cache.tables.ventas.rows), salesBefore);
   const auditText = fs.readFileSync(fixture.auditFile, "utf8");
   assert.match(auditText, /"status":"prepared"/);
@@ -323,4 +326,110 @@ test("rechaza pedido facturado por carrera sin alterar datos", () => {
 test("rechaza pedido entregado por carrera sin alterar datos", () => {
   const fixture = serviceFixture();
   assert.throws(() => fixture.service.prepare(validPrepare(2), fixture.cache), /entrega real/);
+});
+
+test("prepara el ejemplo exacto 40 cajas por 140 unidades con domicilio normalizado", () => {
+  const fixture = serviceFixture();
+  fixture.cache.tables.clientes.rows[0].direccion = "Miralla_235";
+  fixture.cache.tables.clientes.rows[0].localidad = "Liniers";
+  fixture.cache.tables.productos.rows[0].nombre_producto = "Barra_Pop_140Ud";
+  fixture.cache.tables.productos.rows[0].cantidad_individual = 140;
+  Object.assign(fixture.cache.tables.detalle_pedidos.rows[0], {
+    cantidad_cajas: 40,
+    precio_ud: 12.5,
+    bonificacion: 5
+  });
+
+  const prepared = fixture.service.prepare(validPrepare(), fixture.cache);
+  const line = prepared.lines[0];
+  assert.equal(line.productName, "Barra Pop 140Ud");
+  assert.equal(line.description, "40 Barra Pop 140Ud - Entrega: Miralla 235, Liniers");
+  assert.equal(line.boxes, 40);
+  assert.equal(line.unitsPerBox, 140);
+  assert.equal(line.quantity, 5600);
+  assert.equal(line.individualUnits, 5600);
+  assert.equal(line.unitValue, "7");
+  assert.equal(line.unitText, "unidades");
+  assert.equal(line.unitPrice, 12.5);
+  assert.equal(line.discountPercent, 5);
+  assert.equal(line.vatRate, 21);
+  assert.equal(prepared.automation.productCode, "4");
+  assert.equal(prepared.customer.address, "Miralla_235, Liniers");
+});
+
+test("Materia Prima pochoclo dulce usa la cantidad vendida como kg sin multiplicarla", () => {
+  const fixture = serviceFixture();
+  fixture.cache.tables.productos.rows[0] = {
+    id_producto: 20,
+    nombre_producto: "Materia_Prima_Pochoclo_Dulce",
+    cantidad_individual: 1
+  };
+  Object.assign(fixture.cache.tables.detalle_pedidos.rows[0], {
+    cantidad_cajas: 128.5,
+    precio_ud: "$843.00",
+    bonificacion: "10.00%"
+  });
+
+  const prepared = fixture.service.prepare(validPrepare(), fixture.cache);
+  const line = prepared.lines[0];
+  assert.equal(line.productName, "Materia Prima Pochoclo Dulce");
+  assert.equal(line.description, "128.5 Materia Prima Pochoclo Dulce - Entrega: Calle 1, Rosario");
+  assert.equal(line.boxes, 128.5);
+  assert.equal(line.unitsPerBox, null);
+  assert.equal(line.quantity, 128.5);
+  assert.equal(Object.hasOwn(line, "individualUnits"), false);
+  assert.equal(line.unitValue, "1");
+  assert.equal(line.unitText, "kilogramos");
+  assert.equal(line.unitPrice, 843);
+  assert.equal(line.discountPercent, 10);
+  assert.equal(line.gross, 108325.5);
+});
+
+test("preserva exactamente todas las líneas reales del pedido sin deduplicarlas", () => {
+  const fixture = serviceFixture();
+  fixture.cache.tables.productos.rows.push({
+    id_producto: 21,
+    nombre_producto: "Barra_My_Pop_40Ud",
+    cantidad_individual: 40
+  });
+  fixture.cache.tables.detalle_pedidos.rows.push({
+    id_detalle_pedido: 107,
+    id_pedido: 1,
+    id_producto: 21,
+    cantidad_cajas: 3,
+    precio_ud: 80,
+    bonificacion: 0
+  });
+
+  const prepared = fixture.service.prepare(validPrepare(), fixture.cache);
+  assert.equal(prepared.lines.length, 2);
+  assert.deepEqual(prepared.lines.map((line) => line.id), ["101", "107"]);
+  assert.deepEqual(prepared.lines.map((line) => line.quantity), [20, 120]);
+});
+
+test("bloquea producto desconocido, unidades faltantes, kg ambiguos y fuentes financieras inválidas", () => {
+  const unknown = serviceFixture();
+  unknown.cache.tables.productos.rows[0].nombre_producto = "Alfajor";
+  assert.throws(() => unknown.service.prepare(validPrepare(), unknown.cache), /ARCA/);
+
+  const missingUnits = serviceFixture();
+  missingUnits.cache.tables.productos.rows[0].cantidad_individual = "";
+  assert.throws(() => missingUnits.service.prepare(validPrepare(), missingUnits.cache), /unidades por caja/);
+
+  const ambiguousKg = serviceFixture();
+  ambiguousKg.cache.tables.productos.rows[0].nombre_producto = "Materia_Prima_Pochoclo_Dulce";
+  ambiguousKg.cache.tables.detalle_pedidos.rows[0].cantidad_cajas = "";
+  assert.throws(() => ambiguousKg.service.prepare(validPrepare(), ambiguousKg.cache), /cajas|kilogramos vendidos/);
+
+  const missingAddress = serviceFixture();
+  missingAddress.cache.tables.clientes.rows[0].direccion = "";
+  assert.throws(() => missingAddress.service.prepare(validPrepare(), missingAddress.cache), /domicilio del cliente/);
+
+  const invalidPrice = serviceFixture();
+  invalidPrice.cache.tables.detalle_pedidos.rows[0].precio_ud = "importe desconocido";
+  assert.throws(() => invalidPrice.service.prepare(validPrepare(), invalidPrice.cache), /precio individual/);
+
+  const invalidDiscount = serviceFixture();
+  invalidDiscount.cache.tables.detalle_pedidos.rows[0].bonificacion = "sin dato";
+  assert.throws(() => invalidDiscount.service.prepare(validPrepare(), invalidDiscount.cache), /bonific/);
 });

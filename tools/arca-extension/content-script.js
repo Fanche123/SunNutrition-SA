@@ -14,12 +14,25 @@
   const EMISSION_OPTION_RETRY_MS = 250;
   const RECIPIENT_LOOKUP_TIMEOUT_MS = 5000;
   const RECIPIENT_LOOKUP_RETRY_MS = 250;
+  const AUTHORIZED_LOGIN_CUIT = "20398041063";
+  const LOGIN_URL = "https://auth.afip.gob.ar/contribuyente_/login.xhtml";
+  const LOGIN_PASSWORD_ACTION = "https://auth.afip.gob.ar/contribuyente_/loginClave.xhtml";
   const ARCA_SERVICE_HOSTS = new Set(["fe.afip.gob.ar", "serviciosjava2.afip.gob.ar"]);
+  const REPRESENTATIVE_HOST = "fe.afip.gob.ar";
+  const REPRESENTATIVE_PATH = "/rcel/jsp/index_bis.jsp";
+  const REPRESENTATIVE_ACTION_PATH = "/rcel/jsp/setearContribuyente.do";
+  const REPRESENTATIVE_TITLE = "RCEL";
+  const REPRESENTATIVE_PROMPT = "Seleccione la Empresa a representar:";
+  const REPRESENTATIVE_DOM_CONTRACT = "representative-selection-v1";
+  const COMPANY_REPRESENTATIVE_NAME = "SUNNUTRITION S.A.";
+  const PERSONAL_REPRESENTATIVE_NAME = "DE MAYO BENJAMIN";
   const EMISSION_HOST = "fe.afip.gob.ar";
   const EMISSION_PATH = "/rcel/jsp/genComDatosEmisor.do";
   const EMISSION_ACTION_PATH = "/rcel/jsp/genComDatosReceptor.do";
   const RECIPIENT_PATH = "/rcel/jsp/genComDatosReceptor.do";
   const RECIPIENT_ACTION_PATH = "/rcel/jsp/genComDatosOperacion.do";
+  const OPERATION_PATH = "/rcel/jsp/genComDatosOperacion.do";
+  const OPERATION_ACTION_PATH = "/rcel/jsp/genComResumenDatos.do";
   const OTHER_PAYMENT_IDS = Object.freeze([
     "formadepago1",
     "formadepago2",
@@ -54,7 +67,14 @@
   let emissionOptionAttempts = 0;
   let recipientLookupStartedAt = null;
   let recipientLookupTimer = null;
-  const stageGuard = createStageGuard();
+  let pendingLoginAction = "";
+  let pendingInterimAuthorization = null;
+  let stageGuard = createStageGuard();
+  let startupState = "idle";
+  let pendingBanner = null;
+  let bannerMountScheduled = false;
+  let pageObserver = null;
+  let documentLifecycleInstalled = false;
 
   function normalize(value) {
     return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
@@ -78,6 +98,17 @@
     return Boolean(control && FINAL_ACTION_PATTERN.test(elementText(control)));
   }
 
+  function isForbiddenOperationAction(control) {
+    const text = normalizeActionText(control);
+    const name = normalize(control?.name);
+    return name === "agregarimp"
+      || name === "eliminar"
+      || text === "agregar linea descripcion"
+      || text === "agregar otro tributo"
+      || text === "volver"
+      || text === "menu principal";
+  }
+
   function blockSyntheticFinalActions() {
     document.addEventListener("click", (event) => {
       const control = event.target?.closest?.("button, input[type='submit'], input[type='button'], a");
@@ -85,6 +116,7 @@
         !event.isTrusted
         && (
           currentStage === "review"
+          || isForbiddenOperationAction(control)
           || (isFinalAction(event.target) && !interimActionAllowed(control, currentStage))
         )
       ) {
@@ -168,6 +200,283 @@
       && url.pathname === pathname
       && url.search === ""
       && url.hash === "";
+  }
+
+  function exactLoginUrl(url, expected) {
+    let expectedUrl;
+    try {
+      expectedUrl = new URL(expected);
+    } catch {
+      return false;
+    }
+    const pathnameMatches = url.pathname === expectedUrl.pathname
+      || url.pathname === `${expectedUrl.pathname}/`;
+    return url.protocol === "https:"
+      && url.protocol === expectedUrl.protocol
+      && url.hostname === expectedUrl.hostname
+      && url.port === ""
+      && url.username === ""
+      && url.password === ""
+      && pathnameMatches;
+  }
+
+  function exactLoginAction(url, expected) {
+    let expectedUrl;
+    try {
+      expectedUrl = new URL(expected);
+    } catch {
+      return false;
+    }
+    return url.protocol === expectedUrl.protocol
+      && url.hostname === expectedUrl.hostname
+      && url.port === ""
+      && url.username === ""
+      && url.password === ""
+      && url.pathname === expectedUrl.pathname
+      && url.search === ""
+      && url.hash === "";
+  }
+
+  function uniqueElementReferences(elements) {
+    return [...new Set(elements || [])];
+  }
+
+  function loginScreenContract() {
+    let pageUrl;
+    try {
+      pageUrl = new URL(root.location?.href || "");
+    } catch {
+      return { ok: false, reason: "login_url_mismatch" };
+    }
+    if (!exactLoginUrl(pageUrl, LOGIN_URL)) return { ok: false, reason: "login_url_mismatch" };
+    if (document.title !== "Acceso con Clave Fiscal - ARCA") {
+      return { ok: false, reason: "login_title_mismatch" };
+    }
+    const pageText = normalize(document.body?.innerText || document.body?.textContent || "");
+    if (/(clave|contrasena).*(incorrect|invalida)|error.*autentic|acceso denegado/.test(pageText)) {
+      return { ok: false, reason: "login_authentication_error" };
+    }
+    const forms = uniqueElementReferences(document.querySelectorAll('form#F1[name="F1"]'));
+    if (forms.length !== 1) return { ok: false, reason: "login_form_not_unique" };
+    const form = forms[0];
+    if (String(form.id || form.getAttribute?.("id") || "") !== "F1"
+      || String(form.name || form.getAttribute?.("name") || "") !== "F1") {
+      return { ok: false, reason: "login_form_identity_mismatch" };
+    }
+    if (normalize(form.method || form.getAttribute?.("method")) !== "post") {
+      return { ok: false, reason: "login_form_method_mismatch" };
+    }
+    let actionUrl;
+    try {
+      actionUrl = new URL(form.getAttribute?.("action") || form.action || "", pageUrl.href);
+    } catch {
+      return { ok: false, reason: "login_form_action_mismatch" };
+    }
+    const usernameNumber = [...form.querySelectorAll('input#F1\\:username[name="F1:username"][type="number"]')];
+    const usernameText = [...form.querySelectorAll('input#F1\\:username[name="F1:username"][type="text"]')];
+    const password = [...form.querySelectorAll('input#F1\\:password[name="F1:password"][type="password"]')];
+    const next = [...form.querySelectorAll('input#F1\\:btnSiguiente[name="F1:btnSiguiente"][type="submit"][title="Siguiente"]')];
+    const enter = [...form.querySelectorAll('input#F1\\:btnIngresar[name="F1:btnIngresar"][type="submit"][title="Ingresar"]')];
+    const hiddenCaptcha = [...form.querySelectorAll('input#F1\\:captcha[name="F1:captcha"][type="hidden"]')];
+    const visibleSecurityControls = [...document.querySelectorAll(
+      "input, select, textarea, iframe, [class], [aria-label], [src]"
+    )]
+      .filter((control) => {
+        const identity = [
+          control.id,
+          control.name,
+          control.title,
+          control.className,
+          control.getAttribute?.("aria-label"),
+          control.getAttribute?.("src"),
+          control.textContent
+        ].join(" ");
+        return /(captcha|mfa|otp)/i.test(identity)
+          && !(control === hiddenCaptcha[0] && control.type === "hidden");
+      });
+    if (visibleSecurityControls.length) {
+      return { ok: false, reason: "login_manual_security_required" };
+    }
+    if (exactLoginAction(actionUrl, LOGIN_URL)) {
+      if (usernameNumber.length !== 1 || next.length !== 1
+        || usernameText.length || password.length || enter.length) {
+        return { ok: false, reason: "login_cuit_controls_mismatch" };
+      }
+      if (usernameNumber[0].form !== form || next[0].form !== form) {
+        return { ok: false, reason: "login_cuit_controls_form_mismatch" };
+      }
+      return { ok: true, stage: "login_cuit", form, username: usernameNumber[0], submit: next[0] };
+    }
+    if (exactLoginAction(actionUrl, LOGIN_PASSWORD_ACTION)) {
+      if (usernameText.length !== 1 || password.length !== 1 || enter.length !== 1
+        || hiddenCaptcha.length !== 1 || usernameNumber.length || next.length) {
+        return { ok: false, reason: "login_password_controls_mismatch" };
+      }
+      if ([usernameText[0], password[0], hiddenCaptcha[0], enter[0]].some((control) => control.form !== form)) {
+        return { ok: false, reason: "login_password_controls_form_mismatch" };
+      }
+      if (String(usernameText[0].value || "").trim() !== AUTHORIZED_LOGIN_CUIT) {
+        return { ok: false, reason: "login_cuit_mismatch" };
+      }
+      return {
+        ok: true,
+        stage: "login_password",
+        form,
+        username: usernameText[0],
+        password: password[0],
+        hiddenCaptcha: hiddenCaptcha[0],
+        submit: enter[0]
+      };
+    }
+    return { ok: false, reason: "login_form_action_mismatch" };
+  }
+
+  function authorizeLoginAction(stage, perform, cleanup = () => {}) {
+    if (pendingLoginAction) return;
+    pendingLoginAction = stage;
+    const authorizedSessionId = activeSession?.sessionId;
+    root.chrome.runtime.sendMessage(sessionMessage("AUTHORIZE_LOGIN_ACTION", { stage }), (response) => {
+      absorbSessionVersion(response);
+      if (terminalStatus || !activeSession || activeSession.sessionId !== authorizedSessionId) {
+        cleanup();
+        return;
+      }
+      if (root.chrome.runtime.lastError || !response?.ok || response.stage !== stage) {
+        cleanup();
+        return interrupt(
+          "manual_action_required",
+          "Esta transición de acceso ya fue utilizada o no está autorizada para la sesión."
+        );
+      }
+      perform();
+    });
+  }
+
+  function clearTransientCredential() {
+    root.chrome.runtime.sendMessage({ type: "CLEAR_TRANSIENT_CREDENTIAL" }, () => {
+      void root.chrome.runtime.lastError;
+    });
+  }
+
+  function sessionMessage(type, fields = {}) {
+    return {
+      type,
+      sessionId: activeSession?.sessionId || "",
+      revision: activeSession?.revision || activeSession?.payload?.revision || "",
+      generation: activeSession?.generation,
+      ...fields
+    };
+  }
+
+  function absorbSessionVersion(response) {
+    if (!activeSession || !response) return;
+    if (
+      Number.isSafeInteger(response.generation)
+      && Number.isSafeInteger(activeSession.generation)
+      && response.generation !== activeSession.generation
+    ) return;
+    if (Number.isSafeInteger(response.generation)) activeSession.generation = response.generation;
+    if (
+      Number.isSafeInteger(response.sequence)
+      && (!Number.isSafeInteger(activeSession.sequence) || response.sequence >= activeSession.sequence)
+    ) activeSession.sequence = response.sequence;
+  }
+
+  function applyCredentialToPassword(field, secret) {
+    const descriptor = root.HTMLInputElement
+      ? Object.getOwnPropertyDescriptor(root.HTMLInputElement.prototype, "value")
+      : Object.getOwnPropertyDescriptor(field || {}, "value");
+    if (!descriptor?.set || field?.type !== "password") return false;
+    descriptor.set.call(field, secret);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  function runLoginAutomation() {
+    if (terminalStatus || !activeSession) return;
+    const contract = loginScreenContract();
+    if (!contract.ok) {
+      clearTransientCredential();
+      return interrupt(
+        "selector_changed",
+        `La pantalla inicial de ARCA no coincide con el contrato seguro: ${contract.reason}.`
+      );
+    }
+    currentStage = contract.stage;
+    if (contract.stage === "login_cuit") {
+      return authorizeLoginAction("login_cuit", () => {
+        const current = loginScreenContract();
+        if (!current.ok || current.stage !== "login_cuit") {
+          return interrupt("selector_changed", "La pantalla de CUIT cambió antes de la transición.");
+        }
+        if (!applyFieldValue(current.username, AUTHORIZED_LOGIN_CUIT)
+          || String(current.username.value) !== AUTHORIZED_LOGIN_CUIT) {
+          return interrupt("selector_changed", "ARCA revirtió el CUIT autorizado.");
+        }
+        const verified = loginScreenContract();
+        if (
+          !verified.ok
+          || verified.stage !== "login_cuit"
+          || verified.form !== current.form
+          || verified.username !== current.username
+          || verified.submit !== current.submit
+        ) {
+          return interrupt("selector_changed", "El formulario F1 o el botón Siguiente cambió después de completar el CUIT.");
+        }
+        showBanner("CUIT autorizado verificado. Avanzando a la clave.", "complete");
+        if (!activateInterimAction(verified.submit, "login_cuit")) {
+          return interrupt("unexpected_response", "ARCA no aceptó Siguiente.");
+        }
+        terminalStatus = "login_submitted";
+      });
+    }
+    if (pendingLoginAction) return;
+    const requestedSessionId = activeSession.sessionId;
+    authorizeLoginAction("login_password", () => {
+      root.chrome.runtime.sendMessage(sessionMessage("CONSUME_ENCRYPTED_CREDENTIAL"), (response) => {
+        absorbSessionVersion(response);
+        let secret = response?.ok ? response.secret : null;
+        try {
+          if (
+            root.chrome.runtime.lastError
+            || !secret
+            || terminalStatus
+            || !activeSession
+            || activeSession.sessionId !== requestedSessionId
+          ) {
+            return interrupt("manual_action_required", "No hay una clave cifrada vigente para esta sesión.");
+          }
+          try {
+            const verified = loginScreenContract();
+            if (!verified.ok || verified.stage !== "login_password") {
+              return interrupt("selector_changed", "La pantalla de clave cambió antes de completar el campo.");
+            }
+            verified.password.focus();
+            verified.password.click();
+            if (document.activeElement !== verified.password) {
+              return interrupt("manual_action_required", "ARCA rechazó el foco del campo de clave.");
+            }
+            if (!applyCredentialToPassword(verified.password, secret)) {
+              return interrupt("selector_changed", "ARCA no aceptó el setter seguro del campo de clave.");
+            }
+            showBanner("Clave cifrada aplicada de forma transitoria. Ingresando exactamente una vez.", "complete");
+            if (!activateInterimAction(verified.submit, "login_password")) {
+              return interrupt("unexpected_response", "ARCA no aceptó Ingresar.");
+            }
+            root.chrome.runtime.sendMessage(sessionMessage("COMPLETE_LOGIN_ACTION"), (completeResponse) => {
+              absorbSessionVersion(completeResponse);
+              void root.chrome.runtime.lastError;
+            });
+            terminalStatus = "login_submitted";
+          } finally {
+            secret = null;
+          }
+        } finally {
+          secret = null;
+        }
+      });
+    });
   }
 
   function emissionScreenContract() {
@@ -565,6 +874,10 @@
       if (matchBy === "visible_text") {
         return normalize(option.textContent) === expected;
       }
+      if (matchBy === "value_and_text") {
+        return String(option.value || "").trim() === String(value || "").trim()
+          && normalize(option.textContent) === expected;
+      }
       return normalize(option.textContent) === expected || normalize(option.value) === expected;
     });
     return matches.length === 1 ? matches[0] : null;
@@ -907,7 +1220,7 @@
     if (stage === "review") {
       terminalStatus = "review_reached";
       showBanner("Revisión final alcanzada. La automatización terminó. Revisá todo y emití únicamente si decidís hacerlo.", "review");
-      return updateSession("review_reached", "", "review");
+      return reachReview();
     }
 
     const payload = activeSession.payload;
@@ -915,7 +1228,7 @@
       return interrupt("unexpected_response", "Los datos preparados no respetan la configuración fiscal esperada.");
     }
     if (stage === "initial") {
-      updateSession("completing_stage", "", "initial");
+      reportStageProgress("started", "initial");
       const result = completeInitialFields(payload);
       if (result.ok) return continueFromStage("Datos iniciales completos.", "initial");
       if (result.pending) {
@@ -933,7 +1246,7 @@
       return interrupt("selector_changed", message);
     }
     if (stage === "emission") {
-      updateSession("completing_stage", "", "emission");
+      reportStageProgress("started", "emission");
       const result = completeEmissionFields(payload);
       if (result.ok) {
         emissionOptionAttempts = 0;
@@ -978,7 +1291,7 @@
       );
     }
     if (stage === "recipient") {
-      updateSession("completing_stage", "", "recipient");
+      reportStageProgress("started", "recipient");
       const result = completeRecipientFields(payload);
       if (result.ok) {
         resetRecipientLookupWait();
@@ -1035,24 +1348,35 @@
       );
     }
     if (stage === "lines") {
-      updateSession("completing_stage", "", "lines");
-      const result = completeLineRows(payload.lines, payload.automation);
-      return result.ok
-        ? continueFromStage("Detalle completo.", "lines")
-        : interrupt(result.reason, result.message);
+      reportStageProgress("started", "lines");
+      const result = completeOperationFields(payload);
+      if (result.ok) {
+        return continueFromOperationStage(payload, "Datos de la operación completos.");
+      }
+      return interrupt(
+        result.reason === "unexpected_response" ? "unexpected_response" : "selector_changed",
+        result.message || `Falló el contrato DOM de Datos de la operación: ${result.reason}.`
+      );
     }
     if (stage === "representative_selection") {
-      const control = findRepresentativeControl(payload.automation);
-      if (!control) {
-        return interrupt(
-          "selector_changed",
-          "No se encontró una única empresa representada con el nombre legal configurado."
-        );
+      const contract = representativeScreenContract(payload.automation);
+      if (!contract.ok) {
+        return interrupt("selector_changed", representativeFailureMessage(contract.reason));
       }
+      let revalidationReason = "representative_control_replaced";
       return authorizeInterimAction(
-        control,
+        contract.companyControl,
         "representative",
-        "SunNutrition identificada por el nombre legal visible. Abriendo la empresa representada."
+        "SunNutrition identificada por el nombre legal visible. Abriendo la empresa representada.",
+        (authorizedControl) => {
+          const current = representativeScreenContract(payload.automation);
+          if (!current.ok) {
+            revalidationReason = current.reason;
+            return null;
+          }
+          return current.companyControl === authorizedControl ? current.companyControl : null;
+        },
+        () => representativeFailureMessage(revalidationReason, true)
       );
     }
     if (stage === "service_menu") {
@@ -1090,21 +1414,134 @@
   }
 
   function findRepresentativeControl(automation) {
-    const expectedName = normalize(automation?.representativeName);
-    if (!expectedName) return null;
-    const matches = [...document.querySelectorAll(
-      "button, input[type='submit'], input[type='button'], a"
-    )].filter((control) => (
-      normalize(elementText(control)) === expectedName
-      && !FINAL_ACTION_PATTERN.test(elementText(control))
-    ));
-    return matches.length === 1 ? matches[0] : null;
+    const contract = representativeScreenContract(automation);
+    return contract.ok ? contract.companyControl : null;
+  }
+
+  function representativeScreenContract(automation) {
+    let url;
+    try {
+      url = new URL(root.location?.href || "");
+    } catch {
+      return { ok: false, reason: "representative_url_mismatch" };
+    }
+    if (
+      url.protocol !== "https:"
+      || url.hostname !== REPRESENTATIVE_HOST
+      || url.port !== ""
+      || url.pathname !== REPRESENTATIVE_PATH
+      || url.search !== ""
+      || url.hash !== ""
+    ) return { ok: false, reason: "representative_url_mismatch" };
+    if (document.title !== REPRESENTATIVE_TITLE) {
+      return { ok: false, reason: "representative_title_mismatch" };
+    }
+    const normalizedPrompt = normalize(REPRESENTATIVE_PROMPT);
+    const promptMatches = [...document.querySelectorAll("body *")]
+      .filter((element) => (
+        normalize(element?.textContent) === normalizedPrompt
+        && ![...(element?.children || [])].some(
+          (child) => normalize(child?.textContent) === normalizedPrompt
+        )
+      ));
+    if (promptMatches.length !== 1) {
+      return { ok: false, reason: "representative_prompt_mismatch" };
+    }
+    const forms = [...document.querySelectorAll('form[name="seleccionaEmpresaForm"]')];
+    if (forms.length !== 1) return { ok: false, reason: "representative_form_not_unique" };
+    const form = forms[0];
+    if (String(form.id || form.getAttribute?.("id") || "") !== "") {
+      return { ok: false, reason: "representative_form_id_mismatch" };
+    }
+    if (normalize(form.method || form.getAttribute?.("method")) !== "get") {
+      return { ok: false, reason: "representative_form_method_mismatch" };
+    }
+    let actionUrl;
+    try {
+      actionUrl = new URL(form.getAttribute?.("action") || form.action || "", url.href);
+    } catch {
+      return { ok: false, reason: "representative_form_action_mismatch" };
+    }
+    if (
+      actionUrl.protocol !== "https:"
+      || actionUrl.hostname !== REPRESENTATIVE_HOST
+      || actionUrl.port !== ""
+      || actionUrl.pathname !== REPRESENTATIVE_ACTION_PATH
+      || actionUrl.search !== ""
+      || actionUrl.hash !== ""
+    ) return { ok: false, reason: "representative_form_action_mismatch" };
+    const hiddenControls = [...form.querySelectorAll(
+      'input#idcontribuyente[name="idContribuyente"][type="hidden"]'
+    )];
+    if (hiddenControls.length !== 1) {
+      return { ok: false, reason: "representative_hidden_control_mismatch" };
+    }
+    const controls = [...form.querySelectorAll('input[type="button"].btn_empresa')];
+    if (controls.length !== 2) {
+      return { ok: false, reason: "representative_button_count_mismatch" };
+    }
+    const expectedCompany = String(automation?.representativeName || "").trim();
+    if (expectedCompany !== COMPANY_REPRESENTATIVE_NAME) {
+      return { ok: false, reason: "representative_payload_mismatch" };
+    }
+    const companyMatches = controls.filter(
+      (control) => normalize(control?.value) === normalize(COMPANY_REPRESENTATIVE_NAME)
+    );
+    const personalMatches = controls.filter(
+      (control) => normalize(control?.value) === normalize(PERSONAL_REPRESENTATIVE_NAME)
+    );
+    if (companyMatches.length === 0) return { ok: false, reason: "representative_company_missing" };
+    if (companyMatches.length > 1) return { ok: false, reason: "representative_company_ambiguous" };
+    if (personalMatches.length === 0) return { ok: false, reason: "representative_personal_missing" };
+    if (personalMatches.length > 1) return { ok: false, reason: "representative_personal_ambiguous" };
+    if (
+      companyMatches[0].disabled
+      || companyMatches[0].getAttribute?.("aria-disabled") === "true"
+    ) return { ok: false, reason: "representative_company_disabled" };
+    if (
+      personalMatches[0].disabled
+      || personalMatches[0].getAttribute?.("aria-disabled") === "true"
+    ) return { ok: false, reason: "representative_personal_disabled" };
+    return {
+      ok: true,
+      form,
+      companyControl: companyMatches[0],
+      personalControl: personalMatches[0]
+    };
+  }
+
+  function representativeFailureMessage(reason, revalidation = false) {
+    const messages = {
+      representative_url_mismatch: "La URL no es la selección exacta de empresa de ARCA.",
+      representative_title_mismatch: "El título de la selección de empresa no es RCEL.",
+      representative_prompt_mismatch: "El prompt normalizado de selección de empresa no es único.",
+      representative_form_not_unique: "No existe un único formulario seleccionaEmpresaForm.",
+      representative_form_id_mismatch: "seleccionaEmpresaForm tiene un id inesperado.",
+      representative_form_method_mismatch: "seleccionaEmpresaForm no usa el método GET esperado.",
+      representative_form_action_mismatch: "seleccionaEmpresaForm no apunta a setearContribuyente.do.",
+      representative_hidden_control_mismatch: "El control oculto idContribuyente no es único.",
+      representative_button_count_mismatch: "seleccionaEmpresaForm no contiene exactamente dos botones .btn_empresa.",
+      representative_payload_mismatch: "El pedido preparado no autoriza SUNNUTRITION S.A.",
+      representative_company_missing: "Falta el botón exacto SUNNUTRITION S.A.",
+      representative_company_ambiguous: "Hay más de un botón exacto SUNNUTRITION S.A.",
+      representative_personal_missing: "Falta el botón exacto DE MAYO BENJAMIN.",
+      representative_personal_ambiguous: "Hay más de un botón exacto DE MAYO BENJAMIN.",
+      representative_company_disabled: "El botón SUNNUTRITION S.A. está deshabilitado.",
+      representative_personal_disabled: "El botón DE MAYO BENJAMIN está deshabilitado.",
+      representative_control_replaced: "El botón autorizado de SUNNUTRITION S.A. fue reemplazado."
+    };
+    const prefix = revalidation
+      ? "La selección de empresa cambió durante la autorización: "
+      : "La selección de empresa no coincide con el contrato seguro: ";
+    return `${prefix}${messages[reason] || reason}`;
   }
 
   function interimActionAllowed(control, stage) {
     const text = normalizeActionText(control);
+    if (stage === "login_cuit") return text === "siguiente";
+    if (stage === "login_password") return text === "ingresar";
     if (stage === "service") return text === "generar comprobantes";
-    if (stage === "representative") return !FINAL_ACTION_PATTERN.test(text);
+    if (stage === "representative") return text === normalize("SUNNUTRITION S.A.");
     return ["initial", "emission", "recipient", "lines"].includes(stage) && text === "continuar";
   }
 
@@ -1124,17 +1561,52 @@
     }));
   }
 
-  function authorizeInterimAction(control, stage, successMessage = "Abriendo Generar comprobantes.") {
+  function authorizeInterimAction(
+    control,
+    stage,
+    successMessage = "Abriendo Generar comprobantes.",
+    revalidateControl = (authorizedControl) => authorizedControl,
+    revalidationFailureMessage = () => "La acción autorizada cambió antes del clic."
+  ) {
+    if (terminalStatus) return;
     if (!interimActionAllowed(control, stage)) {
       return interrupt("unexpected_response", "La acción intermedia no coincide con la etapa autorizada.");
     }
-    root.chrome.runtime.sendMessage({ type: "AUTHORIZE_INTERIM_ACTION", stage }, (response) => {
+    const authorizedSessionId = activeSession?.sessionId;
+    const authorizedRevision = activeSession?.revision || activeSession?.payload?.revision;
+    if (
+      pendingInterimAuthorization
+      && pendingInterimAuthorization.stage === stage
+      && pendingInterimAuthorization.sessionId === authorizedSessionId
+      && pendingInterimAuthorization.revision === authorizedRevision
+    ) return;
+    const authorization = {
+      stage,
+      sessionId: authorizedSessionId,
+      revision: authorizedRevision
+    };
+    pendingInterimAuthorization = authorization;
+    const authorizationFields = stage === "representative"
+      ? { stage, domContract: REPRESENTATIVE_DOM_CONTRACT }
+      : { stage };
+    root.chrome.runtime.sendMessage(sessionMessage("AUTHORIZE_INTERIM_ACTION", authorizationFields), (response) => {
+      absorbSessionVersion(response);
+      if (pendingInterimAuthorization !== authorization) return;
+      pendingInterimAuthorization = null;
+      if (
+        terminalStatus
+        || !activeSession
+        || activeSession.sessionId !== authorizedSessionId
+        || (activeSession.revision || activeSession.payload?.revision) !== authorizedRevision
+      ) return;
       if (root.chrome.runtime.lastError || !response?.ok || response.stage !== stage) {
-        interrupt("unexpected_response", "La transición intermedia no fue autorizada de forma segura.");
+        interrupt("authorization_rejected", "La transición intermedia no fue autorizada de forma segura.");
         return;
       }
-      activeSession.stage = stage;
-      if (activateInterimAction(control, stage)) {
+      const currentControl = revalidateControl(control);
+      if (!currentControl) {
+        interrupt("selector_changed", revalidationFailureMessage());
+      } else if (activateInterimAction(currentControl, stage)) {
         showBanner(successMessage, "complete");
       } else {
         interrupt("unexpected_response", "ARCA no aceptó la transición intermedia autorizada.");
@@ -1220,101 +1692,394 @@
     }
   }
 
-  function completeLineRows(lines, automation = activeSession?.payload?.automation) {
-    if (!automation) {
-      return {
-        ok: false,
-        reason: "unexpected_response",
-        message: "Falta la configuración segura del detalle."
-      };
+  function operationScreenContract() {
+    let pageUrl;
+    try {
+      pageUrl = new URL(root.location?.href || "");
+    } catch {
+      return { ok: false, reason: "operation_path_mismatch" };
     }
-    const rows = [...document.querySelectorAll("tr")].filter((row) => {
-      const controls = [...row.querySelectorAll("input, select, textarea")];
-      return controls.some((control) => /(descripcion|detalle)/i.test(`${control.name} ${control.id}`))
-        && controls.some((control) => /cantidad/i.test(`${control.name} ${control.id}`))
-        && controls.some((control) => /precio/i.test(`${control.name} ${control.id}`));
-    });
-    if (rows.length !== lines.length) {
-      return {
-        ok: false,
-        reason: "selector_changed",
-        message: "La cantidad de filas de productos no coincide exactamente con el pedido."
-      };
+    if (!exactEmissionUrl(pageUrl, OPERATION_PATH)) {
+      return { ok: false, reason: "operation_path_mismatch" };
     }
-    const preparedRows = [];
-    for (let index = 0; index < lines.length; index += 1) {
-      const row = rows[index];
-      const line = lines[index];
-      const productCode = uniqueControl(row, /codigo/i);
-      const description = uniqueControl(row, /(descripcion|detalle)/i);
-      const quantity = uniqueControl(row, /cantidad/i);
-      const unit = uniqueControl(row, /(unidad|medida)/i);
-      const price = uniqueControl(row, /precio/i);
-      const discount = uniqueControl(row, /(bonif|descuento)/i);
-      const vat = uniqueControl(row, /(alicuota|iva)/i);
-      if (!productCode || !description || !quantity || !unit || !price || !vat) {
-        return {
-          ok: false,
-          reason: "selector_changed",
-          message: `No se reconocieron todos los campos del producto ${index + 1}.`
-        };
-      }
-      const definitions = [
-        [productCode, automation.productCode, automation.productCodeLabel, "code_and_label"],
-        [description, automation.lineDescription],
-        [quantity, line.individualUnits],
-        [unit, automation.unit, automation.unit],
-        [price, line.unitPrice],
-        ...(discount ? [[discount, line.discountPercent]] : []),
-        [vat, line.vatRate, `${line.vatRate.toFixed(2).replace(".", ",")} %`]
-      ];
-      const values = definitions.map(([field, value, optionText, matchBy]) => (
-        resolvedFieldValue(field, value, optionText, matchBy)
+    if (String(document.title || "").trim() !== "RCEL") {
+      return { ok: false, reason: "operation_title_mismatch" };
+    }
+    const forms = [...document.querySelectorAll('form[name="datosOperacionForm"]')];
+    if (forms.length !== 1) return { ok: false, reason: "datosOperacionForm_not_unique" };
+    const form = forms[0];
+    if (normalize(form.method || form.getAttribute?.("method")) !== "post") {
+      return { ok: false, reason: "datosOperacionForm_method_mismatch" };
+    }
+    let actionUrl;
+    try {
+      actionUrl = new URL(form.getAttribute?.("action") || form.action || "", pageUrl.href);
+    } catch {
+      return { ok: false, reason: "datosOperacionForm_action_mismatch" };
+    }
+    if (!exactEmissionUrl(actionUrl, OPERATION_ACTION_PATH)) {
+      return { ok: false, reason: "datosOperacionForm_action_mismatch" };
+    }
+
+    const quantityPrecision = uniqueFormControl(
+      form,
+      'select#numdecimalescantidad[name="numDecimalesCantidad"]',
+      "numdecimalescantidad_not_unique"
+    );
+    if (!quantityPrecision.ok) return quantityPrecision;
+    const pricePrecision = uniqueFormControl(
+      form,
+      'select#numdecimalespreciounit[name="numDecimalesPrecioUnit"]',
+      "numdecimalespreciounit_not_unique"
+    );
+    if (!pricePrecision.ok) return pricePrecision;
+    const addButtons = [...form.querySelectorAll('input[type="button"]')]
+      .filter((control) => String(control.value || "").trim() === "Agregar l\u00ednea descripci\u00f3n");
+    if (addButtons.length !== 1) return { ok: false, reason: "operation_add_line_not_unique" };
+    const addTributeButtons = [...form.querySelectorAll('input[type="button"]')]
+      .filter((control) => (
+        String(control.value || "").trim() === "Agregar otro Tributo"
+        && normalize(control.name) === "agregarimp"
       ));
-      if (values.some((value) => value === null)) {
-        return {
-          ok: false,
-          reason: "unexpected_response",
-          message: `ARCA rechazó un valor del producto ${index + 1}.`
-        };
-      }
-      preparedRows.push({ definitions, values });
+    if (addTributeButtons.length !== 1) {
+      return { ok: false, reason: "operation_add_tribute_not_unique" };
     }
-    const valuesOk = preparedRows.every(({ definitions, values }) => (
-      definitions.every(([field], index) => applyFieldValue(field, values[index]))
-    ));
-    if (!valuesOk) {
-      return {
-        ok: false,
-        reason: "unexpected_response",
-        message: "ARCA no conservó exactamente los valores preparados del detalle."
-      };
-    }
-    return { ok: true };
+    const continueButtons = [...form.querySelectorAll('input[type="button"]')]
+      .filter((control) => String(control.value || "").trim() === "Continuar >");
+    if (continueButtons.length !== 1) return { ok: false, reason: "operation_continue_not_unique" };
+
+    const rowResult = operationLineControls(form);
+    if (!rowResult.ok) return rowResult;
+    return {
+      ok: true,
+      form,
+      rows: rowResult.rows,
+      quantityPrecision: quantityPrecision.field,
+      pricePrecision: pricePrecision.field,
+      addButton: addButtons[0],
+      addTributeButton: addTributeButtons[0],
+      continueButton: continueButtons[0]
+    };
   }
 
-  function uniqueControl(container, pattern) {
-    const matches = [...container.querySelectorAll("input, select, textarea")].filter((control) => (
-      !SECRET_FIELD_PATTERN.test(`${control.name} ${control.id}`)
-      && pattern.test(`${control.name} ${control.id}`)
-    ));
-    return matches.length === 1 ? matches[0] : null;
+  function operationLineControls(form) {
+    const definitions = [
+      ["code", 'input[name="detalleCodigoArticulo"]'],
+      ["lineNumber", 'input[name="detalleNroLinea"][type="hidden"]'],
+      ["description", 'textarea[name="detalleDescripcion"]'],
+      ["quantity", 'input[name="detalleCantidad"]'],
+      ["unit", 'select[name="detalleMedida"]'],
+      ["price", 'input[name="detallePrecio"]'],
+      ["discountPercent", 'input[name="detallePorcentajeBonificacion"]'],
+      ["discountAmount", 'input[name="detalleImporteBonificacion"]'],
+      ["netSubtotal", 'input[name="detalleSubtotal1"]'],
+      ["vatType", 'select[name="detalleTipoIVA"]'],
+      ["vatAmount", 'input[name="detalleImporteIVA"]'],
+      ["total", 'input[name="detalleSubtotal2"]']
+    ];
+    const controls = Object.fromEntries(definitions.map(([key, selector]) => [
+      key,
+      [...form.querySelectorAll(selector)]
+    ]));
+    const count = controls.code.length;
+    if (!count || Object.values(controls).some((items) => items.length !== count)) {
+      return { ok: false, reason: "operation_line_controls_mismatch" };
+    }
+    const rows = [];
+    const seenLineNumbers = new Set();
+    let usesLegacyBlankLineNumbers = null;
+    for (let index = 0; index < count; index += 1) {
+      const row = Object.fromEntries(definitions.map(([key]) => [key, controls[key][index]]));
+      const suffix = String(index + 1);
+      if (
+        row.description.id !== `detalle_descripcion${suffix}`
+        || row.quantity.id !== `detalle_cantidad${suffix}`
+        || row.unit.id !== `detalle_medida${suffix}`
+        || row.price.id !== `detalle_precio${suffix}`
+        || row.discountPercent.id !== `detalle_porcentaje${suffix}`
+        || row.discountAmount.id !== `detalle_importe_bonificacion${suffix}`
+        || row.netSubtotal.id !== `detalle_subtotal1${suffix}`
+        || row.vatType.id !== `detalle_tipo_iva${suffix}`
+        || row.vatAmount.id !== `detalle_importe_iva${suffix}`
+        || row.total.id !== `detalle_subtotal2${suffix}`
+      ) return { ok: false, reason: "operation_line_ids_mismatch" };
+      const lineNumber = String(row.lineNumber.value ?? "").trim();
+      const isLegacyBlankLineNumber = lineNumber === "";
+      if (usesLegacyBlankLineNumbers === null) {
+        usesLegacyBlankLineNumbers = isLegacyBlankLineNumber;
+      }
+      if (
+        usesLegacyBlankLineNumbers !== isLegacyBlankLineNumber
+        || (!isLegacyBlankLineNumber && (
+          !/^[1-9]\d*$/.test(lineNumber)
+          || Number(lineNumber) !== index + 1
+          || seenLineNumbers.has(lineNumber)
+        ))
+      ) {
+        return { ok: false, reason: "operation_line_number_invalid" };
+      }
+      if (!isLegacyBlankLineNumber) seenLineNumbers.add(lineNumber);
+      if (
+        [row.code, row.description, row.quantity, row.unit, row.price, row.discountPercent, row.vatType]
+          .some((field) => field.disabled || field.readOnly)
+        || [row.netSubtotal, row.vatAmount, row.total].some((field) => !field.readOnly)
+      ) return { ok: false, reason: "operation_line_editability_mismatch" };
+      rows.push(row);
+    }
+    return { ok: true, rows };
+  }
+
+  function operationTributesAreEmpty(form) {
+    const detailFields = [...form.querySelectorAll('[name="impuestoDetalle"]')];
+    if (detailFields.some((field) => String(field.value || "").trim() !== "")) return false;
+    const numericFields = [
+      "impuestoBaseImponible",
+      "impuestoAlicuota",
+      "impuestoMonto"
+    ].flatMap((name) => [...form.querySelectorAll(`[name="${name}"]`)]);
+    if (numericFields.some((field) => {
+      const value = String(field.value || "").trim();
+      return value !== "" && parseArcaNumber(value) !== 0;
+    })) return false;
+    const selectors = [...form.querySelectorAll("select")]
+      .filter((field) => /^impuesto_/i.test(String(field.id || "")));
+    return selectors.every((field) => {
+      const option = exactOption(field, "999", "Seleccionar...", "value_and_text");
+      return option && selectedOption(field) === option;
+    });
+  }
+
+  function selectedOption(field) {
+    if (field?.tagName !== "SELECT") return null;
+    if (Number.isInteger(field.selectedIndex) && field.selectedIndex >= 0) {
+      return field.options[field.selectedIndex] || null;
+    }
+    return [...field.options].find((option) => option.selected) || null;
+  }
+
+  function applyExactSelectOption(field, option) {
+    if (!field || !option || field.disabled || option.disabled) return false;
+    const index = [...field.options].indexOf(option);
+    if (index < 0) return false;
+    [...field.options].forEach((candidate, optionIndex) => {
+      candidate.selected = optionIndex === index;
+    });
+    field.selectedIndex = index;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    return selectedOption(field) === option;
+  }
+
+  function applyOperationPrecision(contract, automation) {
+    const quantityOption = exactOption(
+      contract.quantityPrecision,
+      automation.quantityPrecision,
+      "2 decimales",
+      "value_and_text"
+    );
+    const priceOption = exactOption(
+      contract.pricePrecision,
+      automation.unitPricePrecision,
+      "2 decimales",
+      "value_and_text"
+    );
+    return applyExactSelectOption(contract.quantityPrecision, quantityOption)
+      && applyExactSelectOption(contract.pricePrecision, priceOption);
+  }
+
+  function completeOperationFields(payload) {
+    const contract = operationScreenContract();
+    if (!contract.ok) {
+      return { ok: false, pending: false, reason: contract.reason, message: "" };
+    }
+    const expectedCount = payload?.lines?.length || 0;
+    if (!expectedCount) {
+      return {
+        ok: false,
+        pending: false,
+        reason: "unexpected_response",
+        message: "El pedido preparado no contiene líneas."
+      };
+    }
+    if (contract.rows.length > expectedCount) {
+      return {
+        ok: false,
+        pending: false,
+        reason: "operation_extra_lines",
+        message: "ARCA ya contiene líneas adicionales; no se eliminó ninguna."
+      };
+    }
+    if (contract.rows.length < expectedCount) {
+      return {
+        ok: false,
+        pending: false,
+        reason: "operation_product_lines_missing",
+        message: "El pedido tiene más productos que las filas superiores disponibles; no se crearon líneas."
+      };
+    }
+    if (!operationTributesAreEmpty(contract.form)) {
+      return {
+        ok: false,
+        pending: false,
+        reason: "operation_tribute_active",
+        message: "Hay un tributo seleccionado o completado; no se modificó."
+      };
+    }
+    if (!applyOperationPrecision(contract, payload.automation)) {
+      return {
+        ok: false,
+        pending: false,
+        reason: "operation_precision_rejected",
+        message: "ARCA no conservó ambas precisiones en 2 decimales."
+      };
+    }
+    for (let index = 0; index < expectedCount; index += 1) {
+      const result = applyOperationLine(contract.rows[index], payload.lines[index], payload.automation);
+      if (!result.ok) {
+        return {
+          ok: false,
+          pending: false,
+          reason: result.reason,
+          message: `Falló la línea ${index + 1}: ${result.message}`
+        };
+      }
+    }
+    const reason = operationValuesMatch(contract, payload);
+    return reason
+      ? { ok: false, pending: false, reason, message: "ARCA revirtió o calculó un valor incoherente." }
+      : { ok: true, pending: false, reason: "", message: "" };
+  }
+
+  function applyOperationLine(row, line, automation) {
+    const unitOption = exactOption(row.unit, line.unitValue, line.unitText, "value_and_text");
+    if (!unitOption) {
+      return { ok: false, reason: "operation_unit_not_unique", message: "la unidad exacta no es única." };
+    }
+    const vatOption = exactOption(row.vatType, automation.vatValue, automation.vatText, "value_and_text");
+    if (!vatOption) {
+      return { ok: false, reason: "operation_vat_not_unique", message: "IVA 21% value 5 no es único." };
+    }
+    const textValues = [
+      [row.code, automation.productCode],
+      [row.description, line.description],
+      [row.quantity, line.quantity],
+      [row.price, line.unitPrice],
+      [row.discountPercent, line.discountPercent]
+    ];
+    if (!textValues.every(([field, value]) => applyFieldValue(field, String(value)))) {
+      return { ok: false, reason: "operation_value_rejected", message: "un campo editable revirtió su valor." };
+    }
+    if (!applyExactSelectOption(row.unit, unitOption)) {
+      return { ok: false, reason: "operation_unit_rejected", message: "la unidad fue revertida." };
+    }
+    if (!applyExactSelectOption(row.vatType, vatOption)) {
+      return { ok: false, reason: "operation_vat_rejected", message: "IVA 21% fue revertido." };
+    }
+    return { ok: true, reason: "", message: "" };
+  }
+
+  function operationValuesMatch(contract, payload) {
+    if (contract.rows.length !== payload.lines.length) return "operation_line_count_mismatch";
+    if (!operationTributesAreEmpty(contract.form)) return "operation_tribute_active";
+    const quantityPrecision = exactOption(
+      contract.quantityPrecision,
+      payload.automation.quantityPrecision,
+      "2 decimales",
+      "value_and_text"
+    );
+    const pricePrecision = exactOption(
+      contract.pricePrecision,
+      payload.automation.unitPricePrecision,
+      "2 decimales",
+      "value_and_text"
+    );
+    if (
+      selectedOption(contract.quantityPrecision) !== quantityPrecision
+      || selectedOption(contract.pricePrecision) !== pricePrecision
+    ) return "operation_precision_rejected";
+    for (let index = 0; index < payload.lines.length; index += 1) {
+      const row = contract.rows[index];
+      const line = payload.lines[index];
+      const unitOption = exactOption(row.unit, line.unitValue, line.unitText, "value_and_text");
+      const vatOption = exactOption(
+        row.vatType,
+        payload.automation.vatValue,
+        payload.automation.vatText,
+        "value_and_text"
+      );
+      if (
+        String(row.code.value || "") !== payload.automation.productCode
+        || String(row.description.value || "") !== line.description
+        || !numericFieldEquals(row.quantity, line.quantity)
+        || selectedOption(row.unit) !== unitOption
+        || !numericFieldEquals(row.price, line.unitPrice)
+        || !numericFieldEquals(row.discountPercent, line.discountPercent)
+        || selectedOption(row.vatType) !== vatOption
+      ) return "operation_value_rejected";
+      if (
+        !moneyFieldEquals(row.discountAmount, line.discountAmount)
+        || !moneyFieldEquals(row.netSubtotal, line.netSubtotal)
+        || !moneyFieldEquals(row.vatAmount, line.vat)
+        || !moneyFieldEquals(row.total, line.total)
+      ) return "operation_subtotal_mismatch";
+    }
+    return "";
+  }
+
+  function parseArcaNumber(value) {
+    let text = String(value ?? "").trim().replace(/[$%\s]/g, "");
+    if (!text) return Number.NaN;
+    const comma = text.lastIndexOf(",");
+    const dot = text.lastIndexOf(".");
+    if (comma >= 0 && dot >= 0) {
+      text = comma > dot ? text.replace(/\./g, "").replace(",", ".") : text.replace(/,/g, "");
+    } else if (comma >= 0) {
+      text = text.replace(",", ".");
+    }
+    const number = Number(text);
+    return Number.isFinite(number) ? number : Number.NaN;
+  }
+
+  function numericFieldEquals(field, expected) {
+    const actual = parseArcaNumber(field?.value);
+    return Number.isFinite(actual) && Math.abs(actual - Number(expected)) < 1e-9;
+  }
+
+  function moneyFieldEquals(field, expected) {
+    const actual = parseArcaNumber(field?.value);
+    return Number.isFinite(actual) && Math.round(actual * 100) === Math.round(Number(expected) * 100);
+  }
+
+  function continueFromOperationStage(payload, message) {
+    const contract = operationScreenContract();
+    if (!contract.ok) {
+      return interrupt("selector_changed", `${message} Falló la verificación previa: ${contract.reason}.`);
+    }
+    const reason = operationValuesMatch(contract, payload);
+    if (reason) {
+      return interrupt("selector_changed", `${message} Falló la reverificación previa: ${reason}.`);
+    }
+    fieldsCompleted(`${message} Avanzando al resumen seguro.`, "lines");
+    if (!activateInterimAction(contract.continueButton, "lines")) {
+      return interrupt("unexpected_response", `${message} ARCA no aceptó Continuar >.`);
+    }
   }
 
   function fieldsCompleted(message, stage) {
     showBanner(message, "complete");
-    updateSession("fields_completed", "", stage);
+    reportStageProgress("completed", stage);
   }
 
   function interrupt(reason, message) {
-    terminalStatus = "interrupted";
+    pendingInterimAuthorization = null;
     resetRecipientLookupWait();
-    showBanner(`${message} La automatización se detuvo de forma segura.`, "error");
-    updateSession("interrupted", reason, currentStage);
+    showBanner(`${message} Diagnóstico: ${reason}. La automatización se detuvo de forma segura.`, "error");
+    reportPageDiagnostic(reason, currentStage);
   }
 
   function expireActiveSession(message) {
     terminalStatus = "interrupted";
+    pendingInterimAuthorization = null;
     activeSession = null;
     clearTimeout(observerTimer);
     clearTimeout(expiryTimer);
@@ -1322,24 +2087,64 @@
     showBanner(`${message} La automatización se detuvo de forma segura.`, "error");
   }
 
-  function updateSession(status, reason, stage = "") {
+  function sendSessionEvent(type, fields = {}) {
     if (!activeSession) return;
-    root.chrome.runtime.sendMessage({ type: "UPDATE_SESSION", status, reason, stage }, () => {
+    root.chrome.runtime.sendMessage(sessionMessage(type, fields), (response) => {
+      absorbSessionVersion(response);
       void root.chrome.runtime.lastError;
     });
+  }
+
+  function reportStageProgress(phase, stage) {
+    sendSessionEvent("REPORT_STAGE_PROGRESS", { phase, stage });
+  }
+
+  function reportPageDiagnostic(reason, stage = "") {
+    sendSessionEvent("REPORT_PAGE_DIAGNOSTIC", { reason, stage });
+  }
+
+  function reachReview() {
+    sendSessionEvent("REACH_REVIEW", { stage: "review", finalSubmissionAllowed: false });
+  }
+
+  function reportDocumentTransition(reason) {
+    if (!["pagehide", "unload"].includes(reason)) return;
+    sendSessionEvent("REPORT_DOCUMENT_TRANSITION", { reason, stage: currentStage });
+  }
+
+  function installDocumentLifecycleDiagnostics() {
+    if (documentLifecycleInstalled || typeof root.addEventListener !== "function") return;
+    documentLifecycleInstalled = true;
+    root.addEventListener("pagehide", () => reportDocumentTransition("pagehide"));
+    root.addEventListener("unload", () => reportDocumentTransition("unload"));
   }
 
   function showBanner(message, state) {
     let banner = document.getElementById("sunnutrition-arca-assistant");
     if (!banner) {
+      const mount = document.documentElement || document.head || document.body;
+      if (!mount) {
+        pendingBanner = { message, state };
+        if (!bannerMountScheduled) {
+          bannerMountScheduled = true;
+          document.addEventListener("DOMContentLoaded", () => {
+            bannerMountScheduled = false;
+            const queued = pendingBanner;
+            pendingBanner = null;
+            if (queued) showBanner(queued.message, queued.state);
+          }, { once: true });
+        }
+        return null;
+      }
       banner = document.createElement("aside");
       banner.id = "sunnutrition-arca-assistant";
       banner.setAttribute("role", "status");
       banner.style.cssText = "position:fixed;z-index:2147483647;top:12px;right:12px;max-width:420px;padding:14px 16px;border:2px solid #0f766e;border-radius:8px;background:#fff;color:#17212b;font:600 14px/1.4 system-ui;box-shadow:0 8px 24px #0003";
-      document.documentElement.appendChild(banner);
+      mount.appendChild(banner);
     }
     banner.dataset.state = state;
     banner.textContent = `SunNutrition · ${message}`;
+    return banner;
   }
 
   function scheduleInspection(mutations = []) {
@@ -1350,10 +2155,17 @@
     ) return;
     if (Array.isArray(mutations) && mutations.length) lastPageSignature = "";
     clearTimeout(observerTimer);
-    observerTimer = setTimeout(runRecognizedStage, 250);
+    observerTimer = setTimeout(() => {
+      try {
+        runRecognizedStage();
+      } catch {
+        showStartupFailure("init_exception");
+      }
+    }, 250);
   }
 
   function activateSession(response) {
+    pendingInterimAuthorization = null;
     activeSession = response;
     const remaining = Date.parse(activeSession.payload?.expiresAt) - Date.now();
     if (!(remaining > 0)) {
@@ -1362,53 +2174,137 @@
     }
     expiryTimer = setTimeout(() => expireActiveSession("La preparación venció."), remaining);
     if (location.hostname === "auth.afip.gob.ar") {
-      showBanner("Ingresá tus credenciales, MFA o CAPTCHA manualmente. El asistente no accede a esos datos.", "waiting");
-      updateSession("waiting_login", "", "login");
+      showBanner("Usando la clave efímera preparada. MFA o CAPTCHA requieren intervención manual.", "waiting");
+      const runLoginWhenReady = () => {
+        if (terminalStatus || startupState === "failed") return;
+        if (document.readyState === "loading" || !document.body || !document.documentElement) {
+          document.addEventListener("DOMContentLoaded", runLoginWhenReady, { once: true });
+          return;
+        }
+        runLoginAutomation();
+      };
+      runLoginWhenReady();
       return;
     }
-    scheduleInspection();
-    new MutationObserver(scheduleInspection).observe(document.documentElement, {
-      childList: true,
-      subtree: true
-    });
-  }
-
-  function requestActiveSession(attempt = 1) {
-    root.chrome.runtime.sendMessage({ type: "GET_ACTIVE_SESSION" }, (response) => {
-      if (!root.chrome.runtime.lastError && response?.ok) {
-        activateSession(response);
+    const inspectDocument = () => {
+      if (terminalStatus || startupState === "failed") return;
+      if (document.readyState === "loading" || !document.body || !document.documentElement) {
+        document.addEventListener("DOMContentLoaded", inspectDocument, { once: true });
         return;
       }
-      if (attempt < MAX_SESSION_LOOKUP_ATTEMPTS) {
-        setTimeout(() => requestActiveSession(attempt + 1), SESSION_LOOKUP_RETRY_MS);
+      pageObserver = new MutationObserver(scheduleInspection);
+      pageObserver.observe(document.documentElement, {
+        childList: true,
+        subtree: true
+      });
+      scheduleInspection();
+    };
+    inspectDocument();
+  }
+
+  function startupFailureMessage(code) {
+    const messages = {
+      init_runtime_error: "No se pudo consultar al service worker de la extensión.",
+      init_response_missing: "El service worker no devolvió una respuesta de sesión.",
+      session_absent: "No hay una preparación vigente asociada a esta pestaña.",
+      session_terminal: "La preparación asociada ya está en estado terminal.",
+      session_replaced: "El ERP canceló o reemplazó esta preparación.",
+      session_expired: "La preparación asociada venció.",
+      session_rejected: "La recuperación de la preparación fue rechazada de forma segura.",
+      init_exception: "La inicialización de la extensión produjo una excepción controlada."
+    };
+    return `${messages[code] || messages.session_rejected} Diagnóstico: ${code}. Cero acciones ejecutadas.`;
+  }
+
+  function showStartupFailure(code) {
+    startupState = "failed";
+    terminalStatus = "interrupted";
+    pendingInterimAuthorization = null;
+    activeSession = null;
+    clearTimeout(observerTimer);
+    clearTimeout(expiryTimer);
+    resetRecipientLookupWait();
+    pageObserver?.disconnect?.();
+    pageObserver = null;
+    showBanner(startupFailureMessage(code), "error");
+  }
+
+  function responseFailureCode(response, runtimeFailed, responseMissing) {
+    if (runtimeFailed) return "init_runtime_error";
+    if (responseMissing) return "init_response_missing";
+    if (response?.reason === "session_replaced") return "session_replaced";
+    if (response?.reason === "session_expired" || response?.reason === "timeout") return "session_expired";
+    if (["review_reached", "interrupted"].includes(response?.status)) return "session_terminal";
+    if (response?.reason === "session_absent" || response?.status === "not_found") return "session_absent";
+    return "session_rejected";
+  }
+
+  function requestActiveSession(attempt = 1, lastFailureCode = "session_absent") {
+    try {
+      if (!root.chrome?.runtime?.sendMessage) {
+        showStartupFailure("init_runtime_error");
+        return;
       }
-    });
+      root.chrome.runtime.sendMessage({ type: "GET_ACTIVE_SESSION" }, (response) => {
+        const runtimeFailed = Boolean(root.chrome.runtime.lastError);
+        if (!runtimeFailed && response?.ok) {
+          startupState = "active";
+          try {
+            activateSession(response);
+          } catch {
+            showStartupFailure("init_exception");
+          }
+          return;
+        }
+        const failureCode = responseFailureCode(response, runtimeFailed, response === undefined);
+        if (attempt < MAX_SESSION_LOOKUP_ATTEMPTS && !["session_terminal", "session_replaced", "session_expired"].includes(failureCode)) {
+          setTimeout(() => requestActiveSession(attempt + 1, failureCode), SESSION_LOOKUP_RETRY_MS);
+          return;
+        }
+        showStartupFailure(failureCode || lastFailureCode);
+      });
+    } catch {
+      showStartupFailure("init_exception");
+    }
   }
 
   function start() {
-    blockSyntheticFinalActions();
-    requestActiveSession();
+    if (startupState !== "idle") return;
+    startupState = "recovering";
+    installDocumentLifecycleDiagnostics();
+    showBanner("Extensión cargada. Recuperando la preparación segura. Diagnóstico: init_recovering.", "waiting");
+    try {
+      blockSyntheticFinalActions();
+      requestActiveSession();
+    } catch {
+      showStartupFailure("init_exception");
+    }
+  }
+
+  function handleCancellationMessage(message) {
+    if (
+      message?.type !== "CANCEL_ACTIVE_SESSION"
+      || !activeSession
+      || message.sessionId !== activeSession.sessionId
+      || message.revision !== (activeSession.revision || activeSession.payload?.revision)
+    ) return false;
+    expireActiveSession("El ERP canceló o reemplazó esta preparación. Diagnóstico: session_replaced.");
+    return true;
   }
 
   if (root.chrome?.runtime?.onMessage) {
     root.chrome.runtime.onMessage.addListener((message) => {
-      if (
-        message?.type === "CANCEL_ACTIVE_SESSION"
-        && (!activeSession || message.sessionId === activeSession.sessionId)
-      ) {
-        expireActiveSession("El ERP canceló o reemplazó esta preparación.");
-      }
+      handleCancellationMessage(message);
     });
   }
 
-  if (typeof document !== "undefined") {
-    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start, { once: true });
-    else start();
-  }
+  if (typeof document !== "undefined") start();
 
   if (typeof module === "object" && module.exports) {
     module.exports = {
       FINAL_ACTION_PATTERN,
+      AUTHORIZED_LOGIN_CUIT,
+      REPRESENTATIVE_DOM_CONTRACT,
       MAX_EMISSION_OPTION_ATTEMPTS,
       RECIPIENT_LOOKUP_TIMEOUT_MS,
       MAX_SESSION_LOOKUP_ATTEMPTS,
@@ -1420,11 +2316,12 @@
       completeExactFields,
       completeEmissionFields,
       completeInitialFields,
-      completeLineRows,
+      completeOperationFields,
       completeRecipientFields,
       createStageGuard,
       authorizeInterimAction,
       continueFromEmissionStage,
+      continueFromOperationStage,
       continueFromRecipientStage,
       continueFromStage,
       exactOption,
@@ -1433,18 +2330,31 @@
       emissionScreenContract,
       emissionScreenFields,
       initialScreenFields,
+      loginScreenContract,
       normalizedRecipientCuit,
+      operationScreenContract,
+      operationValuesMatch,
+      representativeFailureMessage,
+      representativeScreenContract,
       recipientScreenContract,
       recipientValuesMatch,
       resetRecipientLookupWait,
       findFieldByExactLabel,
       findRepresentativeControl,
+      handleCancellationMessage,
+      requestActiveSessionForTesting: requestActiveSession,
+      reportDocumentTransitionForTesting: reportDocumentTransition,
+      responseFailureCode,
+      showBannerForTesting: showBanner,
+      startForTesting: start,
       findUniqueAction,
       interimActionAllowed,
+      isForbiddenOperationAction,
       isFinalAction,
       normalize,
       normalizeActionText,
       normalizeLabel,
+      uniqueElementReferences,
       payloadCoherenceIsValid,
       recipientLabel,
       receiptLabel,
@@ -1454,6 +2364,39 @@
       usableAddressOptions,
       setCurrentStageForTesting(stage) {
         currentStage = stage;
+      },
+      resetOperationStateForTesting() {
+      },
+      resetLoginStateForTesting() {
+        clearTimeout(observerTimer);
+        clearTimeout(expiryTimer);
+        pendingLoginAction = "";
+        pendingInterimAuthorization = null;
+        stageGuard = createStageGuard();
+        terminalStatus = "";
+        currentStage = "";
+        activeSession = null;
+        lastPageSignature = "";
+        startupState = "idle";
+        pendingBanner = null;
+        bannerMountScheduled = false;
+        pageObserver?.disconnect?.();
+        pageObserver = null;
+      },
+      runLoginAutomationForTesting: runLoginAutomation,
+      expireActiveSessionForTesting: expireActiveSession,
+      runRecognizedStageForTesting: runRecognizedStage,
+      setActiveSessionForTesting(session) {
+        pendingLoginAction = "";
+        pendingInterimAuthorization = null;
+        activeSession = {
+          ...session,
+          payload: {
+            ...session.payload,
+            expiresAt: session.payload?.expiresAt || new Date(Date.now() + 60_000).toISOString()
+          }
+        };
+        terminalStatus = "";
       }
     };
   }

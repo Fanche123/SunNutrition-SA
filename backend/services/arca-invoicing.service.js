@@ -1,8 +1,10 @@
 const {
   calculateInvoice,
   calculateLine,
+  calculateMeasuredLine,
   individualUnits
 } = require("../../shared/order-pricing");
+const { parseStrictMoneyInput } = require("../utils/money-input");
 const { isIsoDate } = require("../utils/runtime");
 const ARCA_FISCAL = require("../../tools/arca-extension/arca-fiscal-contract");
 
@@ -63,18 +65,27 @@ function createArcaInvoicingService({
       const delivery = deliveriesByOrder.get(orderId);
       const details = (detailsByOrder.get(orderId) || []).map((detail) => {
         const product = productsById.get(backendId(detail.id_producto)) || {};
+        const productName = ARCA_FISCAL.normalizeDisplayText(product.nombre_producto);
+        const arcaUnit = ARCA_FISCAL.classifyProduct(productName);
+        const boxes = numeric(detail.cantidad_cajas);
+        const unitsPerBox = numeric(product.cantidad_individual);
+        const arcaQuantity = arcaUnit === "units"
+          ? safeIndividualUnits(boxes, unitsPerBox)
+          : (arcaUnit === "kilograms" ? boxes : 0);
         return {
           id_detalle_pedido: backendId(detail.id_detalle_pedido),
           id_producto: backendId(detail.id_producto),
-          producto: product.nombre_producto || "",
-          cantidad_cajas: numeric(detail.cantidad_cajas),
-          unidades_por_caja: numeric(product.cantidad_individual),
-          unidades_individuales: safeIndividualUnits(
-            numeric(detail.cantidad_cajas),
-            numeric(product.cantidad_individual)
-          ),
-          precio_unidad_individual: numeric(detail.precio_ud),
-          bonificacion: numeric(detail.bonificacion)
+          producto: productName,
+          clasificacion_arca: arcaUnit,
+          cantidad_cajas: boxes,
+          unidades_por_caja: arcaUnit === "units" ? unitsPerBox : null,
+          unidades_individuales: arcaUnit === "units" ? arcaQuantity : null,
+          cantidad_arca: arcaQuantity,
+          unidad_arca: arcaUnit === "units"
+            ? ARCA_FISCAL.AUTOMATION.unitsText
+            : (arcaUnit === "kilograms" ? ARCA_FISCAL.AUTOMATION.kilogramsText : ""),
+          precio_unidad_individual: moneyValue(detail.precio_ud),
+          bonificacion: percentageValue(detail.bonificacion)
         };
       });
       const missing = missingSourceFields({ client, details });
@@ -198,18 +209,41 @@ function createArcaInvoicingService({
     assertFixedFiscalOverrides(body, receiptRule, current.productos);
 
     const lines = current.productos.map((product) => {
-      const calculation = calculateLine({
-        boxes: product.cantidad_cajas,
-        unitsPerBox: product.unidades_por_caja,
-        unitPrice: product.precio_unidad_individual,
-        discountPercent: product.bonificacion,
-        vatRate: ARCA_FISCAL.CONTRACT.vatRate,
-        receiptType
-      });
+      const isUnits = product.clasificacion_arca === "units";
+      const calculation = isUnits
+        ? calculateLine({
+          boxes: product.cantidad_cajas,
+          unitsPerBox: product.unidades_por_caja,
+          unitPrice: product.precio_unidad_individual,
+          discountPercent: product.bonificacion,
+          vatRate: ARCA_FISCAL.CONTRACT.vatRate,
+          receiptType
+        })
+        : calculateMeasuredLine({
+          quantity: product.cantidad_arca,
+          unitPrice: product.precio_unidad_individual,
+          discountPercent: product.bonificacion,
+          vatRate: ARCA_FISCAL.CONTRACT.vatRate,
+          receiptType
+        });
       return {
         id: product.id_detalle_pedido,
         productId: product.id_producto,
-        description: ARCA_FISCAL.AUTOMATION.lineDescription,
+        productName: product.producto,
+        boxes: product.cantidad_cajas,
+        unitsPerBox: isUnits ? product.unidades_por_caja : null,
+        quantity: product.cantidad_arca,
+        unitValue: isUnits
+          ? ARCA_FISCAL.AUTOMATION.unitsValue
+          : ARCA_FISCAL.AUTOMATION.kilogramsValue,
+        unitText: isUnits
+          ? ARCA_FISCAL.AUTOMATION.unitsText
+          : ARCA_FISCAL.AUTOMATION.kilogramsText,
+        description: ARCA_FISCAL.buildLineDescription(
+          product.cantidad_cajas,
+          product.producto,
+          current.domicilio
+        ),
         ...calculation
       };
     });
@@ -247,6 +281,9 @@ function createArcaInvoicingService({
       },
       lines
     };
+    if (!ARCA_FISCAL.preparedPayloadIsValid(prepared)) {
+      throw invoiceError("El pedido no pudo convertirse al contrato fiscal ARCA vigente.");
+    }
     prepared.revision = crypto.createHash("sha256")
       .update(JSON.stringify(prepared))
       .digest("hex");
@@ -334,9 +371,20 @@ function missingSourceFields({ client, details }) {
   details.forEach((detail, index) => {
     const label = detail.producto || `producto ${index + 1}`;
     if (!detail.producto) missing.push(`nombre de ${label}`);
+    if (!detail.clasificacion_arca) missing.push(`clasificación ARCA inequívoca de ${label}`);
     if (!(detail.cantidad_cajas > 0)) missing.push(`cajas de ${label}`);
-    if (!(detail.unidades_por_caja > 0)) missing.push(`unidades por caja de ${label}`);
+    if (detail.clasificacion_arca === "units" && !(detail.unidades_por_caja > 0)) {
+      missing.push(`unidades por caja de ${label}`);
+    }
+    if (detail.clasificacion_arca === "kilograms" && !(detail.cantidad_arca > 0)) {
+      missing.push(`kilogramos vendidos de ${label}`);
+    }
     if (!(detail.precio_unidad_individual > 0)) missing.push(`precio individual de ${label}`);
+    if (
+      !Number.isFinite(detail.bonificacion)
+      || detail.bonificacion < 0
+      || detail.bonificacion > 100
+    ) missing.push(`bonificación de ${label}`);
   });
   return [...new Set(missing)];
 }
@@ -388,6 +436,20 @@ function compareExpectedDelivery(left, right) {
 function numeric(value) {
   const result = Number(value);
   return Number.isFinite(result) ? result : 0;
+}
+
+function moneyValue(value) {
+  const parsed = parseStrictMoneyInput(value, { allowNegative: false });
+  return parsed.ok && !parsed.empty ? parsed.amount : 0;
+}
+
+function percentageValue(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : Number.NaN;
+  const text = String(value ?? "").trim();
+  if (!text) return 0;
+  const normalized = text.endsWith("%") ? text.slice(0, -1).trim() : text;
+  if (!/^[+-]?\d+(?:[.,]\d+)?$/.test(normalized)) return Number.NaN;
+  return Number(normalized.replace(",", "."));
 }
 
 function safeIndividualUnits(boxes, unitsPerBox) {
