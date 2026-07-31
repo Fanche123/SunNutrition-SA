@@ -8240,11 +8240,13 @@ button.danger {
 }
 
 /* Facturación asistida: selección y revisión compacta. */
-.arca-invoicing-layout { display: grid; gap: 20px; }
+.arca-invoicing-layout { display: grid; gap: 16px; }
 .arca-orders-panel, .arca-review-panel { min-width: 0; }
-.arca-filter-form { display: grid; grid-template-columns: minmax(240px, 1.4fr) minmax(170px, .8fr) auto; align-items: end; gap: 12px; margin: 18px 0; }
-.arca-filter-form label, .arca-review-fields label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
+.arca-orders-panel .panel-heading, .arca-review-panel .panel-heading { margin-bottom: 12px; }
+.arca-review-fields label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
 .arca-orders-table table { min-width: 1050px; }
+.arca-orders-table th, .arca-orders-table td { padding-top: 10px; padding-bottom: 10px; }
+.arca-load-error { color: #b42318; background: #fef3f2; }
 .arca-orders-table tr.is-selected td { background: #ecfdf5; }
 .arca-orders-table tr.is-delivery-today td { background: #fff7ed; }
 .arca-orders-table tr.is-delivery-tomorrow td { background: #fffbeb; }
@@ -8257,12 +8259,12 @@ button.danger {
 .arca-badge { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 9px; border-radius: 999px; background: #eef2f6; color: #334155; font-size: .78rem; font-weight: 800; white-space: nowrap; }
 .arca-badge.entrega_pendiente, .arca-badge.datos_incompletos { background: #fff7ed; color: #9a3412; }
 .arca-badge.listo { background: #ecfdf5; color: #047857; }
-.arca-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 12px; margin-top: 14px; }
-.arca-compact-review { display: grid; gap: 16px; margin-top: 16px; }
+.arca-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+.arca-compact-review { display: grid; gap: 14px; }
 .arca-review-fields { display: grid; grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(180px, .8fr)); gap: 14px; align-items: end; }
 .arca-review-client { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
 .arca-review-client span { color: var(--muted); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
 .arca-review-table table { min-width: 760px; }
 .arca-create-action { display: flex; justify-content: flex-end; }
 .arca-create-action button { min-width: 180px; }
-@media (max-width: 800px) { .arca-filter-form, .arca-review-fields { grid-template-columns: 1fr; } .arca-filter-form button, .arca-create-action button { width: 100%; } .arca-create-action, .arca-pagination { align-items: stretch; flex-direction: column; } }
+@media (max-width: 800px) { .arca-review-fields { grid-template-columns: 1fr; } .arca-create-action button { width: 100%; } .arca-create-action, .arca-pagination { align-items: stretch; flex-direction: column; } }

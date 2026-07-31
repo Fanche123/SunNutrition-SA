@@ -2323,25 +2323,9 @@
           <section class="panel arca-orders-panel" aria-labelledby="arca-orders-title">
             <div class="panel-heading">
               <div>
-                <h2 id="arca-orders-title">Pedidos y estado de facturación</h2>
-                <p>La entrega real se determina únicamente por Entregas + Entregas detalle. La fecha prevista no acredita entrega.</p>
+                <h2 id="arca-orders-title">Pedidos pendientes de facturación</h2>
               </div>
             </div>
-            <form id="arca-orders-form" class="arca-filter-form">
-              <label>
-                Buscar
-                <input id="arca-search" type="search" placeholder="Pedido, cliente, CUIT o producto" autocomplete="off">
-              </label>
-              <label>
-                Facturación
-                <select id="arca-status-filter">
-                  <option value="unbilled">Sin factura</option>
-                  <option value="ready">Listos</option>
-                  <option value="incomplete">Datos incompletos</option>
-                </select>
-              </label>
-              <button type="submit">Buscar</button>
-            </form>
             <div class="table-wrap arca-orders-table">
               <table>
                 <thead>
@@ -2371,10 +2355,8 @@
             <div class="panel-heading">
               <div>
                 <h2 id="arca-review-title">Revisión de factura</h2>
-                <p>La asistencia prepara los datos y se detiene en ARCA antes de la emisión final.</p>
               </div>
             </div>
-            <p id="arca-selection-empty" class="empty-state">Seleccioná un pedido para revisar la factura.</p>
             <div id="arca-selection-content" hidden>
               <form id="arca-prepare-form" class="arca-compact-review">
                 <div class="arca-review-fields">
