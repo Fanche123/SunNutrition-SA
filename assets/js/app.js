@@ -1757,7 +1757,7 @@ function initializeViewOnce(key, initializer, onError = showDeferredViewError) {
 }
 
 function loadDeferredScript(src, globalInitializer) {
-  if (typeof window[globalInitializer] === "function") return Promise.resolve(window[globalInitializer]);
+  if (window[globalInitializer]) return Promise.resolve(window[globalInitializer]);
   if (deferredScripts.has(src)) return deferredScripts.get(src);
   const promise = new Promise((resolve, reject) => {
     const script = document.createElement("script");
@@ -1765,7 +1765,7 @@ function loadDeferredScript(src, globalInitializer) {
     script.async = true;
     script.addEventListener("load", () => {
       const initializer = window[globalInitializer];
-      if (typeof initializer === "function") resolve(initializer);
+      if (initializer) resolve(initializer);
       else reject(new Error(`El módulo ${globalInitializer} no expuso su inicializador.`));
     }, { once: true });
     script.addEventListener("error", () => reject(new Error(`No se pudo cargar ${src}.`)), { once: true });
@@ -2011,7 +2011,7 @@ function switchView(view) {
         "OrderPricing"
       );
       const initialize = await loadDeferredScript(
-        "assets/js/modules/arca-invoicing.js?v=20260730-operation-data",
+        "assets/js/modules/arca-invoicing.js?v=20260731-orders-restore",
         "initializeArcaInvoicing"
       );
       await initialize();

@@ -11,6 +11,7 @@
     bound: false,
     rows: [],
     total: 0,
+    loadError: "",
     offset: 0,
     limit: 25,
     selected: null,
@@ -35,12 +36,6 @@
   function bind() {
     if (state.bound) return;
     state.bound = true;
-    byId("arca-orders-form")?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      await discardPreparedContext("manual_abort");
-      state.offset = 0;
-      loadOrders();
-    });
     byId("arca-orders-body")?.addEventListener("click", selectOrderFromEvent);
     byId("arca-previous")?.addEventListener("click", () => changePage(-1));
     byId("arca-next")?.addEventListener("click", () => changePage(1));
@@ -57,15 +52,15 @@
   async function loadOrders() {
     setStatus("Cargando pedidos...", "pending");
     const params = new URLSearchParams({
-      query: byId("arca-search")?.value || "",
-      status: byId("arca-status-filter")?.value || "unbilled",
       limit: String(state.limit),
       offset: String(state.offset)
     });
     try {
       const payload = await requestBackendApi(`/api/sales/arca/orders?${params}`);
-      state.rows = Array.isArray(payload.rows) ? payload.rows : [];
-      state.total = Number(payload.total) || 0;
+      const orders = normalizeOrdersPayload(payload);
+      state.rows = orders.rows;
+      state.total = orders.total;
+      state.loadError = "";
       if (!state.rows.some((row) => row.id_pedido === state.selected?.id_pedido)) {
         await discardPreparedContext("manual_abort");
         state.selected = null;
@@ -73,21 +68,31 @@
       renderOrders();
       renderSelection();
       setStatus(
-        state.total ? `${state.total} pedido${state.total === 1 ? "" : "s"} encontrado${state.total === 1 ? "" : "s"}.` : "No hay pedidos para estos filtros.",
+        state.total ? `${state.total} pedido${state.total === 1 ? "" : "s"} encontrado${state.total === 1 ? "" : "s"}.` : "No hay pedidos pendientes de entrega y facturación.",
         "success"
       );
     } catch (error) {
       state.rows = [];
       state.total = 0;
+      state.loadError = `No se pudieron cargar los pedidos: ${error.message}`;
       renderOrders();
-      setStatus(`No se pudieron cargar los pedidos: ${error.message}`, "error");
+      setStatus(state.loadError, "error");
     }
+  }
+
+  function normalizeOrdersPayload(payload) {
+    if (!Array.isArray(payload?.rows) || !Number.isSafeInteger(payload.total) || payload.total < 0) {
+      throw new Error("La respuesta del servidor no tiene el formato esperado.");
+    }
+    return { rows: payload.rows, total: payload.total };
   }
 
   function renderOrders() {
     const body = byId("arca-orders-body");
     if (!body) return;
-    body.innerHTML = state.rows.length ? state.rows.map((row) => {
+    body.innerHTML = state.loadError
+      ? `<tr><td class="empty arca-load-error" colspan="7">${escapeHtml(state.loadError)}</td></tr>`
+      : state.rows.length ? state.rows.map((row) => {
       const selected = row.id_pedido === state.selected?.id_pedido;
       const deliveryTiming = expectedDeliveryTiming(row.fecha_entrega_prevista);
       const rowClasses = [
@@ -105,7 +110,7 @@
         <td><span class="arca-badge ${escapeHtml(row.facturacion_estado)}">${escapeHtml(billingLabel(row.facturacion_estado))}</span></td>
         <td>${escapeHtml(row.faltantes?.join(", ") || "-")}</td>
       </tr>`;
-    }).join("") : '<tr><td class="empty" colspan="7">No hay pedidos para mostrar.</td></tr>';
+    }).join("") : '<tr><td class="empty" colspan="7">No hay pedidos pendientes de entrega y facturación.</td></tr>';
     const from = state.total ? state.offset + 1 : 0;
     const to = Math.min(state.offset + state.limit, state.total);
     if (byId("arca-page-info")) byId("arca-page-info").textContent = `${from}–${to} de ${state.total}`;
@@ -160,9 +165,9 @@
       <td class="num">${escapeHtml(formatMoney(line.netSubtotal))}</td>
       <td class="num">${escapeHtml(formatMoney(line.total))}</td>
     </tr>`).join("");
-    const totals = ORDER_PRICING.calculateInvoice(lines);
-    text("arca-review-subtotal", lines.length ? formatMoney(totals.netSubtotal) : "-");
-    text("arca-review-total", lines.length ? formatMoney(totals.total) : "-");
+    const totals = lines.length ? ORDER_PRICING.calculateInvoice(lines) : null;
+    text("arca-review-subtotal", totals ? formatMoney(totals.netSubtotal) : "-");
+    text("arca-review-total", totals ? formatMoney(totals.total) : "-");
   }
 
   function compactReviewLines(order, receiptType) {
@@ -791,6 +796,7 @@
       fiscalSummaryForReceipt,
       invoiceDateFromOrder,
       normalizeReceiptType,
+      normalizeOrdersPayload,
       reviewDefaultsForOrder,
       setInvoiceDateFromOrder,
       suggestReceiptType,
