@@ -12,8 +12,6 @@
     rows: [],
     total: 0,
     loadError: "",
-    offset: 0,
-    limit: 25,
     selected: null,
     prepared: null,
     pollTimer: null,
@@ -37,8 +35,6 @@
     if (state.bound) return;
     state.bound = true;
     byId("arca-orders-body")?.addEventListener("click", selectOrderFromEvent);
-    byId("arca-previous")?.addEventListener("click", () => changePage(-1));
-    byId("arca-next")?.addEventListener("click", () => changePage(1));
     byId("arca-prepare-form")?.addEventListener("submit", prepareInvoice);
     byId("arca-extension-check")?.addEventListener("click", verifyExtension);
     byId("arca-refresh-status")?.addEventListener("click", refreshExtensionStatus);
@@ -51,15 +47,10 @@
 
   async function loadOrders() {
     setStatus("Cargando pedidos...", "pending");
-    const params = new URLSearchParams({
-      limit: String(state.limit),
-      offset: String(state.offset)
-    });
     try {
-      const payload = await requestBackendApi(`/api/sales/arca/orders?${params}`);
-      const orders = normalizeOrdersPayload(payload);
-      state.rows = orders.rows;
-      state.total = orders.total;
+      const orders = await loadAllEligibleOrders();
+      state.rows = orders;
+      state.total = orders.length;
       state.loadError = "";
       if (!state.rows.some((row) => row.id_pedido === state.selected?.id_pedido)) {
         await discardPreparedContext("manual_abort");
@@ -68,7 +59,7 @@
       renderOrders();
       renderSelection();
       setStatus(
-        state.total ? `${state.total} pedido${state.total === 1 ? "" : "s"} encontrado${state.total === 1 ? "" : "s"}.` : "No hay pedidos pendientes de entrega y facturación.",
+        state.total ? `${state.total} pedido${state.total === 1 ? "" : "s"} encontrado${state.total === 1 ? "" : "s"}.` : "No hay pedidos pendientes de facturación.",
         "success"
       );
     } catch (error) {
@@ -106,16 +97,11 @@
         <td>#${escapeHtml(row.id_pedido)}</td>
         <td>${escapeHtml(displayNameLabel(row.cliente) || "-")}</td>
         <td>${expectedDeliveryMarkup(row.fecha_entrega_prevista, deliveryTiming)}</td>
-        <td><span class="arca-badge entrega_pendiente">Entrega pendiente</span></td>
+        <td><span class="arca-badge ${escapeHtml(row.entrega?.estado || "entrega_pendiente")}">${escapeHtml(row.entrega?.id_entrega ? `Entrega #${row.entrega.id_entrega}` : "Entrega pendiente")}</span></td>
         <td><span class="arca-badge ${escapeHtml(row.facturacion_estado)}">${escapeHtml(billingLabel(row.facturacion_estado))}</span></td>
         <td>${escapeHtml(row.faltantes?.join(", ") || "-")}</td>
       </tr>`;
-    }).join("") : '<tr><td class="empty" colspan="7">No hay pedidos pendientes de entrega y facturación.</td></tr>';
-    const from = state.total ? state.offset + 1 : 0;
-    const to = Math.min(state.offset + state.limit, state.total);
-    if (byId("arca-page-info")) byId("arca-page-info").textContent = `${from}–${to} de ${state.total}`;
-    if (byId("arca-previous")) byId("arca-previous").disabled = state.offset === 0;
-    if (byId("arca-next")) byId("arca-next").disabled = state.offset + state.limit >= state.total;
+    }).join("") : '<tr><td class="empty" colspan="7">No hay pedidos pendientes de facturación.</td></tr>';
   }
 
   async function selectOrderFromEvent(event) {
@@ -147,8 +133,6 @@
 
   function renderCompactReview() {
     clearPreparedState();
-    const body = byId("arca-review-lines");
-    if (!body) return;
     const receiptType = byId("arca-receipt-type")?.value || "";
     let lines = [];
     try {
@@ -158,14 +142,10 @@
     } catch {
       lines = [];
     }
-    body.innerHTML = lines.map((line) => `<tr>
-      <td>${escapeHtml(line.description)}</td>
-      <td class="num">${escapeHtml(`${formatNumber(line.quantity)} ${line.unitText}`)}</td>
-      <td class="num">${escapeHtml(formatMoney(line.unitPrice))}</td>
-      <td class="num">${escapeHtml(formatMoney(line.netSubtotal))}</td>
-      <td class="num">${escapeHtml(formatMoney(line.total))}</td>
-    </tr>`).join("");
     const totals = lines.length ? ORDER_PRICING.calculateInvoice(lines) : null;
+    text("arca-review-product", lines.map((line) => line.description).join(" · ") || "-");
+    text("arca-review-units", lines.map((line) => `${formatNumber(line.quantity)} ${line.unitText}`).join(" · ") || "-");
+    text("arca-review-unit-price", lines.map((line) => formatMoney(line.unitPrice)).join(" · ") || "-");
     text("arca-review-subtotal", totals ? formatMoney(totals.netSubtotal) : "-");
     text("arca-review-total", totals ? formatMoney(totals.total) : "-");
   }
@@ -200,10 +180,36 @@
 
   function reviewDefaultsForOrder(order) {
     return Object.freeze({
-      client: String(order?.cliente || "-"),
+      client: clientDisplayLabel(order?.cliente || "-") || "-",
       receiptType: normalizeReceiptType(order?.tipo_comprobante_configurado),
       invoiceDate: invoiceDateFromOrder(order)
     });
+  }
+
+  async function selectOrderById(orderId) {
+    const next = state.rows.find((row) => String(row.id_pedido) === String(orderId)) || null;
+    if (!next) throw new Error(`El pedido ${orderId} no está disponible para preparar en ARCA.`);
+    if (next.id_pedido !== state.selected?.id_pedido) await discardPreparedContext("manual_abort");
+    state.selected = next;
+    state.auditedTerminalStatus = "";
+    renderOrders();
+    renderSelection();
+    return next;
+  }
+
+  async function loadAllEligibleOrders() {
+    const rows = [];
+    const limit = 100;
+    for (let offset = 0; ; offset += limit) {
+      const payload = await requestBackendApi(`/api/sales/arca/orders?limit=${limit}&offset=${offset}`);
+      const page = normalizeOrdersPayload(payload);
+      rows.push(...page.rows);
+      if (rows.length >= page.total || page.rows.length === 0) return rows;
+    }
+  }
+
+  function clientDisplayLabel(value) {
+    return String(value || "").replace(/_/g, " ").replace(/\s+/g, " ").trim();
   }
 
   async function prepareInvoice(event) {
@@ -782,6 +788,7 @@
 
   root.initializeArcaInvoicing = initializeArcaInvoicing;
   root.cancelArcaInvoicing = cancelActiveSession;
+  root.selectArcaInvoicingOrder = selectOrderById;
   if (typeof module === "object" && module.exports) {
     module.exports = {
       argentinaCalendarIso,

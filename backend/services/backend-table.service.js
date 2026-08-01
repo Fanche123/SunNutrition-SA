@@ -27,6 +27,10 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
     try {
       const url = new URL(request.url, `http://${request.headers.host}`);
       const tableName = decodeURIComponent(url.pathname.replace("/api/backend/tables/", "")).trim();
+      if (tableName === "gestion_ventas") {
+        sendJson(response, 403, { ok: false, error: "La gestión de ventas es una tabla técnica y sólo admite sus endpoints específicos." });
+        return;
+      }
       const body = await readJsonBody(request);
       const rows = Array.isArray(body.rows) ? body.rows : [];
       const deletedIds = Array.isArray(body.deletedIds) ? body.deletedIds.map(backendId).filter(Boolean) : [];

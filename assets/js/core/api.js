@@ -30,10 +30,10 @@ async function saveBackendEntryRows(tableName, rows) {
   });
 }
 
-async function saveSalesOrder(order, details) {
+async function saveSalesOrder(order, details, workflow = null) {
   return requestBackendApi("/api/sales/orders/full-entry", {
     method: "POST",
-    body: JSON.stringify({ order, details })
+    body: JSON.stringify({ order, details, ...(workflow ? { workflow } : {}) })
   });
 }
 

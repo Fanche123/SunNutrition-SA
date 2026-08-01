@@ -22,6 +22,7 @@ const EXPECTED_BACKEND_COLUMNS = {
   entregas: ["id_entrega", "fecha", "id_flete", "id_acreedor_etiqueta", "id_egreso"],
   entregas_detalle: ["id_entregas_detalle", "id_entrega", "id_pedido"],
   ventas: ["id_venta", "id_pedido", "id_cliente", "id_entrega", "tipo_factura", "nro_factura", "fecha_factura", "fecha_acordada", "iva", "subtotal", "total"],
+  gestion_ventas: ["id_gestion_venta", "id_pedido", "origen", "clave_creacion_pedido", "hash_creacion_pedido", "factura_arca_confirmada_en", "factura_arca_confirmada_por", "archivo_factura", "archivo_factura_nombre", "archivo_factura_hash", "cerrado_en", "cerrado_por", "creado_en", "actualizado_en"],
   cobros: ["id_cobro", "fecha_cobro", "metodo", "id_cliente", "monto", "banco"],
   cobros_detalle: ["id_cobros_detalle", "id_cobro", "id_venta", "monto_cancelado"],
   retenciones_ganancias: ["id_retencion_ganancias", "id_cobro", "fecha", "id_cliente", "monto"],

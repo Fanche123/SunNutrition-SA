@@ -1,4 +1,6 @@
 const { normalize: normalizeMoney, toCents } = require("../../shared/money");
+const crypto = require("crypto");
+const { WORKFLOW_TABLE, ensureWorkflowRow } = require("./sales-workflow.service");
 
 function createSalesOrderEntryService({
   backendId,
@@ -10,19 +12,44 @@ function createSalesOrderEntryService({
   readJsonBody,
   saveBackendCache,
   sendJson,
-  failureInjector = () => {}
+  failureInjector = () => {},
+  enqueueSalesWrite = (operation) => operation()
 }) {
-  async function handleSalesOrderFullEntry(request, response) {
+  function handleSalesOrderFullEntry(request, response) {
+    return enqueueSalesWrite(() => persistSalesOrder(request, response));
+  }
+
+  async function persistSalesOrder(request, response) {
     try {
       const body = await readJsonBody(request);
       const order = body.order || {};
       const details = Array.isArray(body.details) ? body.details : [];
+      const workflowRequest = normalizeWorkflowRequest(body.workflow);
       validatePayload(order, details);
 
       const cache = JSON.parse(JSON.stringify(loadCache()));
       cache.tables ||= {};
-      ["clientes", "productos", "pedidos", "detalle_pedidos"]
+      ["clientes", "productos", "pedidos", "detalle_pedidos", WORKFLOW_TABLE]
         .forEach((tableName) => ensureBackendTable(cache.tables, tableName));
+      const payloadHash = workflowRequest ? orderPayloadHash(order, details) : "";
+      if (workflowRequest) {
+        const existing = cache.tables[WORKFLOW_TABLE].rows.find((row) => row.clave_creacion_pedido === workflowRequest.operationId);
+        if (existing) {
+          if (existing.hash_creacion_pedido !== payloadHash) {
+            const conflict = new Error("La clave de creación ya fue utilizada con otro pedido.");
+            conflict.statusCode = 409;
+            throw conflict;
+          }
+          return sendJson(response, 200, {
+            ok: true,
+            orderId: existing.id_pedido,
+            detailIds: cache.tables.detalle_pedidos.rows
+              .filter((row) => backendId(row.id_pedido) === backendId(existing.id_pedido))
+              .map((row) => row.id_detalle_pedido),
+            idempotent: true
+          });
+        }
+      }
       validateReferences(cache.tables, order, details);
 
       const orderId = backendNextNumericId(cache.tables.pedidos.rows, "id_pedido");
@@ -54,8 +81,20 @@ function createSalesOrderEntryService({
       });
       failureInjector("after-details");
 
+      if (workflowRequest) {
+        const workflow = ensureWorkflowRow(cache, backendId(orderId), {
+          backendId,
+          backendNextNumericId,
+          origin: "gestion_ventas"
+        });
+        workflow.clave_creacion_pedido = workflowRequest.operationId;
+        workflow.hash_creacion_pedido = payloadHash;
+        workflow.actualizado_en = timestamp;
+      }
+
       cache.tables.pedidos.rowCount = cache.tables.pedidos.rows.length;
       cache.tables.detalle_pedidos.rowCount = cache.tables.detalle_pedidos.rows.length;
+      cache.tables[WORKFLOW_TABLE].rowCount = cache.tables[WORKFLOW_TABLE].rows.length;
       cache.generatedAt = timestamp;
       failureInjector("before-save");
       saveBackendCache(cache);
@@ -65,11 +104,40 @@ function createSalesOrderEntryService({
         detailIds: details.map((_, index) => firstDetailId + index)
       });
     } catch (error) {
-      return sendJson(response, 400, {
+      return sendJson(response, error.statusCode || 400, {
         ok: false,
         error: `No se guardó el pedido completo: ${error.message}`
       });
     }
+  }
+
+  function normalizeWorkflowRequest(value) {
+    if (!value) return null;
+    const operationId = String(value.operationId || "").trim();
+    if (!/^[a-zA-Z0-9:_-]{12,120}$/.test(operationId)) {
+      const error = new Error("La clave de creación del pedido no es válida.");
+      error.statusCode = 400;
+      throw error;
+    }
+    return { operationId };
+  }
+
+  function orderPayloadHash(order, details) {
+    return crypto.createHash("sha256").update(JSON.stringify({
+      order: {
+        fechaPedido: String(order.fechaPedido || ""),
+        idCliente: backendId(order.idCliente),
+        fechaEntrega: String(order.fechaEntrega || ""),
+        fechaOriginal: String(order.fechaOriginal || "")
+      },
+      details: details.map((detail) => ({
+        idProducto: backendId(detail.idProducto),
+        cantidadCajas: Number(detail.cantidadCajas),
+        impuesto: String(detail.impuesto || ""),
+        precioUd: normalizeMoney(detail.precioUd),
+        bonificacion: percentagePoints(detail.bonificacion)
+      }))
+    })).digest("hex");
   }
 
   function validatePayload(order, details) {

@@ -1892,6 +1892,7 @@ function switchView(view) {
     "payments-entry",
     "issued-check-entry",
     "sales-entry",
+    "sales-workflow",
     "orders-entry",
     "arca-invoicing",
     "collections-entry",
@@ -1925,7 +1926,7 @@ function switchView(view) {
 
   const navGroupViews = {
     analysis: ["results", "cashflow", "production"],
-    "sales-distribution": ["orders-entry", "arca-invoicing", "sales-invoice-entry", "sales-entry", "logistics-entry", "commissions-entry"],
+    "sales-distribution": ["sales-workflow", "orders-entry", "arca-invoicing", "sales-invoice-entry", "sales-entry", "logistics-entry", "commissions-entry"],
     "purchases-inventory": ["purchase-entry", "reception-entry", "data-entry", "creditor-entry", "other-expenses-entry"],
     treasury: [
       "cashbox",
@@ -1975,6 +1976,7 @@ function switchView(view) {
     "payments-entry": ["Pagos", "Carga agrupada de pagos y medios de cancelacion."],
     "issued-check-entry": ["Cheques entregados", "Carga y control de cheques propios entregados."],
     "sales-invoice-entry": ["Ventas", "Carga de facturas de venta desde pedidos pendientes."],
+    "sales-workflow": ["Gestión de Ventas", "Pedidos abiertos desde su creación hasta el cierre controlado."],
     "arca-invoicing": ["Facturación ARCA", "Preparación segura y asistencia hasta la revisión previa a emitir."],
     "sales-entry": ["Saldos Pendientes", "Facturas de venta con saldo pendiente de cobro."],
     "orders-entry": ["Pedidos", "Carga y seguimiento de pedidos de clientes."],
@@ -2018,6 +2020,7 @@ function switchView(view) {
     });
   }
   if (view === "sales-invoice-entry") runViewLoad(view, loadUnbilledSalesOrders);
+  if (view === "sales-workflow") runLatestViewLoad(view, loadSalesWorkflow);
   if (["orders-entry", "logistics-entry", "sales-entry", "collections-entry", "commissions-entry", "received-check-entry"].includes(view)) {
     runViewLoad("commercial-entry-data", loadCommercialEntryData);
   }

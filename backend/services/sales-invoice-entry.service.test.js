@@ -1,6 +1,8 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 const test = require("node:test");
 const {
   createSalesInvoiceEntryService,
@@ -141,7 +143,11 @@ function fixture(options = {}) {
       cache.economicSync = true;
       return cache;
     },
-    failureInjector: options.failureInjector
+    failureInjector: options.failureInjector,
+    crypto: options.crypto,
+    fs: options.fs,
+    path: options.path,
+    rootDir: options.rootDir
   });
   return {
     service,
@@ -175,13 +181,14 @@ test("no aplica heurísticas de cobro, entrega, cliente, fecha o monto", () => {
   assert.deepEqual(rows.map((row) => row.id_pedido), ["1", "2", "3"]);
 });
 
-test("navegación conserva Saldos Pendientes y agrega Ventas con rutas separadas", () => {
+test("navegación consolida el flujo y conserva Saldos Pendientes", () => {
   const root = path.resolve(__dirname, "../..");
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "assets/js/app.js"), "utf8");
-  assert.match(html, /data-view="sales-invoice-entry"[^>]*>Ventas</);
+  assert.match(html, /data-view="sales-workflow"[^>]*>Gestión de Ventas</);
+  assert.doesNotMatch(html, /data-view="sales-invoice-entry"[^>]*>Ventas</);
   assert.match(html, /data-view="sales-entry"[^>]*>Saldos Pendientes</);
-  assert.match(app, /"sales-invoice-entry": \["Ventas"/);
+  assert.match(app, /"sales-workflow": \["Gestión de Ventas"/);
   assert.match(app, /"sales-entry": \["Saldos Pendientes"/);
 });
 
@@ -194,6 +201,58 @@ test("la lectura OCR sólo propone campos y el guardado exige submit explícito"
   assert.match(source, /form\.addEventListener\("submit", submitSalesInvoice\)/);
   assert.doesNotMatch(source, /applySalesInvoiceProposal[\s\S]{0,300}submitSalesInvoice\(/);
   assert.match(source, /Podés completar la venta manualmente/);
+});
+
+test("venta del workflow guarda un adjunto canónico y el reintento no duplica venta ni archivo", async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "erp-sales-workflow-"));
+  try {
+    const ctx = fixture({ crypto, fs, path, rootDir });
+    const body = {
+      ...validBody(1),
+      workflow: true,
+      attachment: {
+        fileName: "factura.html",
+        mimeType: "image/png",
+        fileDataUrl: `data:image/png;base64,${Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("imagen-factura-fixture")]).toString("base64")}`
+      }
+    };
+    const first = await submit(ctx, body);
+    const second = await submit(ctx, body);
+    assert.equal(first.status, 200);
+    assert.equal(second.payload.idempotent, true);
+    assert.equal(ctx.source().tables.ventas.rows.length, 1);
+    assert.equal(ctx.source().tables.gestion_ventas.rows.length, 1);
+    const workflow = ctx.source().tables.gestion_ventas.rows[0];
+    assert.ok(workflow.archivo_factura_hash);
+    assert.match(workflow.archivo_factura, /\.png$/);
+    assert.doesNotMatch(workflow.archivo_factura, /\.html$/);
+    assert.equal(fs.existsSync(path.join(rootDir, workflow.archivo_factura)), true);
+    assert.equal(fs.readdirSync(path.join(rootDir, "backend", "attachments", "ventas")).length, 1);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("rechaza una imagen declarada cuyo contenido no tiene firma válida", async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), "erp-sales-workflow-invalid-image-"));
+  try {
+    const ctx = fixture({ crypto, fs, path, rootDir });
+    const response = await submit(ctx, {
+      ...validBody(1),
+      workflow: true,
+      attachment: {
+        fileName: "factura.png",
+        mimeType: "image/png",
+        fileDataUrl: `data:image/png;base64,${Buffer.from("contenido-no-png").toString("base64")}`
+      }
+    });
+    assert.equal(response.status, 400);
+    assert.match(response.payload.error, /contenido del adjunto/);
+    assert.equal(ctx.source().tables.ventas.rows.length, 0);
+    assert.equal(fs.existsSync(path.join(rootDir, "backend", "attachments", "ventas")), false);
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 test("guarda una venta con relación canónica y fecha económica por entrega", async () => {

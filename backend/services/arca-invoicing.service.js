@@ -55,7 +55,7 @@ function createArcaInvoicingService({
     const eligibleOrders = (tables.pedidos?.rows || []).filter((order) => {
       const orderId = backendId(order.id_pedido);
       if (exactOrderId && orderId !== exactOrderId) return false;
-      return includeIneligible || (!deliveriesByOrder.has(orderId) && !salesByOrder.has(orderId));
+      return includeIneligible || !salesByOrder.has(orderId);
     });
 
     const allRows = eligibleOrders.map((order) => {
@@ -185,9 +185,6 @@ function createArcaInvoicingService({
     if (!current) throw invoiceError("El pedido ya no existe.", 404);
     if (current.facturacion_estado === "ya_facturado") {
       throw invoiceError("El pedido ya fue facturado. Actualizá la lista.", 409);
-    }
-    if (current.entrega.id_entrega) {
-      throw invoiceError("El pedido ya tiene una entrega real. Actualizá la lista.", 409);
     }
     if (current.faltantes.length) {
       throw invoiceError(`Faltan datos del pedido: ${current.faltantes.join(", ")}.`);

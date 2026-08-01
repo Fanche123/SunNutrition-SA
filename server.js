@@ -40,6 +40,7 @@ const { createInvestmentFundService } = require("./backend/services/investment-f
 const { createSalesOrderEntryService } = require("./backend/services/sales-order-entry.service");
 const { createSalesInvoiceEntryService } = require("./backend/services/sales-invoice-entry.service");
 const { createArcaInvoicingService } = require("./backend/services/arca-invoicing.service");
+const { createSalesWorkflowService } = require("./backend/services/sales-workflow.service");
 const { createAttachmentsService } = require("./backend/services/attachments.service");
 const { createOtherExpenseEntryService } = require("./backend/services/other-expense-entry.service");
 const { createReceptionEntryService } = require("./backend/services/reception-entry.service");
@@ -664,6 +665,13 @@ const {
   sendJson,
   synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
+let salesWriteQueue = Promise.resolve();
+function enqueueSalesWrite(operation) {
+  const result = salesWriteQueue.then(operation);
+  salesWriteQueue = result.catch(() => undefined);
+  return result;
+}
+
 const { handleSalesOrderFullEntry } = createSalesOrderEntryService({
   backendId,
   backendNextNumericId,
@@ -673,7 +681,8 @@ const { handleSalesOrderFullEntry } = createSalesOrderEntryService({
   loadCache,
   readJsonBody,
   saveBackendCache,
-  sendJson
+  sendJson,
+  enqueueSalesWrite
 });
 const {
   handleSalesDeliveryFullEntry,
@@ -688,7 +697,30 @@ const {
   readJsonBody,
   saveBackendCache,
   sendJson,
-  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache,
+  enqueueSalesWrite,
+  crypto,
+  fs,
+  path,
+  rootDir: ROOT_DIR
+});
+const {
+  handleArcaConfirmation: handleSalesWorkflowArcaConfirmation,
+  handleClose: handleSalesWorkflowClose,
+  handleList: handleSalesWorkflowList
+} = createSalesWorkflowService({
+  backendId,
+  backendNextNumericId,
+  ensureBackendTable,
+  loadCache,
+  readJsonBody,
+  saveBackendCache,
+  sendJson,
+  crypto,
+  fs,
+  path,
+  rootDir: ROOT_DIR,
+  enqueueSalesWrite
 });
 const {
   handleAuditGet: handleArcaAuditGet,
@@ -871,6 +903,9 @@ const server = http.createServer(createRequestHandler({
     handleSalesDeliveryFullEntry,
     handleSalesInvoiceFullEntry,
     handleSalesOrderFullEntry,
+    handleSalesWorkflowArcaConfirmation,
+    handleSalesWorkflowClose,
+    handleSalesWorkflowList,
     handleUnbilledOrdersGet
   },
   sendJson,

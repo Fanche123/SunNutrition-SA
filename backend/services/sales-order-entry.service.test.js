@@ -283,6 +283,45 @@ test("reintentar después de un fallo guarda una sola unidad coherente", async (
   assert.equal(fixture.saved().tables.detalle_pedidos.rows.length, 1);
 });
 
+test("pedido del workflow usa clave idempotente y rechaza reutilizarla con otro payload", async () => {
+  let source = {
+    generatedAt: "",
+    tables: {
+      clientes: { rows: [{ id_cliente: 1 }], rowCount: 1 },
+      productos: { rows: [{ id_producto: 10 }], rowCount: 1 },
+      pedidos: { rows: [], rowCount: 0 },
+      detalle_pedidos: { rows: [], rowCount: 0 },
+      gestion_ventas: { rows: [], rowCount: 0 }
+    }
+  };
+  const responses = [];
+  const service = createSalesOrderEntryService({
+    backendId: global.backendId,
+    backendNextNumericId: (rows, key) => rows.reduce((max, row) => Math.max(max, Number(row[key]) || 0), 0) + 1,
+    backendNumber: Number,
+    ensureBackendTable: (tables, name) => { tables[name] ||= { rows: [], rowCount: 0 }; },
+    isIsoDate: (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")),
+    loadCache: () => source,
+    readJsonBody: async (request) => request.body,
+    saveBackendCache: (cache) => { source = cache; },
+    sendJson: (_response, status, payload) => { responses.push({ status, payload }); return payload; }
+  });
+  const operationId = "pedido:12345678-1234-1234-1234-123456789012";
+  const body = { ...validBody(), workflow: { operationId } };
+  await service.handleSalesOrderFullEntry({ body }, {});
+  await service.handleSalesOrderFullEntry({ body }, {});
+  assert.equal(responses.at(-1).payload.idempotent, true);
+  assert.equal(source.tables.pedidos.rows.length, 1);
+  assert.equal(source.tables.detalle_pedidos.rows.length, 1);
+  assert.equal(source.tables.gestion_ventas.rows.length, 1);
+
+  const changed = JSON.parse(JSON.stringify(body));
+  changed.details[0].cantidadCajas = 99;
+  await service.handleSalesOrderFullEntry({ body: changed }, {});
+  assert.equal(responses.at(-1).status, 409);
+  assert.equal(source.tables.pedidos.rows.length, 1);
+});
+
 test("combobox filtra clientes y productos sin distinguir mayúsculas ni tildes", () => {
   const clients = [
     { id_cliente: 1, nombre_cliente: "Álamo_Sur" },

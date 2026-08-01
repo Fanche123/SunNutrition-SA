@@ -348,7 +348,7 @@ async function submitOrderEntry(event) {
       idCliente: selectedOrderCatalogId("order-client"),
       fechaEntrega: deliveryDate,
       fechaOriginal: els["order-original-date"]?.value || deliveryDate
-    }, details);
+    }, details, window.SalesWorkflow?.orderRequestMetadata?.() || null);
     setCommercialStatus("orders-status", `Pedido #${result.orderId} guardado.`, "success");
     event.target.reset();
     orderDraftDetails = [];
@@ -359,6 +359,7 @@ async function submitOrderEntry(event) {
     resetLogisticsExpenseFormState();
     commercialEntryData.loaded = false;
     await loadCommercialEntryData(true);
+    window.dispatchEvent(new CustomEvent("sales-workflow:order-saved", { detail: result }));
   } catch (error) {
     setCommercialStatus("orders-status", `No se pudo guardar el pedido: ${error.message}`, "error");
   } finally {

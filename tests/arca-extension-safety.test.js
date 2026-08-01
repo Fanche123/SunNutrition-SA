@@ -4916,7 +4916,7 @@ test("la nueva solapa carga el módulo y los datos sólo al abrirla", () => {
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const app = fs.readFileSync(path.join(root, "assets/js/app.js"), "utf8");
 
-  assert.match(html, /data-view="arca-invoicing"/);
+  assert.match(html, /data-view="sales-workflow"/);
   assert.doesNotMatch(html, /<script[^>]+src="assets\/js\/modules\/arca-invoicing\.js/);
   assert.match(app, /loadDeferredScript\(\s*"assets\/js\/modules\/arca-invoicing\.js/);
   assert.match(app, /runViewLoad\(view/);

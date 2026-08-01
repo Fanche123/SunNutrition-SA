@@ -88,18 +88,18 @@ function validPrepare(orderId = 1, receiptType = "Factura_A") {
   };
 }
 
-test("lista únicamente pedidos sin entrega real y sin factura antes de paginar", () => {
+test("lista pedidos sin factura aunque ya tengan entrega real antes de paginar", () => {
   const fixture = serviceFixture();
   const firstPage = fixture.service.orders(fixture.cache, { status: "unbilled", limit: 2, offset: 0 });
   const secondPage = fixture.service.orders(fixture.cache, { status: "unbilled", limit: 2, offset: 2 });
 
-  assert.equal(firstPage.total, 3);
+  assert.equal(firstPage.total, 4);
   assert.equal(firstPage.rows.length, 2);
-  assert.equal(secondPage.total, 3);
-  assert.equal(secondPage.rows.length, 1);
+  assert.equal(secondPage.total, 4);
+  assert.equal(secondPage.rows.length, 2);
   assert.deepEqual(
     [...firstPage.rows, ...secondPage.rows].map((row) => row.id_pedido),
-    ["1", "4", "5"]
+    ["1", "2", "4", "5"]
   );
   assert.equal(firstPage.rows[0].fecha_entrega_prevista, "2026-07-05");
   assert.equal(firstPage.rows[0].fecha_pedido, "2026-07-01");
@@ -122,25 +122,25 @@ test("ordena por entrega prevista antes de paginar, desempata por pedido y deja 
 
   const firstPage = fixture.service.orders(fixture.cache, { limit: 2, offset: 0 });
   const secondPage = fixture.service.orders(fixture.cache, { limit: 2, offset: 2 });
-  assert.deepEqual(firstPage.rows.map((row) => row.id_pedido), ["4", "5"]);
-  assert.deepEqual(secondPage.rows.map((row) => row.id_pedido), ["1"]);
+  assert.deepEqual(firstPage.rows.map((row) => row.id_pedido), ["2", "4"]);
+  assert.deepEqual(secondPage.rows.map((row) => row.id_pedido), ["5", "1"]);
 
   orders.find((order) => order.id_pedido === 4).fecha_entrega = "2026-02-30";
   orders.find((order) => order.id_pedido === 5).fecha_entrega = "";
   const withMissingDates = fixture.service.orders(fixture.cache, { limit: 20 });
-  assert.deepEqual(withMissingDates.rows.map((row) => row.id_pedido), ["1", "4", "5"]);
+  assert.deepEqual(withMissingDates.rows.map((row) => row.id_pedido), ["2", "1", "4", "5"]);
 });
 
-test("no expone pedidos entregados o facturados aunque se pidan filtros amplios", () => {
+test("expone pedidos entregados pero nunca pedidos ya facturados", () => {
   const fixture = serviceFixture();
   const all = fixture.service.orders(fixture.cache, { status: "all", limit: 20 });
   const billed = fixture.service.orders(fixture.cache, { status: "billed", limit: 20 });
 
-  assert.deepEqual(all.rows.map((row) => row.id_pedido).sort(), ["1", "4", "5"]);
+  assert.deepEqual(all.rows.map((row) => row.id_pedido).sort(), ["1", "2", "4", "5"]);
   assert.equal(billed.total, 0);
 });
 
-test("una actualización excluye el pedido apenas aparece una entrega o venta persistida", () => {
+test("una entrega conserva el pedido y una venta persistida lo excluye", () => {
   const fixture = serviceFixture();
   assert.equal(fixture.service.orders(fixture.cache, { orderId: 1 }).total, 1);
 
@@ -149,7 +149,7 @@ test("una actualización excluye el pedido apenas aparece una entrega o venta pe
     id_entrega: 50,
     id_pedido: 1
   });
-  assert.equal(fixture.service.orders(fixture.cache, { orderId: 1 }).total, 0);
+  assert.equal(fixture.service.orders(fixture.cache, { orderId: 1 }).total, 1);
 
   fixture.cache.tables.entregas_detalle.rows.pop();
   fixture.cache.tables.ventas.rows.push({ id_venta: 82, id_pedido: 1 });
@@ -335,9 +335,11 @@ test("rechaza pedido facturado por carrera sin alterar datos", () => {
   assert.throws(() => fixture.service.prepare(validPrepare(3), fixture.cache), /ya fue facturado/);
 });
 
-test("rechaza pedido entregado por carrera sin alterar datos", () => {
+test("prepara un pedido ya entregado sin duplicar la entrega", () => {
   const fixture = serviceFixture();
-  assert.throws(() => fixture.service.prepare(validPrepare(2), fixture.cache), /entrega real/);
+  const prepared = fixture.service.prepare(validPrepare(2), fixture.cache);
+  assert.equal(prepared.order.deliveryStatus, "entregado_sin_factura");
+  assert.equal(prepared.order.actualDeliveryDate, "2026-07-09");
 });
 
 test("prepara el ejemplo exacto 40 cajas por 140 unidades con domicilio normalizado", () => {

@@ -81,10 +81,13 @@ function createSalesInvoiceEntryService({
   saveBackendCache,
   sendJson,
   synchronizeEconomicExpenses = (cache) => cache,
-  failureInjector = () => {}
+  failureInjector = () => {},
+  enqueueSalesWrite = (operation) => operation(),
+  crypto,
+  fs,
+  path,
+  rootDir
 }) {
-  let invoiceWriteQueue = Promise.resolve();
-
   function unbilledOrders(cache = loadCache()) {
     const tables = cache.tables || {};
     const billedOrderIds = new Set((tables.ventas?.rows || [])
@@ -141,9 +144,7 @@ function createSalesInvoiceEntryService({
   }
 
   function handleSalesDeliveryFullEntry(request, response) {
-    const operation = invoiceWriteQueue.then(() => persistSalesDelivery(request, response));
-    invoiceWriteQueue = operation.catch(() => undefined);
-    return operation;
+    return enqueueSalesWrite(() => persistSalesDelivery(request, response));
   }
 
   async function persistSalesDelivery(request, response) {
@@ -211,12 +212,12 @@ function createSalesInvoiceEntryService({
   }
 
   function handleSalesInvoiceFullEntry(request, response) {
-    const operation = invoiceWriteQueue.then(() => persistSalesInvoice(request, response));
-    invoiceWriteQueue = operation.catch(() => undefined);
-    return operation;
+    return enqueueSalesWrite(() => persistSalesInvoice(request, response));
   }
 
   async function persistSalesInvoice(request, response) {
+    let storedAttachment = null;
+    let committed = false;
     try {
       const body = await readJsonBody(request);
       const orderIds = Array.isArray(body.orderIds) ? body.orderIds.map(backendId).filter(Boolean) : [];
@@ -224,10 +225,12 @@ function createSalesInvoiceEntryService({
         throw httpError(400, "Seleccioná un solo pedido por factura; el modelo actual no define reparto de importes entre pedidos.");
       }
       const invoice = normalizeInvoice(body.invoice || {});
+      const workflowMode = body.workflow === true;
+      const attachment = normalizeSalesAttachment(body.attachment, workflowMode);
       const source = loadCache();
       const cache = JSON.parse(JSON.stringify(source));
       cache.tables ||= {};
-      ["pedidos", "clientes", "entregas", "entregas_detalle", "ventas"]
+      ["pedidos", "clientes", "entregas", "entregas_detalle", "ventas", "gestion_ventas"]
         .forEach((tableName) => ensureBackendTable(cache.tables, tableName));
 
       const orderId = orderIds[0];
@@ -236,11 +239,19 @@ function createSalesInvoiceEntryService({
       const existingOrderSale = cache.tables.ventas.rows
         .find((sale) => backendId(sale.id_pedido) === orderId);
       if (existingOrderSale && sameInvoice(existingOrderSale, invoice, clientIdFromOrder(order))) {
+        if (attachment) {
+          storedAttachment = storeSalesAttachment(cache, orderId, attachment, new Date().toISOString());
+          cache.tables.gestion_ventas.rowCount = cache.tables.gestion_ventas.rows.length;
+          cache.generatedAt = new Date().toISOString();
+          saveBackendCache(cache);
+          committed = true;
+        }
         return sendJson(response, 200, {
           ok: true,
           saleId: existingOrderSale.id_venta,
           orderId,
-          idempotent: true
+          idempotent: true,
+          ...(storedAttachment ? { attachmentPath: storedAttachment.relativePath } : {})
         });
       }
       if (existingOrderSale) {
@@ -278,18 +289,129 @@ function createSalesInvoiceEntryService({
         _editedLocallyAt: timestamp
       });
       cache.tables.ventas.rowCount = cache.tables.ventas.rows.length;
+      if (attachment) storedAttachment = storeSalesAttachment(cache, orderId, attachment, timestamp);
+      cache.tables.gestion_ventas.rowCount = cache.tables.gestion_ventas.rows.length;
       cache.generatedAt = timestamp;
       failureInjector("before-economic-sync");
       const synchronizedCache = synchronizeEconomicExpenses(cache, "ventas") || cache;
       failureInjector("before-save");
       saveBackendCache(synchronizedCache);
-      return sendJson(response, 200, { ok: true, saleId, orderId });
+      committed = true;
+      return sendJson(response, 200, {
+        ok: true,
+        saleId,
+        orderId,
+        ...(storedAttachment ? { attachmentPath: storedAttachment.relativePath } : {})
+      });
     } catch (error) {
+      if (storedAttachment?.created && !committed) {
+        try { fs?.unlinkSync(storedAttachment.absolutePath); } catch {}
+      }
       return sendJson(response, error.statusCode || 400, {
         ok: false,
         error: `No se guardó la venta: ${error.message}`
       });
     }
+  }
+
+  function normalizeSalesAttachment(value, required) {
+    if (!value && !required) return null;
+    if (!value || typeof value !== "object") throw httpError(400, "Adjuntá la factura en PDF o imagen.");
+    const fileName = sanitizeFileName(value.fileName);
+    const dataUrl = String(value.fileDataUrl || "");
+    const match = dataUrl.match(/^data:(application\/pdf|image\/(?:png|jpeg|jpg|webp));base64,([a-zA-Z0-9+/=\r\n]+)$/);
+    if (!fileName || !match) throw httpError(400, "El adjunto debe ser un PDF o imagen válido.");
+    const buffer = Buffer.from(match[2].replace(/\s+/g, ""), "base64");
+    if (!buffer.length || buffer.length > 20 * 1024 * 1024) {
+      throw httpError(400, "El adjunto está vacío o supera 20 MB.");
+    }
+    const mimeType = match[1] === "image/jpg" ? "image/jpeg" : match[1];
+    const extension = attachmentExtension(mimeType, buffer);
+    return {
+      buffer,
+      fileName,
+      mimeType,
+      extension,
+      hash: crypto.createHash("sha256").update(buffer).digest("hex")
+    };
+  }
+
+  function attachmentExtension(mimeType, buffer) {
+    const signatures = {
+      "application/pdf": () => buffer.subarray(0, 5).toString("ascii") === "%PDF-",
+      "image/png": () => buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+      "image/jpeg": () => buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff,
+      "image/webp": () => buffer.length >= 12 && buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP"
+    };
+    const extensions = { "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp" };
+    if (!signatures[mimeType]?.()) throw httpError(400, "El contenido del adjunto no coincide con un PDF o imagen válido.");
+    return extensions[mimeType];
+  }
+
+  function storeSalesAttachment(cache, orderId, attachment, timestamp) {
+    if (!fs || !path || !rootDir || !crypto) throw httpError(500, "El almacenamiento de adjuntos no está configurado.");
+    const workflow = ensureInvoiceWorkflowRow(cache, orderId, timestamp);
+    if (workflow.archivo_factura_hash) {
+      if (workflow.archivo_factura_hash !== attachment.hash) {
+        throw httpError(409, "El pedido ya tiene otro adjunto de factura registrado.");
+      }
+      return {
+        absolutePath: path.join(rootDir, workflow.archivo_factura),
+        relativePath: workflow.archivo_factura,
+        created: false
+      };
+    }
+    const directory = path.join(rootDir, "backend", "attachments", "ventas");
+    fs.mkdirSync(directory, { recursive: true });
+    const storedName = `${sanitizeFileName(orderId)}-${attachment.hash.slice(0, 16)}.${attachment.extension}`;
+    const absolutePath = path.join(directory, storedName);
+    const relativePath = path.relative(rootDir, absolutePath).replace(/\\/g, "/");
+    let created = false;
+    if (!fs.existsSync(absolutePath)) {
+      fs.writeFileSync(absolutePath, attachment.buffer, { flag: "wx" });
+      created = true;
+    }
+    workflow.archivo_factura = relativePath;
+    workflow.archivo_factura_nombre = attachment.fileName;
+    workflow.archivo_factura_hash = attachment.hash;
+    workflow.actualizado_en = timestamp;
+    return { absolutePath, relativePath, created };
+  }
+
+  function ensureInvoiceWorkflowRow(cache, orderId, timestamp) {
+    const table = cache.tables.gestion_ventas;
+    const matches = table.rows.filter((row) => backendId(row.id_pedido) === orderId);
+    if (matches.length > 1) throw httpError(409, `El pedido ${orderId} tiene estados de gestión duplicados.`);
+    if (matches.length === 1) return matches[0];
+    const row = {
+      _rowNumber: table.rows.length + 2,
+      id_gestion_venta: backendNextNumericId(table.rows, "id_gestion_venta"),
+      id_pedido: orderId,
+      origen: "historico_incompleto",
+      clave_creacion_pedido: "",
+      hash_creacion_pedido: "",
+      factura_arca_confirmada_en: "",
+      factura_arca_confirmada_por: "",
+      archivo_factura: "",
+      archivo_factura_nombre: "",
+      archivo_factura_hash: "",
+      cerrado_en: "",
+      cerrado_por: "",
+      creado_en: timestamp,
+      actualizado_en: timestamp,
+      _editedLocallyAt: timestamp
+    };
+    table.rows.push(row);
+    return row;
+  }
+
+  function sanitizeFileName(value) {
+    return String(value || "factura")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 120) || "factura";
   }
 
   function normalizeInvoice(invoice) {

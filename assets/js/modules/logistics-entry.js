@@ -401,6 +401,7 @@ async function createDeliveryForSelectedOrders() {
     setCommercialStatus("logistics-status", `Entrega #${deliveryId} creada con ${selectedOrderIds.length} pedido(s).`, "success");
     commercialEntryData.loaded = false;
     await loadCommercialEntryData(true);
+    window.dispatchEvent(new CustomEvent("sales-workflow:delivery-saved", { detail: result }));
   } catch (error) {
     setCommercialStatus("logistics-status", `No se pudo crear la entrega: ${error.message}`, "error");
   } finally {

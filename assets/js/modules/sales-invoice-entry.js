@@ -379,11 +379,30 @@ async function submitSalesInvoice(event) {
     setSalesInvoiceStatus("Revisá subtotal, IVA y total: deben ser importes válidos no negativos.", "error");
     return;
   }
+  const workflowMode = Boolean(window.SalesWorkflow?.isActionOpen?.("sale"));
+  const file = document.getElementById("sales-invoice-file")?.files?.[0] || null;
+  if (workflowMode && !file) {
+    setSalesInvoiceStatus("Adjuntá la factura en PDF o imagen antes de registrar la venta.", "error");
+    return;
+  }
+  const submitButton = event.submitter || document.getElementById("sales-invoice-submit");
+  if (submitButton?.disabled) return;
+  if (submitButton) submitButton.disabled = true;
   setSalesInvoiceStatus("Guardando venta...", "pending");
   try {
-    await requestBackendApi("/api/sales/invoices/full-entry", {
+    const attachment = file ? {
+      fileDataUrl: await salesInvoiceFileDataUrl(file),
+      fileName: file.name,
+      mimeType: file.type
+    } : null;
+    const result = await requestBackendApi("/api/sales/invoices/full-entry", {
       method: "POST",
-      body: JSON.stringify({ orderIds: [selectedSalesInvoiceOrderId], invoice })
+      body: JSON.stringify({
+        orderIds: [selectedSalesInvoiceOrderId],
+        invoice,
+        workflow: workflowMode,
+        ...(attachment ? { attachment } : {})
+      })
     });
     event.target.reset();
     updateSalesInvoiceFileUi();
@@ -391,11 +410,52 @@ async function submitSalesInvoice(event) {
     updateSalesInvoiceComparison();
     await loadUnbilledSalesOrders();
     setSalesInvoiceStatus("Venta guardada. El pedido fue retirado de la lista.", "success");
+    window.dispatchEvent(new CustomEvent("sales-workflow:sale-saved", { detail: result }));
   } catch (error) {
     await loadUnbilledSalesOrders();
     setSalesInvoiceStatus(error.message, "error");
+  } finally {
+    if (submitButton) submitButton.disabled = false;
   }
 }
+
+function selectSalesInvoiceWorkflowOrder(order) {
+  if (!order?.id_pedido) return;
+  const normalized = {
+    id_pedido: String(order.id_pedido),
+    fecha_pedido: order.fecha_pedido || "",
+    fecha_entrega_pedida: order.fecha_entrega_prevista || "",
+    id_cliente: order.id_cliente || "",
+    cliente: order.cliente || "",
+    cuit_cliente: order.cuit_cliente || "",
+    id_entrega: order.delivery?.id_entrega || "",
+    fecha_entrega: order.delivery?.fecha || "",
+    cantidad_cajas: order.cantidad_cajas || 0,
+    productos: order.productos || [],
+    comparacion_factura: order.comparacion_factura || null
+  };
+  salesInvoiceOrders = [normalized, ...salesInvoiceOrders.filter((item) => String(item.id_pedido) !== normalized.id_pedido)];
+  selectedSalesInvoiceOrderId = normalized.id_pedido;
+  renderUnbilledSalesOrders();
+  const radio = document.querySelector(`input[name="sales-invoice-order"][value="${CSS.escape(normalized.id_pedido)}"]`);
+  if (radio) radio.checked = true;
+  const sale = order.sale;
+  if (sale) {
+    applySalesInvoiceProposal({
+      tipo_factura: sale.tipo_factura,
+      nro_factura: sale.nro_factura,
+      fecha_factura: sale.fecha_factura,
+      subtotal: sale.subtotal,
+      iva: sale.iva,
+      total: sale.total
+    });
+  } else {
+    updateSalesInvoiceComparison();
+  }
+  setSalesInvoiceStatus(`Pedido #${normalized.id_pedido} seleccionado. Adjuntá la factura y revisá los datos antes de guardar.`, "success");
+}
+
+if (typeof window !== "undefined") window.selectSalesInvoiceWorkflowOrder = selectSalesInvoiceWorkflowOrder;
 
 function salesInvoiceMoneyValue(id) {
   const parsed = parseMoneyInput(document.getElementById(id)?.value || "", { allowEmpty: false, allowNegative: false });

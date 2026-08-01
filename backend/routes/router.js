@@ -32,6 +32,8 @@ function createRequestHandler(dependencies) {
     ["POST", "/api/sales/invoice/read", handlers.handleSalesInvoiceRead],
     ["POST", "/api/sales/invoices/full-entry", handlers.handleSalesInvoiceFullEntry],
     ["POST", "/api/sales/deliveries/full-entry", handlers.handleSalesDeliveryFullEntry],
+    ["POST", "/api/sales/workflow/arca-confirmation", handlers.handleSalesWorkflowArcaConfirmation],
+    ["POST", "/api/sales/workflow/close", handlers.handleSalesWorkflowClose],
     ["POST", "/api/backend/sql", handlers.handleBackendSqlQuery],
     ["POST", "/api/reception-attachments", handlers.handleReceptionAttachmentSave],
     ["POST", "/api/reception-invoice/read", handlers.handleReceptionInvoiceRead],
@@ -116,6 +118,9 @@ function createRequestHandler(dependencies) {
       }
       if (request.url.startsWith("/api/sales/arca/orders") && request.method === "GET") {
         return handlers.handleArcaOrdersGet(request, response);
+      }
+      if (request.url.startsWith("/api/sales/workflow") && request.method === "GET") {
+        return handlers.handleSalesWorkflowList(request, response);
       }
       const bankReconciliationPath = new URL(
         request.url,

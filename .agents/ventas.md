@@ -53,6 +53,7 @@ Propios de frontend:
 - `assets/js/modules/arca-invoicing.js`
 - `assets/js/modules/sales-orders.js`
 - `assets/js/modules/sales-invoice-entry.js`
+- `assets/js/modules/sales-workflow.js`
 - `assets/js/modules/logistics-entry.js`
 - `assets/js/modules/commissions-entry.js`
 
@@ -64,6 +65,9 @@ Backend propio:
 - `backend/services/sales-order-entry.service.test.js`
 - `backend/services/sales-invoice-entry.service.js`
 - `backend/services/sales-invoice-entry.service.test.js`
+- `backend/services/sales-workflow.service.js`
+- `tests/sales-workflow.test.js`
+- `backend/migrations/20260731-sales-workflow.js` (persistencia aditiva coordinada con Base de datos)
 - `backend/services/delivery-deletion.service.js`
 - `tests/delivery-integrity.test.js`
 
@@ -93,6 +97,7 @@ Tablas comerciales confirmadas:
 - `entregas_detalle` — clave canónica usada por código `id_entregas_detalle`; relación `id_entrega`/`id_pedido`.
 - El alta de entrega sólo considera asociado un pedido cuando `entregas_detalle.id_entrega` referencia una entrega existente. La baja administrativa de una entrega usa preview firmado: elimina únicamente sus filas `entregas_detalle`, desvincula `ventas.id_entrega`, conserva pedidos y bloquea egresos o dependencias no allowlisted.
 - `ventas` — PK `id_venta`; vínculos a pedido/cliente/entrega, factura, fechas, IVA, subtotal y total.
+- `gestion_ventas` — tabla técnica fuera del editor genérico; una fila por pedido para confirmación ARCA, idempotencia de creación, adjunto canónico y auditoría del Tick. Sus escrituras pasan únicamente por endpoints especializados y el Tick verifica existencia, ubicación y SHA-256 del adjunto.
 
 Integraciones de lectura/escritura ajena:
 

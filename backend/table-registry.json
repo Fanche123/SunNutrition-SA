@@ -28,6 +28,7 @@
     { "name": "entregas", "label": "Entregas", "module": "ventas", "workbook": "Backend", "sheet": "entregas", "primaryKey": "Id_Entrega" },
     { "name": "entregas_detalle", "label": "Entregas detalle", "module": "ventas", "workbook": "Backend", "sheet": "entregas_detalle", "primaryKey": "id_entregas_detalle" },
     { "name": "ventas", "label": "Ventas", "module": "ventas", "workbook": "Backend", "sheet": "ventas", "primaryKey": "Id_Venta" },
+    { "name": "gestion_ventas", "label": "Gestión de ventas", "module": "ventas", "workbook": "Backend", "sheet": "gestion_ventas", "primaryKey": "id_gestion_venta", "synthetic": true },
     { "name": "cobros", "label": "Cobros", "module": "ventas", "workbook": "Backend", "sheet": "cobros", "primaryKey": "Id_Cobro" },
     { "name": "cobros_detalle", "label": "Cobros detalle", "module": "ventas", "workbook": "Backend", "sheet": "cobros_detalle", "primaryKey": "id_cobros_detalle" },
     { "name": "retenciones_ganancias", "label": "Retenciones ganancias", "module": "ventas", "workbook": "Backend", "sheet": "retenciones_ganancias", "primaryKey": "Id_Retencion_Ganancias", "synthetic": true },

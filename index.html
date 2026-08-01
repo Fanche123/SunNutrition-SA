@@ -34,9 +34,7 @@
             <span>Ventas y distribución</span><span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
           <div class="nav-group-items" inert>
-            <button class="nav-item nav-subitem" data-view="orders-entry" type="button">Pedidos</button>
-            <button class="nav-item nav-subitem" data-view="arca-invoicing" type="button">Facturación ARCA</button>
-            <button class="nav-item nav-subitem" data-view="sales-invoice-entry" type="button">Ventas</button>
+            <button class="nav-item nav-subitem" data-view="sales-workflow" type="button">Gestión de Ventas</button>
             <button class="nav-item nav-subitem" data-view="sales-entry" type="button">Saldos Pendientes</button>
             <button class="nav-item nav-subitem" data-view="logistics-entry" type="button">Logística</button>
             <button class="nav-item nav-subitem" data-view="commissions-entry" type="button">Comisiones</button>
@@ -2318,6 +2316,48 @@
         </section>
       </section>
 
+      <section class="view" id="view-sales-workflow">
+        <section class="panel sales-workflow-panel" aria-labelledby="sales-workflow-title">
+          <div class="sales-workflow-toolbar">
+            <div>
+              <h2 id="sales-workflow-title">Bandeja operativa</h2>
+              <p>Los pedidos permanecen visibles hasta confirmar el cierre.</p>
+            </div>
+            <div class="sales-workflow-toolbar-actions">
+              <button type="button" class="secondary" id="sales-workflow-managed-toggle" aria-pressed="false">Ver gestionados</button>
+              <button type="button" id="sales-workflow-new-order">Nuevo pedido</button>
+            </div>
+          </div>
+          <p id="sales-workflow-status" class="form-status" role="status" aria-live="polite"></p>
+          <div class="table-wrap sales-workflow-table-wrap">
+            <table class="sales-workflow-table">
+              <colgroup>
+                <col class="sales-workflow-col-date"><col class="sales-workflow-col-order"><col class="sales-workflow-col-client"><col class="sales-workflow-col-detail">
+                <col class="sales-workflow-col-action"><col class="sales-workflow-col-action"><col class="sales-workflow-col-action"><col class="sales-workflow-col-close">
+              </colgroup>
+              <thead><tr>
+                <th>Entrega prevista</th><th>Pedido</th><th>Cliente</th><th>Detalle</th>
+                <th>Factura ARCA</th><th>Entrega</th><th>Registrar venta</th><th>Cerrar</th>
+              </tr></thead>
+              <tbody id="sales-workflow-body">
+                <tr><td class="empty" colspan="8">Abrí la pestaña para cargar la bandeja.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <dialog id="sales-workflow-dialog" class="sales-workflow-dialog" aria-labelledby="sales-workflow-dialog-title">
+          <div class="sales-workflow-dialog-shell">
+            <header>
+              <h2 id="sales-workflow-dialog-title">Gestión de Ventas</h2>
+              <button type="button" class="secondary sales-workflow-dialog-close" aria-label="Cerrar">×</button>
+            </header>
+            <div id="sales-workflow-dialog-body" class="sales-workflow-dialog-body"></div>
+            <footer id="sales-workflow-dialog-footer" class="sales-workflow-dialog-footer" hidden></footer>
+          </div>
+        </dialog>
+      </section>
+
       <section class="view" id="view-arca-invoicing">
         <div class="arca-invoicing-layout">
           <section class="panel arca-orders-panel" aria-labelledby="arca-orders-title">
@@ -2344,11 +2384,6 @@
                 </tbody>
               </table>
             </div>
-            <div class="arca-pagination" aria-label="Paginación de pedidos">
-              <button id="arca-previous" class="secondary" type="button">Anterior</button>
-              <span id="arca-page-info">0–0 de 0</span>
-              <button id="arca-next" class="secondary" type="button">Siguiente</button>
-            </div>
           </section>
 
           <section class="panel arca-review-panel" aria-labelledby="arca-review-title">
@@ -2359,40 +2394,18 @@
             </div>
             <div id="arca-selection-content" hidden>
               <form id="arca-prepare-form" class="arca-compact-review">
-                <div class="arca-review-fields">
-                  <div class="arca-review-client"><span>Cliente</span><strong id="arca-summary-client">-</strong></div>
-                  <label>
-                    Tipo de comprobante *
-                    <select id="arca-receipt-type" required>
-                      <option value="">Seleccionar</option>
-                      <option value="Factura_A">Factura A</option>
-                      <option value="Factura_B">Factura B</option>
-                    </select>
-                  </label>
-                  <label>
-                    Fecha del comprobante *
-                    <input id="arca-invoice-date" type="date" required>
-                  </label>
-                </div>
                 <div class="table-wrap arca-review-table">
                   <table>
                     <thead><tr>
-                      <th scope="col">Producto</th>
-                      <th scope="col" class="num">Unidades</th>
-                      <th scope="col" class="num">Precio unitario</th>
-                      <th scope="col" class="num">Subtotal</th>
-                      <th scope="col" class="num">Total</th>
+                      <th scope="col">Cliente</th><th scope="col">Tipo de comprobante *</th><th scope="col">Fecha *</th><th scope="col">Producto / entrega</th><th scope="col" class="num">Unidades</th><th scope="col" class="num">Precio unitario</th><th scope="col" class="num">Subtotal</th><th scope="col" class="num">Total</th><th scope="col">Acción</th>
                     </tr></thead>
-                    <tbody id="arca-review-lines"></tbody>
-                    <tfoot><tr>
-                      <th colspan="3" scope="row">Totales</th>
-                      <td id="arca-review-subtotal" class="num">-</td>
-                      <td id="arca-review-total" class="num">-</td>
-                    </tr></tfoot>
+                    <tbody><tr>
+                      <td><strong id="arca-summary-client">-</strong></td>
+                      <td><select id="arca-receipt-type" aria-label="Tipo de comprobante" required><option value="">Seleccionar</option><option value="Factura_A">Factura A</option><option value="Factura_B">Factura B</option></select></td>
+                      <td><input id="arca-invoice-date" type="date" aria-label="Fecha del comprobante" required></td>
+                      <td id="arca-review-product">-</td><td id="arca-review-units" class="num">-</td><td id="arca-review-unit-price" class="num">-</td><td id="arca-review-subtotal" class="num">-</td><td id="arca-review-total" class="num">-</td><td><button type="submit">Crear factura</button></td>
+                    </tr></tbody>
                   </table>
-                </div>
-                <div class="arca-create-action">
-                  <button type="submit">Crear factura</button>
                 </div>
               </form>
             </div>
@@ -3171,5 +3184,6 @@
   <script src="assets/js/modules/reports-cashflow.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/modules/reports-production.js?v=20260730-production-report"></script>
   <script src="assets/js/modules/dashboard.js?v=20260727-inventory-purchase-history"></script>
+  <script src="assets/js/modules/sales-workflow.js?v=20260731-unified-sales-workflow"></script>
 </body>
 </html>

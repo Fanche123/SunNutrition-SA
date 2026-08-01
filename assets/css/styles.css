@@ -8240,14 +8240,23 @@ button.danger {
 }
 
 /* Facturación asistida: selección y revisión compacta. */
-.arca-invoicing-layout { display: grid; gap: 16px; }
+.arca-invoicing-layout { display: grid; gap: 20px; }
 .arca-orders-panel, .arca-review-panel { min-width: 0; }
-.arca-orders-panel .panel-heading, .arca-review-panel .panel-heading { margin-bottom: 12px; }
+.arca-orders-panel .panel-heading, .arca-review-panel .panel-heading {
+  display: flex;
+  align-items: center;
+  min-height: 54px;
+  margin: 0;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--line);
+}
+.arca-orders-panel .panel-heading h2, .arca-review-panel .panel-heading h2 { font-size: 1rem; }
 .arca-review-fields label { display: grid; gap: 6px; min-width: 0; font-weight: 700; }
 .arca-orders-table table { min-width: 1050px; }
-.arca-orders-table th, .arca-orders-table td { padding-top: 10px; padding-bottom: 10px; }
+.arca-orders-table th, .arca-orders-table td { padding-top: 11px; padding-bottom: 11px; vertical-align: middle; }
 .arca-load-error { color: #b42318; background: #fef3f2; }
 .arca-orders-table tr.is-selected td { background: #ecfdf5; }
+.arca-orders-table tr.is-selected td:first-child { box-shadow: inset 3px 0 var(--primary); }
 .arca-orders-table tr.is-delivery-today td { background: #fff7ed; }
 .arca-orders-table tr.is-delivery-tomorrow td { background: #fffbeb; }
 .arca-orders-table tr.is-delivery-today td:first-child, .arca-orders-table tr.is-delivery-tomorrow td:first-child { box-shadow: inset 4px 0 #b45309; }
@@ -8259,12 +8268,92 @@ button.danger {
 .arca-badge { display: inline-flex; align-items: center; min-height: 26px; padding: 3px 9px; border-radius: 999px; background: #eef2f6; color: #334155; font-size: .78rem; font-weight: 800; white-space: nowrap; }
 .arca-badge.entrega_pendiente, .arca-badge.datos_incompletos { background: #fff7ed; color: #9a3412; }
 .arca-badge.listo { background: #ecfdf5; color: #047857; }
-.arca-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; }
-.arca-compact-review { display: grid; gap: 14px; }
-.arca-review-fields { display: grid; grid-template-columns: minmax(220px, 1.3fr) repeat(2, minmax(180px, .8fr)); gap: 14px; align-items: end; }
-.arca-review-client { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
-.arca-review-client span { color: var(--muted); font-size: .78rem; font-weight: 800; text-transform: uppercase; }
-.arca-review-table table { min-width: 760px; }
-.arca-create-action { display: flex; justify-content: flex-end; }
-.arca-create-action button { min-width: 180px; }
-@media (max-width: 800px) { .arca-review-fields { grid-template-columns: 1fr; } .arca-create-action button { width: 100%; } .arca-create-action, .arca-pagination { align-items: stretch; flex-direction: column; } }
+.arca-compact-review { padding: 16px 18px 18px; }
+.arca-review-table { overflow-x: hidden; border: 1px solid var(--line); border-radius: 8px; }
+.arca-review-table table { min-width: 900px; table-layout: fixed; }
+.arca-review-table th, .arca-review-table td { vertical-align: middle; }
+.arca-review-table th, .arca-review-table td { padding: 9px 8px; font-size: .82rem; }
+.arca-review-table th { white-space: normal; }
+.arca-review-table td { white-space: nowrap; }
+.arca-review-table th:nth-child(1) { width: 9%; }
+.arca-review-table th:nth-child(2) { width: 12%; }
+.arca-review-table th:nth-child(3) { width: 10%; }
+.arca-review-table th:nth-child(4) { width: 19%; }
+.arca-review-table th:nth-child(5) { width: 9%; }
+.arca-review-table th:nth-child(6) { width: 10%; }
+.arca-review-table th:nth-child(7), .arca-review-table th:nth-child(8) { width: 8%; }
+.arca-review-table th:nth-child(9) { width: 11%; }
+.arca-review-table td:nth-child(1), .arca-review-table td:nth-child(4) { white-space: normal; overflow-wrap: anywhere; }
+.arca-review-table select, .arca-review-table input, .arca-review-table button { width: 100%; min-width: 0; }
+.arca-review-panel .form-status { min-height: 20px; margin: 0; padding: 0 18px 16px; }
+.arca-review-panel .form-status[data-status="success"] { display: none; }
+@media (max-width: 800px) {
+  .arca-invoicing-layout { gap: 16px; }
+  .arca-orders-panel .panel-heading, .arca-review-panel .panel-heading { min-height: 50px; padding-inline: 14px; }
+  .arca-compact-review { padding-inline: 14px; }
+  .arca-review-table { overflow-x: auto; }
+  .arca-review-table table { min-width: 980px; }
+}
+
+/* Gestión de Ventas: bandeja única y reutilización de formularios existentes. */
+.sales-workflow-panel { width: 100%; min-width: 0; }
+.sales-workflow-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+.sales-workflow-toolbar h2, .sales-workflow-toolbar p { margin: 0; }
+.sales-workflow-toolbar p { margin-top: 4px; color: var(--muted); }
+.sales-workflow-toolbar-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.sales-workflow-panel > .form-status { min-height: 22px; margin: 0; padding: 10px 20px 0; }
+.sales-workflow-table-wrap { max-height: none; overflow-x: auto; }
+.sales-workflow-table { width: 100%; min-width: 960px; table-layout: fixed; }
+.sales-workflow-col-date { width: 12%; }
+.sales-workflow-col-order { width: 8%; }
+.sales-workflow-col-client { width: 16%; }
+.sales-workflow-col-detail { width: 22%; }
+.sales-workflow-col-action { width: 13%; }
+.sales-workflow-col-close { width: 3%; }
+.sales-workflow-table th, .sales-workflow-table td { vertical-align: middle; text-align: center; overflow-wrap: anywhere; }
+.sales-workflow-table th { white-space: normal; }
+.sales-workflow-table td:nth-child(3), .sales-workflow-table td:nth-child(4) { white-space: normal; }
+.sales-workflow-detail { white-space: normal; }
+.sales-workflow-overdue td { background: #fff1f2; }
+.sales-workflow-today td { background: #fff7ed; }
+.sales-workflow-tomorrow td { background: #fffbeb; }
+.sales-workflow-overdue td:first-child { box-shadow: inset 4px 0 #dc2626; }
+.sales-workflow-today td:first-child { box-shadow: inset 4px 0 #ea580c; }
+.sales-workflow-tomorrow td:first-child { box-shadow: inset 4px 0 #d97706; }
+.sales-workflow-timing, .sales-workflow-note { display: block; margin-top: 4px; color: var(--muted); font-size: .74rem; font-weight: 800; }
+.sales-workflow-action, .sales-workflow-close { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; padding: 7px 10px; border-radius: 7px; font-weight: 800; line-height: 1.2; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease, transform .16s ease; }
+.sales-workflow-action { width: 100%; white-space: normal; }
+.sales-workflow-action.is-pending { background: var(--accent); color: #fff; border: 1px solid var(--accent); }
+.sales-workflow-action.is-complete, .sales-workflow-close.is-complete, .sales-workflow-close.is-ready { background: #dcfce7; color: #047857; border: 1px solid #86efac; }
+.sales-workflow-action:hover:not(:disabled), .sales-workflow-close:hover:not(:disabled) { filter: brightness(.97); box-shadow: 0 2px 5px rgba(15, 23, 42, .14); transform: translateY(-1px); }
+.sales-workflow-action:focus-visible, .sales-workflow-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 35%, transparent); outline-offset: 2px; }
+.sales-workflow-close { width: 100%; min-width: 42px; padding-inline: 6px; background: #fff; color: var(--muted); border: 1px solid var(--line); }
+.sales-workflow-close:disabled { opacity: .42; cursor: not-allowed; }
+.sales-workflow-dialog { width: min(1240px, calc(100vw - 32px)); max-width: none; max-height: calc(100vh - 32px); padding: 0; border: 0; border-radius: 12px; box-shadow: 0 24px 80px rgba(15, 23, 42, .28); }
+.sales-workflow-dialog::backdrop { background: rgba(15, 23, 42, .58); }
+.sales-workflow-dialog-shell { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; max-height: calc(100vh - 32px); }
+.sales-workflow-dialog-shell > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+.sales-workflow-dialog-shell > header h2 { margin: 0; font-size: 1.1rem; }
+.sales-workflow-dialog-close { min-width: 40px; padding: 6px 10px; font-size: 1.25rem; }
+.sales-workflow-dialog-body { min-height: 180px; overflow: auto; padding: 18px; background: var(--background, #f8fafc); }
+.sales-workflow-dialog-body > .panel, .sales-workflow-dialog-body > .arca-invoicing-layout { margin: 0; }
+.sales-workflow-dialog[data-action="sale"] .sales-invoice-orders-zone { display: none; }
+.sales-workflow-dialog-footer { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 13px 18px; border-top: 1px solid var(--line); background: #fff; }
+.sales-workflow-dialog-footer p { margin: 0; color: var(--muted); }
+.sales-workflow-readonly-detail { max-width: 760px; margin: 0 auto; padding: 20px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+.sales-workflow-detail-list { display: grid; grid-template-columns: minmax(130px, .4fr) minmax(0, 1fr); gap: 0; margin: 0; }
+.sales-workflow-detail-list dt, .sales-workflow-detail-list dd { margin: 0; padding: 10px 12px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.sales-workflow-detail-list dt { color: var(--muted); font-weight: 800; }
+
+@media (max-width: 760px) {
+  .sales-workflow-toolbar { align-items: stretch; flex-direction: column; padding: 14px; }
+  .sales-workflow-toolbar-actions > button { flex: 1; }
+  .sales-workflow-dialog { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .sales-workflow-dialog-shell { max-height: 100vh; }
+  .sales-workflow-dialog-body { padding: 10px; }
+  .sales-workflow-dialog-footer { align-items: stretch; flex-direction: column; }
+  .sales-workflow-dialog-footer button { width: 100%; }
+  .sales-workflow-detail-list { grid-template-columns: 1fr; }
+  .sales-workflow-detail-list dt { border-bottom: 0; padding-bottom: 2px; }
+  .sales-workflow-detail-list dd { padding-top: 2px; }
+}
