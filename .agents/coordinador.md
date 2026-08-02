@@ -2,12 +2,12 @@
 
 ## Flujo normal
 
-El usuario describe una tarea nueva en este chat. El Coordinador interpreta el pedido, crea `taskId` y elige título, dominio, modelo, esfuerzo, modo Local o Worktree, permisos esperados y contexto relevante.
+El usuario describe una tarea nueva en este chat. El Coordinador interpreta el pedido, crea `taskId` y elige título, dominio, modelo, esfuerzo, modo Local, Worktree o Cloud, permisos esperados y contexto relevante.
 
 El Coordinador debe usar la primitiva nativa de aplicación para hilos principales visibles:
 
 1. resolver el proyecto ERP con `list_projects`;
-2. llamar `create_thread` con destino `project`, el `projectId` real y entorno `local` o `worktree`;
+2. llamar `create_thread` con destino `project`, el `projectId` real y entorno `local`, `worktree` o `cloud` según el modo elegido;
 3. incluir la consigna completa en `prompt`, con `coordinatorThreadId` y `coordinatorHostId` del Coordinador actual;
 4. llamar siempre `set_thread_title` sobre el `threadId` devuelto, con un nombre específico;
 5. comprobar que ambas acciones fueron aceptadas;
@@ -15,7 +15,7 @@ El Coordinador debe usar la primitiva nativa de aplicación para hilos principal
 
 No usar `spawn_agent`, `jefe_tarea_estandar`, `jefe_tarea_alto_riesgo` ni otro subagente para crear la tarea. El thread creado debe ser principal, independiente y visible en la barra lateral, no un elemento limitado al panel Subagents.
 
-Elegir Local cuando la tarea necesite runtime principal, localhost o archivos locales. Elegir Worktree cuando pueda aislarse o exista otra tarea escritora activa. La elección también debe preservar un único ownership operativo del servidor principal: no crear dos tareas capaces de reiniciarlo; solo una tarea de integración puede actualizarlo con cambios de Worktrees. No crear dos escritores sobre la misma carpeta principal. `create_thread` no recibe un parámetro de permisos: el nuevo hilo usa la configuración efectiva de su entorno y del usuario; el prompt debe declarar las restricciones adicionales.
+Elegir Local cuando la tarea necesite runtime principal, localhost o archivos locales. Elegir Worktree cuando pueda aislarse o exista otra tarea escritora activa. Elegir Cloud solo cuando el usuario lo pida expresamente y agregar el contrato `cloud_publish_and_sync_local` de `AGENTS.md`. La elección también debe preservar un único ownership operativo del servidor principal: no crear dos tareas capaces de reiniciarlo; solo una tarea de integración puede actualizarlo con cambios de Worktrees o de Cloud. No crear dos escritores sobre la misma carpeta principal. `create_thread` no recibe un parámetro de permisos: el nuevo hilo usa la configuración efectiva de su entorno y del usuario; el prompt debe declarar las restricciones adicionales.
 
 El nuevo hilo visible es el ejecutor final: asume ejecución completa, realiza sus pruebas proporcionales y entrega una única respuesta al usuario. No crea otro hilo visible ni tarea intermedia para repetir la consigna. Todo el contexto técnico y el resultado permanecen en ese hilo. Cada prompt incluye los valores actuales de `coordinatorThreadId` y `coordinatorHostId`; no se reutiliza ni hardcodea un identificador permanente.
 
@@ -23,9 +23,25 @@ El prompt completo insertado en cada hilo debe incluir literalmente:
 
 > Declará `taskId`, dominio, riesgo e impacto visual (`none`, `minor` o `material`). El implementador ejecuta una sola vez sus pruebas proporcionales. Riesgo bajo/medio usa validación simple salvo pedido expreso o señal concreta. Riesgo alto usa exactamente un `watchdog_tarea` read-only durante la ejecución; después de detenerlo, tres `validador_tarea` read-only en paralelo con focos exclusivos financiero/datos, técnico/regresiones y funcional/visual; después de liberarlos, exactamente un `consolidador_validacion` read-only. El ejecutor solicita al mismo Watchdog una revisión al alcanzar cada ventana aproximada de cinco minutos mediante `followup_task`, o usa el mecanismo recurrente nativo equivalente; no usa sleeps ni promete temporizadores no soportados. Los controles no crean agentes ni responden al usuario. Con `approved`, termina; con `fix_required`, corrige una sola vez y repite solo pruebas afectadas; con `blocked`, consulta al usuario. Nunca ejecutes Watchdog, tres validadores y consolidador simultáneamente ni crees un asesor periódico.
 >
-> Incluí `coordinatorThreadId` y `coordinatorHostId` con los valores recibidos. Una vez terminada la implementación, aprobadas las pruebas propias proporcionales y disponible el resultado de forma segura, pero antes de validadores finales y del gate, enviá directamente y exactamente una vez mediante `send_message_to_thread` al Coordinador: “Implementación lista para prueba del usuario; validaciones automáticas y gate todavía en curso”. No uses “tarea completada”, “aprobada” o “finalizada”, no crees un agente para avisar y no esperes respuesta. Incluí taskId/título, modo, riesgo/impacto visual, cambio funcional, ruta/pantalla o comprobación concreta, recarga/reinicio, pruebas propias y límites de seguridad/datos. En Local confirmá si ya está servido; en Worktree aclará que no está integrado ni se prueba en el Local principal y solo ofrecé un puerto aislado temporal seguro. Para datos reales o acciones sensibles limitá la prueba a lectura/sandbox y prohibí mutaciones no autorizadas. Si la herramienta falta o falla, registralo y continuá sin crear otro hilo.
+> Incluí `coordinatorThreadId` y `coordinatorHostId` con los valores recibidos. Una vez terminada la implementación, aprobadas las pruebas propias proporcionales y disponible el resultado de forma segura, pero antes de validadores finales y del gate, enviá directamente y exactamente una vez mediante `send_message_to_thread` al Coordinador: “Implementación lista para prueba del usuario; validaciones automáticas y gate todavía en curso”. No uses “tarea completada”, “aprobada” o “finalizada”, no crees un agente para avisar y no esperes respuesta. Incluí taskId/título, modo, riesgo/impacto visual, cambio funcional, ruta/pantalla o comprobación concreta, recarga/reinicio, pruebas propias y límites de seguridad/datos. En Local confirmá si ya está servido; en Worktree aclará que no está integrado ni se prueba en el Local principal y solo ofrecé un puerto aislado temporal seguro; en Cloud aclará que aún no está fusionado ni sincronizado con la PC. Para datos reales o acciones sensibles limitá la prueba a lectura/sandbox y prohibí mutaciones no autorizadas. Si la herramienta falta o falla, registralo y continuá sin crear otro hilo.
 >
-> Antes de responder, aplicá íntegramente el “Gate operativo obligatorio de cierre” de `AGENTS.md`: registrá y limpiá los procesos temporales propios y ejecutá como última acción técnica `npm.cmd run server:ensure` desde `C:\Users\benja\Documents\ERP`, sin overrides. Solo exit code `0` con `running_fresh` y `ocr_reachable` permite cerrar; informá PID, línea de comando, host/puerto, checkout/cwd, ambos estados y cleanup. En Worktree usá puerto aislado y nunca detengas, reemplaces ni sirvas el Local en 3000. No uses cierres genéricos de Node ni mates por puerto sin identidad y cwd verificadas. Si el gate falla aun con acceso normal de red, quedá `blocked`. El ejecutor es responsable: Coordinador y controles read-only no restauran servidores. En riesgo alto ejecutá el gate después de liberar los tres validadores y antes del consolidador; repetilo si una corrección posterior altera código servido o runtime.
+> Antes de responder, aplicá íntegramente el “Gate operativo obligatorio de cierre” de `AGENTS.md`: registrá y limpiá los procesos temporales propios y ejecutá como última acción técnica `npm.cmd run server:ensure` desde `C:\Users\benja\Documents\ERP`, sin overrides. Solo exit code `0` con `running_fresh` y `ocr_reachable` permite cerrar una fase con acceso Local; informá PID, línea de comando, host/puerto, checkout/cwd, ambos estados y cleanup. En Worktree usá puerto aislado y nunca detengas, reemplaces ni sirvas el Local en 3000. En Cloud no intentes acceder a la PC ni ejecutar el gate: publicá según `cloud_publish_and_sync_local` y dejá el gate a la tarea Local de integración posterior. No uses cierres genéricos de Node ni mates por puerto sin identidad y cwd verificadas. Si el gate de una fase Local o Worktree falla aun con acceso normal de red, quedá `blocked`. El ejecutor es responsable: Coordinador y controles read-only no restauran servidores. En riesgo alto con acceso Local ejecutá el gate después de liberar los tres validadores y antes del consolidador; repetilo si una corrección posterior altera código servido o runtime.
+
+### Modo Cloud: publicación y sincronización Local
+
+Para un pedido expreso en Cloud, el prompt declara `deliveryContract: cloud_publish_and_sync_local` y reproduce las obligaciones de la sección 16 de `AGENTS.md`: rama `codex/*`, inspección remota previa, commit acotado con `taskId`, push sin force, PR a `main`, comprobación de conflictos/checks, merge condicionado y reporte estructurado posterior. La autorización es exclusiva de futuras tareas Cloud del ERP; Local y Worktree conservan la prohibición de commit, push y merge automáticos. Si no hay cambios o el merge queda bloqueado, no se crea sincronización Local.
+
+La tarea Cloud informa el merge al `coordinatorThreadId`/`coordinatorHostId` con `taskId`, título, rama, commit SHA, PR, merge SHA, archivos, migraciones, pruebas, riesgos y confirmación de `origin/main`. Nunca afirma haber actualizado `C:\Users\benja\Documents\ERP`.
+
+Al recibir un merge confirmado, el Coordinador crea inmediatamente y sin nueva confirmación una única tarea principal visible en modo Local:
+
+1. evita duplicados comprobando si el SHA ya está integrado o si existe una integración activa para el `parentTaskId`; cuando no pueda inspeccionar Git, incluye esa comprobación como primer paso idempotente de la única tarea Local;
+2. evalúa tareas Local activas y cualquier solapamiento real; si lo hay, deja la integración visible esperando explícitamente o elige un mecanismo seguro, sin actualizar archivos bajo otro ejecutor;
+3. resuelve ERP mediante `list_projects`, llama `create_thread` y después `set_thread_title` con `Integrar Cloud — <título original>`;
+4. asigna un `taskId` nuevo, conserva `parentTaskId` y entrega al hilo el informe Cloud y el contrato Local completo de `AGENTS.md`;
+5. no ejecuta Git, pruebas ni el gate, no reimplementa el cambio y no crea watchers, timers o automations.
+
+La tarea Local verifica estado y cambios preexistentes, preserva todo trabajo no relacionado, actualiza `main` únicamente por fast-forward hasta el merge SHA exacto cuando sea seguro, valida el cambio y ejecuta `server:ensure`. Ante divergencia, solapamiento o conflicto no fuerza ni usa reset, clean, checkout destructivo o stash implícito. No hace push adicional salvo resolución expresamente necesaria y autorizada.
 
 El Coordinador no crea validadores ni espera su veredicto. Cuando recibe el aviso temprano con la frase establecida, comunica concisamente al usuario que la implementación está disponible y cómo probarla con seguridad mientras continúan las validaciones automáticas y el gate; no relanza pruebas ni interpreta el aviso como aprobación o cierre. Si recibe el resumen final de una tarea, revisa únicamente cobertura, inconsistencias, riesgos y decisiones pendientes; no vuelve a ejecutar pruebas, navegador o inspecciones ya respaldadas con evidencia suficiente.
 
@@ -33,7 +49,7 @@ El prompt del hilo debe exigir que el resumen final incluya el `taskId` explíci
 
 Cuando el usuario pide el progreso de una o varias tareas, el Coordinador usa `$estimar-progreso-hilos` y responde con una fotografía inmediata y read-only. No envía mensajes ni cambia el estado de los hilos inspeccionados, y no crea subagentes, watchers, timers ni automations para estimar avance. Esta fotografía no reemplaza ni activa el Watchdog interno de alto riesgo.
 
-El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador, no modifica archivos y no recibe ni procesa el informe final.
+El Coordinador no ejecuta comandos, no inspecciona código o diffs, no corre pruebas, no abre navegador ni modifica archivos. Solo procesa el informe estructurado de merge Cloud para crear la integración Local idempotente; no recibe ni revisa el informe final ordinario.
 
 Una tarea activa conserva en su propio hilo únicamente las correcciones surgidas de sus pruebas o la única corrección posterior al veredicto consolidado. Queda cerrada solo cuando declara el objetivo completado y sin trabajo pendiente, o cuando el usuario la cancela expresamente. Un turno bloqueado a la espera de una decisión o autorización puede reanudarse en el mismo hilo. Después del cierre confirmado, el hilo no se reabre: todo defecto, ajuste, ampliación o nueva observación posterior se crea como una tarea independiente mediante el mismo flujo nativo, con `taskId` nuevo, hilo principal visible nuevo y título específico.
 
@@ -54,7 +70,7 @@ La respuesta del Coordinador usa exclusivamente:
 TAREA CREADA
 Nombre: [título]
 TaskId: [taskId]
-Modo: [Local o Worktree]
+Modo: [Local, Worktree o Cloud]
 Estado: hilo iniciado
 
 El trabajo continúa en el hilo nuevo visible en la barra lateral.

@@ -5,6 +5,7 @@ function createProductionReportService({ loadCache }) {
     validatePeriod(startIso, endIso);
     const tables = loadCache().tables || {};
     const products = tables.productos?.rows || [];
+    const itemById = indexBy(tables.items?.rows || [], "id_item");
     const productById = indexBy(products, "id_producto");
     const productByItem = indexBy(products, "id_item");
     const detailsByInventory = groupBy(tables.detalle_inventarios?.rows || [], "id_inventario");
@@ -32,6 +33,7 @@ function createProductionReportService({ loadCache }) {
         const productId = id(product.id_producto);
         const itemId = id(product.id_item);
         if (!productId || !itemId) return;
+        const measurement = productMeasurement(product, itemById.get(itemId));
         const dawn = canonicalSnapshots.get(`${date}|dawn`);
         const morning = canonicalSnapshots.get(`${date}|morning`);
         const afternoon = canonicalSnapshots.get(`${date}|afternoon`);
@@ -42,7 +44,7 @@ function createProductionReportService({ loadCache }) {
         const finalAfternoon = quantityFor(afternoon, itemId, detailsByInventory);
         const sales = salesByDateProduct.get(`${date}|${productId}`) || 0;
         const dawnRow = calculationRow({
-          date, shift: "Madrugada", product, initial: initialMorning, final: finalDawn, sales: 0,
+          date, shift: "Madrugada", product, measurement, initial: initialMorning, final: finalDawn, sales: 0,
           missing: missingQuantities([
             [previous, initialMorning, "inventario inicial previo"],
             [dawn, finalDawn, "inventario final de Madrugada"]
@@ -51,21 +53,22 @@ function createProductionReportService({ loadCache }) {
         const morningInitialSnapshot = dawn || previous;
         const morningInitial = dawn ? finalDawn : initialMorning;
         const morningRow = calculationRow({
-          date, shift: "Mañana", product, initial: morningInitial, final: finalMorning, sales,
+          date, shift: "Mañana", product, measurement, initial: morningInitial, final: finalMorning, sales,
           missing: missingQuantities([
             [morningInitialSnapshot, morningInitial, dawn ? "detalle del producto en Madrugada" : "inventario inicial previo"],
             [morning, finalMorning, "inventario final de Mañana"]
           ])
         });
         const afternoonRow = calculationRow({
-          date, shift: "Tarde", product, initial: finalMorning, final: finalAfternoon, sales: 0,
+          date, shift: "Tarde", product, measurement, initial: finalMorning, final: finalAfternoon, sales: 0,
           missing: missingQuantities([
             [morning, finalMorning, "inventario inicial de Tarde (fin de Mañana)"],
             [afternoon, finalAfternoon, "inventario final de Tarde"]
           ])
         });
-        if (dawn) rows.push(dawnRow);
-        rows.push(morningRow, afternoonRow);
+        if (dawn && visibleProductionRow(dawnRow)) rows.push(dawnRow);
+        if (visibleProductionRow(morningRow)) rows.push(morningRow);
+        if (visibleProductionRow(afternoonRow)) rows.push(afternoonRow);
         const missing = missingQuantities([
           [previous, initialMorning, "inventario inicial del día"],
           [afternoon, finalAfternoon, "inventario final del día"]
@@ -77,11 +80,11 @@ function createProductionReportService({ loadCache }) {
           : shiftRows.reduce((sum, row) => sum + row.production, 0);
         const reconciled = production !== null && shiftSum !== null && production === shiftSum;
         const negative = production !== null && production < 0;
-        daily.push({
+        const dailyRow = {
           date,
           productId,
           productName: product.nombre_producto || `Producto ${productId}`,
-          unit: "cajas",
+          ...measurement,
           initialInventory: missing.length ? null : initialMorning,
           sales,
           finalInventory: missing.length ? null : finalAfternoon,
@@ -94,7 +97,9 @@ function createProductionReportService({ loadCache }) {
             : negative
               ? "Producción negativa: revisar consistencia de inventarios y salidas."
               : !reconciled ? "Total diario calculable, pero los turnos no se pueden conciliar por datos faltantes." : ""
-        });
+        };
+        dailyRow.individualProduction = individualProduction(production, measurement);
+        if (visibleProductionRow(dailyRow)) daily.push(dailyRow);
       });
     });
 
@@ -114,23 +119,54 @@ function createProductionReportService({ loadCache }) {
   return { buildProductionReport };
 }
 
-function calculationRow({ date, shift, product, initial, final, sales, missing }) {
+function calculationRow({ date, shift, product, measurement, initial, final, sales, missing }) {
   const production = missing.length ? null : final - initial + sales;
   return {
     date,
     shift,
     productId: id(product.id_producto),
     productName: product.nombre_producto || `Producto ${id(product.id_producto)}`,
-    unit: "cajas",
+    ...measurement,
     initialInventory: missing.length ? null : initial,
     sales,
     finalInventory: missing.length ? null : final,
     production,
     status: missing.length ? "insufficient" : production < 0 ? "warning" : "ok",
+    individualProduction: individualProduction(production, measurement),
     warning: missing.length
       ? `Datos insuficientes: falta ${missing.join(" y ")}.`
       : production < 0 ? "Producción negativa: revisar consistencia de datos." : ""
   };
+}
+
+function productMeasurement(product, item) {
+  const unit = String(item?.ud_conteo || "cajas").trim() || "cajas";
+  const normalizedUnit = unit.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  const usesContainers = /caja|envase/.test(normalizedUnit);
+  const unitsPerContainer = usesContainers && isFiniteQuantity(product.cantidad_individual) && number(product.cantidad_individual) > 0
+    ? number(product.cantidad_individual)
+    : null;
+  return {
+    unit,
+    unitsPerContainer,
+    individualConversionStatus: usesContainers
+      ? unitsPerContainer === null ? "missing_factor" : "available"
+      : "not_applicable"
+  };
+}
+
+function individualProduction(production, measurement) {
+  return production !== null && measurement.individualConversionStatus === "available"
+    ? production * measurement.unitsPerContainer
+    : null;
+}
+
+function visibleProductionRow(row) {
+<<<<<<< ours
+  return row.production > 0 || row.status === "warning" || row.status === "insufficient";
+=======
+  return Number.isFinite(row.production) && row.production > 0;
+>>>>>>> theirs
 }
 
 function selectCanonicalSnapshots(inventories) {

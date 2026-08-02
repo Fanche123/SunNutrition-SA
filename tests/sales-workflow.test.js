@@ -24,7 +24,7 @@ function cacheFixture() {
   return {
     generatedAt: "",
     tables: {
-      clientes: { rows: [{ id_cliente: 1, nombre_cliente: "Cliente Uno" }] },
+      clientes: { rows: [{ id_cliente: 1, nombre_cliente: "Cliente Uno", plazo_cobro: "30_Dias" }] },
       productos: { rows: [{ id_producto: 10, nombre_producto: "Barra", cantidad_individual: 12 }] },
       pedidos: { rows: [
         { id_pedido: 1, id_cliente: 1, fecha_pedido: "2026-07-01", fecha_entrega: "2026-07-10" },
@@ -106,6 +106,7 @@ test("backfill lógico mantiene incompletos abiertos y no inunda con históricos
     const historical = rows.find((row) => row.id_pedido === "2");
     const ready = rows.find((row) => row.id_pedido === "3");
     assert.equal(incomplete.managed, false);
+    assert.equal(incomplete.plazo_cobro, "30_Dias");
     assert.deepEqual(incomplete.completion, { arca: false, delivery: false, sale: false });
     assert.equal(historical.managed, true);
     assert.equal(historical.historicalResolved, true);

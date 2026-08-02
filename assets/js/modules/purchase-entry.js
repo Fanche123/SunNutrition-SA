@@ -1029,13 +1029,16 @@ function renderPurchaseInventorySuggestions(snapshot) {
   count.textContent = state === "insufficient_dependencies" ? "!" : formatNumber(items.length);
   status.textContent = `${inventoryPurchaseSnapshotStatusMessage(snapshot)} El selector de insumos permanece libre.`;
   const itemRows = items.length
-    ? items.map((item) => `
+    ? `<div class="purchase-inventory-suggestion-columns" aria-hidden="true">
+        <span>Insumo</span><span>Disponible</span><span>Producción</span><span>Acción</span>
+      </div>${items.map((item) => `
         <div class="purchase-inventory-suggestion-row">
           <strong>${escapeHtml(displayNameLabel(item.itemName || "Insumo sin nombre"))}</strong>
-          <span>${escapeHtml(purchaseInventoryQuantityLabel(item.stock, item.unit))}</span>
-          <span>${escapeHtml(purchaseInventoryDaysLabel(item.daysRemaining))}</span>
+          <span data-label="Disponible">${escapeHtml(purchaseInventoryQuantityLabel(item.stock, item.unit))}</span>
+          <span data-label="Producción">${escapeHtml(purchaseInventoryDaysLabel(item.daysRemaining))}</span>
+          <button type="button" data-purchase-need-item="${escapeHtml(item.itemId || "")}" data-purchase-need-name="${escapeHtml(item.itemName || "")}">Comprar</button>
         </div>
-      `).join("")
+      `).join("")}`
     : "";
   const stateMessage = state === "insufficient_dependencies" || !items.length
     ? `<p class="purchase-inventory-suggestions-empty">${escapeHtml(inventoryPurchaseSnapshotEmptyMessage(snapshot))}</p>`
@@ -1237,4 +1240,3 @@ function updatePurchaseProviderOptions() {
   }
   syncSelectedPurchaseSupplier();
 }
-

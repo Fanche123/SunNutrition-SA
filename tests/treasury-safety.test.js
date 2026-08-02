@@ -973,12 +973,25 @@ function testBankReconciliationNextActionDom() {
       "bank-create-egresses": { disabled: false },
       "bank-payment-stage-count": { textContent: "" },
       "bank-payment-stage-body": { innerHTML: "" },
-      "bank-create-payments": { disabled: true }
+      "bank-create-payments": { disabled: true },
+      "bank-movements-stage": { hidden: false },
+      "bank-expense-stage": { hidden: false },
+      "bank-egress-stage": { hidden: false },
+      "bank-payment-stage": { hidden: false },
+      "bank-fund-stage": { hidden: false },
+      "bank-fund-stage-count": { textContent: "" },
+      "bank-fund-stage-body": { innerHTML: "" }
     },
-    document: { getElementById: () => null },
+    document: {
+      getElementById(id) { return context.els[id] || null; },
+      addEventListener: () => {}
+    },
     emptyRow: (_columns, message) => message,
     escapeHtml: (value) => String(value ?? ""),
     formatBankMoney: (value) => String(value),
+    formatMoney: (value) => String(value),
+    formatDate: (value) => String(value),
+    investmentFundTypeLabel: (value) => String(value),
     renderBankCheckDepositReview: () => {},
     renderInvestmentFundReconciliationCandidates: () => {},
     setupFileDropZone: () => {}
@@ -986,13 +999,31 @@ function testBankReconciliationNextActionDom() {
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "assets/js/modules/bank-reconciliation-core.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "assets/js/modules/bank-reconciliation-render.js"), "utf8"), context);
+  context.setBankReconciliationStageVisibility("bank-movements-stage", false);
+  assert.strictEqual(context.els["bank-movements-stage"].hidden, true);
+  context.setBankReconciliationStageVisibility("bank-movements-stage", true);
+  assert.strictEqual(context.els["bank-movements-stage"].hidden, false);
   context.renderBankReconciliationStages();
+  assert.strictEqual(context.els["bank-expense-stage"].hidden, true);
+  assert.strictEqual(context.els["bank-egress-stage"].hidden, true);
+  assert.strictEqual(context.els["bank-payment-stage"].hidden, false);
   assert.strictEqual(context.els["bank-create-expenses"].disabled, true);
   assert.strictEqual(context.els["bank-create-egresses"].disabled, true);
   assert.strictEqual(context.els["bank-create-payments"].disabled, false);
   assert.match(context.els["bank-payment-stage-body"].innerHTML, /next-payment/);
   assert.match(context.els["bank-payment-stage-body"].innerHTML, /Egreso #501/);
   assert.doesNotMatch(context.els["bank-expense-stage-body"].innerHTML, /next-payment/);
+
+  vm.runInContext(fs.readFileSync(path.join(__dirname, "..", "assets/js/modules/investment-fund.js"), "utf8"), context);
+  context.renderInvestmentFundReconciliationCandidates([]);
+  assert.strictEqual(context.els["bank-fund-stage"].hidden, true);
+  context.renderInvestmentFundReconciliationCandidates([{
+    id: "fund-1",
+    type: "aporte",
+    confidence: "review",
+    movement: { fecha: "2026-07-28", banco: "ICBC", detalle: "Fondo", importe: 10 }
+  }]);
+  assert.strictEqual(context.els["bank-fund-stage"].hidden, false);
 
   context.bankReconciliationReport = {
     movements: [
@@ -1044,6 +1075,9 @@ function testBankReconciliationNextActionDom() {
     }
   };
   context.renderBankReconciliationStages();
+  assert.strictEqual(context.els["bank-expense-stage"].hidden, false);
+  assert.strictEqual(context.els["bank-egress-stage"].hidden, true);
+  assert.strictEqual(context.els["bank-payment-stage"].hidden, true);
   const expenseMarkup = context.els["bank-expense-stage-body"].innerHTML;
   assert.match(expenseMarkup, /data-bank-expense-creditor/);
   assert.match(expenseMarkup, /data-bank-expense-tag/);

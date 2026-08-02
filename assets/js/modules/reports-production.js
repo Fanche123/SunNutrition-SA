@@ -25,19 +25,19 @@ async function loadProductionReport() {
   const status = document.getElementById("production-status");
   const body = document.getElementById("production-body");
   status.textContent = "Cargando producción...";
-  body.innerHTML = '<tr><td class="empty" colspan="7">Cargando...</td></tr>';
+  body.innerHTML = '<tr><td class="empty" colspan="8">Cargando...</td></tr>';
   try {
     const response = await fetch(`${API_BASE_URL}/api/reports/production?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     const payload = await response.json();
     if (!response.ok || !payload.ok) throw new Error(payload.error || "No se pudo cargar el reporte.");
     renderProductionReport(payload.report);
-    status.textContent = `${payload.report.daily.length} totales diarios. Inventarios persistidos y entregas por fecha real.`;
+    status.textContent = `${payload.report.daily.length} totales diarios con producción positiva. Inventarios persistidos y entregas por fecha real.`;
     status.dataset.status = "success";
     return true;
   } catch (error) {
     status.textContent = error.message;
     status.dataset.status = "error";
-    body.innerHTML = `<tr><td class="empty" colspan="7">${escapeHtml(error.message)}</td></tr>`;
+    body.innerHTML = `<tr><td class="empty" colspan="8">${escapeHtml(error.message)}</td></tr>`;
     return false;
   }
 }
@@ -51,7 +51,7 @@ function renderProductionReport(report) {
     details.get(key).push(row);
   });
   if (!report.daily.length) {
-    body.innerHTML = '<tr><td class="empty" colspan="7">No hay productos para el período.</td></tr>';
+    body.innerHTML = '<tr><td class="empty" colspan="8">No hubo producción positiva para el período.</td></tr>';
     return;
   }
   body.innerHTML = report.daily.map((day) => {
@@ -71,7 +71,13 @@ function renderProductionReport(report) {
 }
 
 function productionCells(row) {
-  return `<td>${escapeHtml(row.productName)}</td><td class="num">${productionValue(row.initialInventory, row.unit)}</td><td class="num">${productionValue(row.sales, row.unit)}</td><td class="num">${productionValue(row.finalInventory, row.unit)}</td><td class="num">${productionValue(row.production, row.unit)}</td><td>${productionStatus(row)}</td>`;
+  return `<td>${escapeHtml(row.productName)}</td><td class="num">${productionValue(row.initialInventory, row.unit)}</td><td class="num">${productionValue(row.sales, row.unit)}</td><td class="num">${productionValue(row.finalInventory, row.unit)}</td><td class="num">${productionValue(row.production, row.unit)}</td><td class="num">${individualProductionValue(row)}</td><td>${productionStatus(row)}</td>`;
+}
+
+function individualProductionValue(row) {
+  if (row.individualConversionStatus === "available") return `${formatNumber(row.individualProduction)} unidades`;
+  if (row.individualConversionStatus === "missing_factor") return '<span class="production-conversion-missing">Factor no disponible</span>';
+  return `<span class="production-conversion-na">No aplica (${escapeHtml(row.unit)})</span>`;
 }
 
 function productionValue(value, unit) {

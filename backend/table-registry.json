@@ -40,6 +40,7 @@
     { "name": "cheques_recibidos", "label": "Cheques recibidos", "module": "ventas", "workbook": "Backend", "sheet": "cheques_recibidos", "primaryKey": "id_cheque_recibido" },
 
     { "name": "compras", "label": "Compras", "module": "compras", "workbook": "Backend", "sheet": "compras", "primaryKey": "Id_Compra" },
+    { "name": "gestion_compras", "label": "Gestión de compras", "module": "compras", "workbook": "Backend", "sheet": "gestion_compras", "primaryKey": "id_gestion_compra", "synthetic": true },
     { "name": "detalle_compras", "label": "Detalle de compras", "module": "compras", "workbook": "Backend", "sheet": "detalle_compras", "primaryKey": "Id_Detalle_Compra" },
     { "name": "recepciones", "label": "Recepciones", "module": "compras", "workbook": "Backend", "sheet": "recepciones", "primaryKey": "Id_Recepcion" },
     { "name": "detalle_recepciones", "label": "Detalle de recepciones", "module": "compras", "workbook": "Backend", "sheet": "detalle_recepciones", "primaryKey": "Id_Detalle_Recepcion" },

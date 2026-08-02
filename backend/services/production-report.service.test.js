@@ -9,6 +9,10 @@ function table(rows = []) {
 function fixture() {
   return {
     tables: {
+      items: table([
+        { id_item: 101, ud_conteo: "cajas" },
+        { id_item: 102, ud_conteo: "cajas" }
+      ]),
       productos: table([
         { id_producto: 1, id_item: 101, nombre_producto: "Barra A", cantidad_individual: 12 },
         { id_producto: 2, id_item: 102, nombre_producto: "Barra B", cantidad_individual: 24 }
@@ -62,14 +66,92 @@ test("calcula mañana, tarde y día; ventas sólo en Mañana y deduplica entrega
   assert.equal(report.daily.find((row) => row.productId === "1").reconciled, true);
 });
 
-test("elige el mayor id como snapshot canónico y conserva cero real", () => {
+<<<<<<< ours
+test("elige el mayor id como snapshot canónico, oculta cero y conserva alertas negativas", () => {
   const report = createProductionReportService({ loadCache: () => fixture() })
     .buildProductionReport("2026-07-30", "2026-07-30");
   const productB = report.rows.filter((row) => row.productId === "2");
-  assert.equal(productB[0].production, 0);
-  assert.equal(productB[0].status, "ok");
-  assert.equal(productB[1].production, -1);
-  assert.equal(productB[1].status, "warning");
+  assert.equal(productB.length, 1);
+  assert.equal(productB[0].shift, "Tarde");
+  assert.equal(productB[0].production, -1);
+  assert.equal(productB[0].status, "warning");
+  assert.equal(report.daily.some((row) => row.productId === "2"), true);
+=======
+test("elige el mayor id como snapshot canónico y oculta resultados cero o negativos", () => {
+  const report = createProductionReportService({ loadCache: () => fixture() })
+    .buildProductionReport("2026-07-30", "2026-07-30");
+  const productB = report.rows.filter((row) => row.productId === "2");
+  assert.equal(productB.length, 0);
+  assert.equal(report.daily.some((row) => row.productId === "2"), false);
+>>>>>>> theirs
+});
+
+test("filtra producción cero por día y turno y convierte cajas con el factor canónico", () => {
+  const report = createProductionReportService({ loadCache: () => fixture() })
+    .buildProductionReport("2026-07-30", "2026-07-30");
+  const productA = report.daily.find((row) => row.productId === "1");
+  assert.equal(productA.production, 11);
+  assert.equal(productA.unitsPerContainer, 12);
+  assert.equal(productA.individualProduction, 132);
+  assert.equal(productA.individualConversionStatus, "available");
+  assert.equal(report.rows.some((row) => row.productId === "2" && row.shift === "Mañana"), false);
+});
+
+test("respeta unidades no convertibles e informa factores faltantes", () => {
+  const cache = fixture();
+  cache.tables.items.rows[0].ud_conteo = "kg";
+  cache.tables.productos.rows[1].cantidad_individual = "";
+<<<<<<< ours
+=======
+  cache.tables.detalle_inventarios.rows.find((row) => row.id_inventario === 4 && row.id_item === 102).cantidad = 6;
+>>>>>>> theirs
+  const report = createProductionReportService({ loadCache: () => cache })
+    .buildProductionReport("2026-07-30", "2026-07-30");
+  const kilograms = report.daily.find((row) => row.productId === "1");
+  const missingFactor = report.daily.find((row) => row.productId === "2");
+  assert.equal(kilograms.unit, "kg");
+  assert.equal(kilograms.individualProduction, null);
+  assert.equal(kilograms.individualConversionStatus, "not_applicable");
+  assert.equal(missingFactor.individualProduction, null);
+  assert.equal(missingFactor.individualConversionStatus, "missing_factor");
+});
+
+test("cada fecha se calcula y filtra sin arrastrar productos del día anterior", () => {
+  const cache = fixture();
+  cache.tables.inventarios.rows.push(
+    { id_inventario: 5, fecha: "2026-07-31", turno: "Mañana" },
+    { id_inventario: 6, fecha: "2026-07-31", turno: "Tarde" }
+  );
+  cache.tables.detalle_inventarios.rows.push(
+    { id_inventario: 5, id_item: 101, cantidad: 15 },
+    { id_inventario: 5, id_item: 102, cantidad: 4 },
+    { id_inventario: 6, id_item: 101, cantidad: 15 },
+    { id_inventario: 6, id_item: 102, cantidad: 6 }
+  );
+  const report = createProductionReportService({ loadCache: () => cache })
+    .buildProductionReport("2026-07-31", "2026-07-31");
+  assert.deepEqual(report.daily.map((row) => row.productId), ["2"]);
+  assert.equal(report.daily[0].production, 2);
+<<<<<<< ours
+=======
+});
+
+test("muestra sólo A y cuenta un total ante producción positiva, cero y datos insuficientes", () => {
+  const cache = fixture();
+  cache.tables.items.rows.push({ id_item: 103, ud_conteo: "cajas" });
+  cache.tables.productos.rows.push({
+    id_producto: 3,
+    id_item: 103,
+    nombre_producto: "Producto C",
+    cantidad_individual: 10
+  });
+  const report = createProductionReportService({ loadCache: () => cache })
+    .buildProductionReport("2026-07-30", "2026-07-30");
+  assert.deepEqual(report.daily.map((row) => row.productName), ["Barra A"]);
+  assert.equal(report.daily.length, 1);
+  assert.equal(report.rows.every((row) => Number.isFinite(row.production) && row.production > 0), true);
+  assert.equal(report.rows.some((row) => row.productId === "2" || row.productId === "3"), false);
+>>>>>>> theirs
 });
 
 test("faltantes se informan y no se inventan como cero", () => {
@@ -77,11 +159,8 @@ test("faltantes se informan y no se inventan como cero", () => {
   cache.tables.inventarios.rows = cache.tables.inventarios.rows.filter((row) => row.id_inventario !== 4);
   const report = createProductionReportService({ loadCache: () => cache })
     .buildProductionReport("2026-07-30", "2026-07-30");
-  const afternoon = report.rows.find((row) => row.productId === "1" && row.shift === "Tarde");
-  const daily = report.daily.find((row) => row.productId === "1");
-  assert.equal(afternoon.production, null);
-  assert.match(afternoon.warning, /inventario final de Tarde/);
-  assert.equal(daily.production, null);
+  assert.equal(report.rows.some((row) => row.productId === "1" && row.shift === "Tarde"), false);
+  assert.equal(report.daily.some((row) => row.productId === "1"), false);
 });
 
 test("rechaza fechas inválidas y períodos mayores al límite", () => {
@@ -113,8 +192,7 @@ test("distingue detalle ausente de cero persistido", () => {
     .buildProductionReport("2026-07-30", "2026-07-30");
   const morning = report.rows.find((row) => row.productId === "1" && row.shift === "Mañana");
   const daily = report.daily.find((row) => row.productId === "1");
-  assert.equal(morning.production, null);
-  assert.equal(morning.status, "insufficient");
+  assert.equal(morning, undefined);
   assert.equal(daily.production, 11);
   assert.equal(daily.reconciled, false);
   assert.equal(daily.status, "warning");

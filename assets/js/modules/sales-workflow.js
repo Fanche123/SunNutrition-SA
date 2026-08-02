@@ -111,7 +111,7 @@
     if (action === "close") return closeOrder(row, button);
     if (action === "managed-detail") return openDetail(row, "managed");
     if (row.completion?.[action]) return openDetail(row, action);
-    if (action === "arca") return openArca(row);
+    if (action === "arca") return openArca(row, button);
     if (action === "delivery") return openDelivery(row);
     if (action === "sale") return openSale(row);
   }
@@ -123,7 +123,8 @@
     openMovedDialog("Nuevo pedido", document.querySelector("#view-orders-entry > .panel"), "order", null);
   }
 
-  async function openArca(row) {
+  async function openArca(row, button) {
+    if (row.tipo_comprobante_configurado === "Remito_X") return downloadRemitoX(row, button);
     setStatus(`Preparando el pedido #${row.id_pedido}...`, "pending");
     try {
       await loadDeferredScript("tools/arca-extension/arca-fiscal-contract.js?v=20260730-operation-data", "initializeArcaFiscalContract");
@@ -145,10 +146,58 @@
     }
   }
 
+  async function downloadRemitoX(row, button) {
+    const previousLabel = button?.textContent || "Crear factura";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Generando...";
+    }
+    setStatus(`Generando el Remito X del pedido #${row.id_pedido}...`, "pending");
+    try {
+      const response = await fetch("/api/sales/workflow/remito-x", {
+        method: "POST",
+        cache: "no-store",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: row.id_pedido })
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || `HTTP ${response.status}`);
+      }
+      if (!String(response.headers.get("Content-Type") || "").toLowerCase().startsWith("application/pdf")) {
+        throw new Error("El servidor no devolvió un PDF válido.");
+      }
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("El PDF generado está vacío.");
+      const fileName = downloadFileName(response.headers.get("Content-Disposition"), row);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus(`Remito X generado y descargado para el pedido #${row.id_pedido}.`, "success");
+      await loadSalesWorkflow();
+    } catch (error) {
+      setStatus(error.message, "error");
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+    }
+  }
+
+  function downloadFileName(contentDisposition, row) {
+    const match = String(contentDisposition || "").match(/filename="([^"]+)"/i);
+    return match?.[1] || `Remito_X_Pedido_${row.id_pedido}.pdf`;
+  }
+
   async function openDelivery(row) {
     await loadCommercialEntryData(true);
     renderLogisticsEntry();
-    openMovedDialog("Nueva entrega", document.querySelector("#view-logistics-entry > .panel:first-child"), "delivery", row);
+    openMovedDialog("Nueva entrega", document.querySelector("#logistics-delivery-panel-host > .panel"), "delivery", row);
     const checkbox = [...document.querySelectorAll("[data-logistics-order]")]
       .find((input) => String(input.dataset.logisticsOrder) === String(row.id_pedido));
     if (checkbox) {
@@ -167,7 +216,7 @@
 
   function openDetail(row, action) {
     const content = action === "arca"
-      ? `<dl class="sales-workflow-detail-list"><dt>Pedido</dt><dd>#${escapeHtml(row.id_pedido)}</dd><dt>Confirmada</dt><dd>${escapeHtml(formatDateTime(row.workflow?.factura_arca_confirmada_en) || "Histórica, inferida por venta y entrega")}</dd><dt>Usuario</dt><dd>${escapeHtml(row.workflow?.factura_arca_confirmada_por || "Histórico")}</dd></dl>`
+      ? `<dl class="sales-workflow-detail-list"><dt>Pedido</dt><dd>#${escapeHtml(row.id_pedido)}</dd><dt>Documento</dt><dd>${row.tipo_comprobante_configurado === "Remito_X" ? "Remito X generado" : "Factura confirmada"}</dd><dt>Fecha</dt><dd>${escapeHtml(formatDateTime(row.workflow?.factura_arca_confirmada_en) || "Histórica, inferida por venta y entrega")}</dd><dt>Usuario</dt><dd>${escapeHtml(row.workflow?.factura_arca_confirmada_por || "Histórico")}</dd></dl>`
       : action === "delivery"
         ? `<dl class="sales-workflow-detail-list"><dt>Entrega</dt><dd>#${escapeHtml(row.delivery?.id_entrega || "-")}</dd><dt>Fecha</dt><dd>${escapeHtml(formatDate(row.delivery?.fecha) || "-")}</dd><dt>Flete</dt><dd>${escapeHtml(row.delivery?.id_flete || "-")}</dd></dl>`
         : action === "sale"

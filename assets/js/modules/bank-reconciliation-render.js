@@ -50,6 +50,11 @@ function collectBankReconciliationReviewRows(status) {
   return reviewRows;
 }
 
+function setBankReconciliationStageVisibility(stageId, hasRows) {
+  const stage = document.getElementById(stageId);
+  if (stage) stage.hidden = !hasRows;
+}
+
 function renderBankReconciliation() {
   const summary = bankReconciliationReport?.summary || {};
   const reconciliation = bankReconciliationReport?.reconciliation || {};
@@ -63,6 +68,7 @@ function renderBankReconciliation() {
   const visibleMovements = movements
     .map((movement, index) => ({ movement, index }))
     .filter(({ movement }) => movement.status !== "conciliado");
+  setBankReconciliationStageVisibility("bank-movements-stage", visibleMovements.length > 0);
   const readyMovements = bankReconciliationMovementsByStatus("listo");
   if (els["bank-reconciliation-apply"]) {
     els["bank-reconciliation-apply"].disabled = bankReconciliationApplyInFlight || !readyMovements.length;
@@ -164,6 +170,7 @@ function bankExpenseInitialSelection(movement, savedDraft, hasDraft) {
 }
 
 function renderBankExpenseStage(movements) {
+  setBankReconciliationStageVisibility("bank-expense-stage", movements.length > 0);
   if (els["bank-expense-stage-count"]) els["bank-expense-stage-count"].textContent = String(movements.length);
   if (els["bank-create-expenses"]) {
     els["bank-create-expenses"].disabled = bankReconciliationApplyInFlight || !movements.length;
@@ -198,6 +205,7 @@ function renderBankExpenseStage(movements) {
 }
 
 function renderBankEgressStage(movements) {
+  setBankReconciliationStageVisibility("bank-egress-stage", movements.length > 0);
   if (els["bank-egress-stage-count"]) els["bank-egress-stage-count"].textContent = String(movements.length);
   if (els["bank-create-egresses"]) {
     els["bank-create-egresses"].disabled = bankReconciliationApplyInFlight || !movements.length;
@@ -218,6 +226,7 @@ function renderBankEgressStage(movements) {
 }
 
 function renderBankPaymentStage(movements) {
+  setBankReconciliationStageVisibility("bank-payment-stage", movements.length > 0);
   if (els["bank-payment-stage-count"]) els["bank-payment-stage-count"].textContent = String(movements.length);
   if (els["bank-create-payments"]) {
     els["bank-create-payments"].disabled = bankReconciliationApplyInFlight || !movements.length;

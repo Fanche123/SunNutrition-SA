@@ -44,6 +44,7 @@ const { createSalesWorkflowService } = require("./backend/services/sales-workflo
 const { createAttachmentsService } = require("./backend/services/attachments.service");
 const { createOtherExpenseEntryService } = require("./backend/services/other-expense-entry.service");
 const { createReceptionEntryService } = require("./backend/services/reception-entry.service");
+const { createPurchaseWorkflowService } = require("./backend/services/purchase-workflow.service");
 const { createCashflowService } = require("./backend/services/cashflow.service");
 const { createBackendTableService } = require("./backend/services/backend-table.service");
 const { createBankReconciliationService } = require("./backend/services/bank-reconciliation.service");
@@ -707,7 +708,8 @@ const {
 const {
   handleArcaConfirmation: handleSalesWorkflowArcaConfirmation,
   handleClose: handleSalesWorkflowClose,
-  handleList: handleSalesWorkflowList
+  handleList: handleSalesWorkflowList,
+  handleRemitoX: handleSalesWorkflowRemitoX
 } = createSalesWorkflowService({
   backendId,
   backendNextNumericId,
@@ -769,6 +771,26 @@ const { handleReceptionFullEntry } = createReceptionEntryService({
   backendNextNumericId,
   cleanBackendInput,
   ensureBackendTable,
+  fs,
+  isIsoDate,
+  loadCache,
+  path,
+  readJsonBody,
+  rootDir: ROOT_DIR,
+  saveBackendCache,
+  sendJson,
+  synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
+});
+const {
+  handleList: handlePurchaseWorkflowList,
+  handleReception: handlePurchaseWorkflowReception,
+  handleInvoice: handlePurchaseWorkflowInvoice,
+  handleClose: handlePurchaseWorkflowClose
+} = createPurchaseWorkflowService({
+  backendId,
+  backendNextNumericId,
+  ensureBackendTable,
+  enqueueWrite: enqueueSalesWrite,
   fs,
   isIsoDate,
   loadCache,
@@ -895,6 +917,10 @@ const server = http.createServer(createRequestHandler({
     handleInvoiceProviderHealth,
     handleReceivedChecksEndorse,
     handlePurchaseFullEntry,
+    handlePurchaseWorkflowList,
+    handlePurchaseWorkflowReception,
+    handlePurchaseWorkflowInvoice,
+    handlePurchaseWorkflowClose,
     handleReceptionFullEntry,
     handleReceptionAttachmentSave,
     handleReceptionInvoiceRead,
@@ -906,6 +932,7 @@ const server = http.createServer(createRequestHandler({
     handleSalesWorkflowArcaConfirmation,
     handleSalesWorkflowClose,
     handleSalesWorkflowList,
+    handleSalesWorkflowRemitoX,
     handleUnbilledOrdersGet
   },
   sendJson,
@@ -1003,4 +1030,3 @@ function shutdownServer(reason, exitCode = 0) {
     process.exitCode = exitCode;
   });
 }
-

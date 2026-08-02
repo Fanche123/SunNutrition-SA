@@ -67,3 +67,9 @@ Antes de cambiar el bind fuera de localhost deben implementarse y probarse:
 15. Despliegue y firewall restringidos.
 
 El modo LAN solo debe habilitarse despues de una integracion real y revisada de identidad/autorizacion en la configuracion y el control de acceso central. No debe agregarse un bypass de LAN insegura.
+
+## Excepcion domestica ERP-INF-20260801-04
+
+El usuario autorizo expresamente una excepcion local para su Wi-Fi domestico: cualquier dispositivo de la subred privada puede abrir y operar el ERP sin identidad individual, roles, HTTPS ni CSRF. La excepcion se implementa mediante tools/erp-lan-access.js, no modifica el bind local ni el control de acceso central, y queda limitada a una IPv4 privada exacta, su misma subred y una regla Windows Firewall Private/LocalSubnet sin edge traversal.
+
+Esta excepcion no habilita un modo LAN general ni autoriza perfil Public, Internet, port forwarding, UPnP, tuneles o redes externas. El riesgo aceptado y el procedimiento de inicio, estado y revocacion se documentan en docs/acceso-lan.md.

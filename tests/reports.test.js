@@ -12,6 +12,20 @@ const { createIncomeCalculationService } = require("../backend/services/income-c
 const { createIncomeStatementService } = require("../backend/services/income-statement.service");
 const { createPayrollSummaryService } = require("../backend/services/payroll-summary.service");
 
+test("Producción presenta unidades individuales y estados de conversión legibles", () => {
+  const source = fs.readFileSync(path.join(__dirname, "../assets/js/modules/reports-production.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
+  assert.match(html, /<th class="num">Unidades individuales<\/th>/);
+  assert.match(source, /individualConversionStatus === "available"/);
+  assert.match(source, /Factor no disponible/);
+  assert.match(source, /No aplica/);
+  assert.match(source, /No hubo producción positiva para el período/);
+<<<<<<< ours
+=======
+  assert.match(source, /daily\.length} totales diarios con producción positiva/);
+>>>>>>> theirs
+});
+
 const id = (value) => String(value ?? "").trim();
 const number = (value) => Number(value) || 0;
 const normalize = (value) => String(value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase().replace(/_/g, " ").replace(/\s+/g, " ");

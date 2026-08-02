@@ -33,6 +33,7 @@ function createRequestHandler(dependencies) {
     ["POST", "/api/sales/invoices/full-entry", handlers.handleSalesInvoiceFullEntry],
     ["POST", "/api/sales/deliveries/full-entry", handlers.handleSalesDeliveryFullEntry],
     ["POST", "/api/sales/workflow/arca-confirmation", handlers.handleSalesWorkflowArcaConfirmation],
+    ["POST", "/api/sales/workflow/remito-x", handlers.handleSalesWorkflowRemitoX],
     ["POST", "/api/sales/workflow/close", handlers.handleSalesWorkflowClose],
     ["POST", "/api/backend/sql", handlers.handleBackendSqlQuery],
     ["POST", "/api/reception-attachments", handlers.handleReceptionAttachmentSave],
@@ -51,7 +52,11 @@ function createRequestHandler(dependencies) {
     ["GET", "/api/inventory-detail/template", handlers.handleInventoryDetailTemplate],
     ["POST", "/api/inventory-detail/append", handlers.handleInventoryDetailAppend],
     ["POST", "/api/inventory-detail/photo", handlers.handleInventoryDetailPhoto],
-    ["POST", "/api/purchases/full-entry", handlers.handlePurchaseFullEntry]
+    ["POST", "/api/purchases/full-entry", handlers.handlePurchaseFullEntry],
+    ["GET", "/api/purchases/workflow", handlers.handlePurchaseWorkflowList],
+    ["POST", "/api/purchases/workflow/receptions", handlers.handlePurchaseWorkflowReception],
+    ["POST", "/api/purchases/workflow/invoice", handlers.handlePurchaseWorkflowInvoice],
+    ["POST", "/api/purchases/workflow/close", handlers.handlePurchaseWorkflowClose]
   ];
 
   return async function handleRequest(request, response) {

@@ -130,6 +130,7 @@ function createSalesInvoiceEntryService({
           id_cliente: backendId(order.id_cliente),
           cliente: client.nombre_cliente || "",
           cuit_cliente: client.cuit || client.CUIT || "",
+          plazo_cobro: client.plazo_cobro ?? "",
           id_entrega: delivery ? backendId(delivery.id_entrega) : "",
           fecha_entrega: delivery?.fecha || "",
           cantidad_cajas: details.reduce((total, detail) => total + detail.cantidad_cajas, 0),

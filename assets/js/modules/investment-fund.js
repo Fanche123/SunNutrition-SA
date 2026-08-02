@@ -61,6 +61,7 @@ function renderInvestmentFundRows(rows) {
 function renderInvestmentFundReconciliationCandidates(candidates) {
   const body = document.getElementById("bank-fund-stage-body");
   const count = document.getElementById("bank-fund-stage-count");
+  setBankReconciliationStageVisibility("bank-fund-stage", candidates.length > 0);
   if (count) count.textContent = String(candidates.length);
   if (!body) return;
   body.innerHTML = candidates.length

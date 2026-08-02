@@ -360,6 +360,14 @@ const BACKEND_TABLE_PROJECTIONS = {
       cantidad: ["cantidad"]
     }
   },
+  gestion_compras: {
+    columns: EXPECTED_BACKEND_COLUMNS.gestion_compras,
+    aliases: {
+      id_gestion_compra: ["id_gestion_compra"], id_compra: ["id_compra"], cerrado_en: ["cerrado_en"],
+      cerrado_por: ["cerrado_por"], claves_recepcion: ["claves_recepcion"], clave_factura: ["clave_factura"],
+      creado_en: ["creado_en"], actualizado_en: ["actualizado_en"]
+    }
+  },
   recepciones: {
     columns: EXPECTED_BACKEND_COLUMNS.recepciones,
     aliases: {

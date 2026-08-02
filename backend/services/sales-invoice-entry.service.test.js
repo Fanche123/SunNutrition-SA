@@ -84,7 +84,7 @@ function baseCache() {
         { id_pedido: 3, id_cliente: 11, fecha_pedido: "2026-07-02", fecha_entrega: "2026-07-04" }
       ], rowCount: 3 },
       clientes: { rows: [
-        { id_cliente: 10, nombre_cliente: "Cliente_A", cuit: "30-1" },
+        { id_cliente: 10, nombre_cliente: "Cliente_A", cuit: "30-1", plazo_cobro: "30_Dias" },
         { id_cliente: 11, nombre_cliente: "Cliente_B", cuit: "30-2" }
       ], rowCount: 2 },
       productos: { rows: [{ id_producto: 20, nombre_producto: "Barra" }], rowCount: 1 },
@@ -172,6 +172,7 @@ test("consulta sólo pedidos sin relación canónica en ventas", () => {
   assert.equal(rows[0].id_entrega, "30");
   assert.equal(rows[0].fecha_entrega, "2026-07-05");
   assert.equal(rows[0].cantidad_cajas, 2);
+  assert.equal(rows[0].plazo_cobro, "30_Dias");
 });
 
 test("no aplica heurísticas de cobro, entrega, cliente, fecha o monto", () => {

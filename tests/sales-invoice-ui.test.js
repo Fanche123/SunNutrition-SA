@@ -89,6 +89,22 @@ test("Ventas completa subtotal neto, IVA incluido y total de la propuesta normal
   }
 });
 
+test("Remito X interpreta el Plazo cobro canónico y suma días locales al cambiar de mes", () => {
+  const {
+    salesInvoiceAgreedDate,
+    salesInvoiceCollectionTermDays
+  } = require("../assets/js/modules/sales-invoice-entry.js");
+
+  assert.equal(salesInvoiceCollectionTermDays("30_Dias"), 30);
+  assert.equal(salesInvoiceCollectionTermDays(" 30 días "), 30);
+  assert.equal(salesInvoiceCollectionTermDays(30), 30);
+  assert.equal(salesInvoiceAgreedDate("2026-08-30", "30_Dias"), "2026-09-29");
+  assert.equal(salesInvoiceAgreedDate("2026-08-30", "0"), "2026-08-30");
+  assert.equal(salesInvoiceAgreedDate("2026-02-29", 10), "");
+  assert.equal(salesInvoiceAgreedDate("2026-08-30", "sin plazo"), "");
+  assert.equal(salesInvoiceCollectionTermDays("30 días hábiles"), null);
+});
+
 test("el estado del archivo habilita lectura, expone el nombre y vuelve a vacío al quitarlo", () => {
   global.formatFileSize = (size) => `${size} bytes`;
   const { isSalesInvoiceReadableAttachment, salesInvoiceFileUiState } = require("../assets/js/modules/sales-invoice-entry.js");

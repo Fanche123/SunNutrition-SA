@@ -7,7 +7,10 @@ const vm = require("node:vm");
 
 const { EXPECTED_BACKEND_COLUMNS } = require("../backend/config/backend-columns");
 const { backendId } = require("../backend/utils/ids");
-const { createAttachmentsService } = require("../backend/services/attachments.service");
+const {
+  createAttachmentsService,
+  remitoXNumberFromText
+} = require("../backend/services/attachments.service");
 const { createCreditorEntryService } = require("../backend/services/creditor-entry.service");
 const { createOtherExpenseEntryService } = require("../backend/services/other-expense-entry.service");
 const { createPurchaseEntryService } = require("../backend/services/purchase-entry.service");
@@ -149,14 +152,13 @@ test("Ventas normaliza el IVA incluido de Factura B y concilia al centavo", asyn
   }
 });
 
-test("Ventas conserva casos fiscales explícitos y no altera Factura A ni Remito X", async () => {
+test("Ventas conserva casos fiscales explícitos y no altera Factura A/B", async () => {
   const previousKey = process.env.OPENAI_API_KEY;
   process.env.OPENAI_API_KEY = "test-key";
   try {
     for (const invoice of [
       { tipo_factura: "Factura_B", subtotal: 100, iva: 21, total: 121 },
-      { tipo_factura: "Factura_A", subtotal: 200, iva: 42, total: 242 },
-      { tipo_factura: "Remito_X", subtotal: null, iva: null, total: 500 }
+      { tipo_factura: "Factura_A", subtotal: 200, iva: 42, total: 242 }
     ]) {
       const result = await facturaBReadHarness(invoice)
         .invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "documento.pdf" });
@@ -210,6 +212,45 @@ test("Ventas conserva casos fiscales explícitos y no altera Factura A ni Remito
     assert.equal(zeroRate.payload.invoice.subtotal, 100);
     assert.equal(zeroRate.payload.invoice.iva, 0);
     assert.equal(zeroRate.payload.reviewWarnings.length, 1);
+  } finally {
+    if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = previousKey;
+  }
+});
+
+test("Ventas toma el correlativo adyacente y pone en cero los tributos de Remito X", async () => {
+  assert.equal(remitoXNumberFromText("N° 00001 - 01018"), "01018");
+  assert.equal(remitoXNumberFromText("0001-98765432"), "98765432");
+  assert.notEqual(remitoXNumberFromText("N° 00001 - 01018"), "00001");
+
+  const previousKey = process.env.OPENAI_API_KEY;
+  process.env.OPENAI_API_KEY = "test-key";
+  try {
+    const result = await facturaBReadHarness({
+      tipo_factura: "Remito_X",
+      nro_factura: "00001 - 01018",
+      fecha_factura: "2026-08-30",
+      subtotal: 500,
+      iva: null,
+      per_ret_iva: null,
+      per_ret_iibb: null,
+      imp_internos: null,
+      total: 500
+    }).invoke({ fileDataUrl: syntheticPdfDataUrl(), fileName: "remito-x.pdf" });
+
+    assert.equal(result.payload.invoice.nro_factura, "01018");
+    assert.equal(result.payload.invoice.subtotal, 500);
+    assert.equal(result.payload.invoice.total, 500);
+    assert.deepEqual([
+      result.payload.invoice.iva,
+      result.payload.invoice.per_ret_iva,
+      result.payload.invoice.per_ret_iibb,
+      result.payload.invoice.imp_internos
+    ], [0, 0, 0, 0]);
+    assert.equal(result.payload.missingFields.includes("iva"), false);
+    assert.equal(result.payload.missingFields.includes("per_ret_iva"), false);
+    assert.equal(result.payload.missingFields.includes("per_ret_iibb"), false);
+    assert.equal(result.payload.missingFields.includes("imp_internos"), false);
   } finally {
     if (previousKey === undefined) delete process.env.OPENAI_API_KEY;
     else process.env.OPENAI_API_KEY = previousKey;

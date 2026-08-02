@@ -7,7 +7,7 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>SunNutrition</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=20260730-arca-delivery-priority">
+  <link rel="stylesheet" href="assets/css/styles.css?v=20260801-purchase-workflow-ui">
 </head>
 <body>
   <div class="app-shell">
@@ -45,8 +45,7 @@
             <span>Compras e inventario</span><span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
           <div class="nav-group-items" inert>
-            <button class="nav-item nav-subitem" data-view="purchase-entry" type="button">Compras</button>
-            <button class="nav-item nav-subitem" data-view="reception-entry" type="button">Recepciones</button>
+            <button class="nav-item nav-subitem" data-view="purchase-entry" type="button">Gesti&oacute;n de Compras</button>
             <button class="nav-item nav-subitem" data-view="data-entry" type="button">Inventario</button>
             <button class="nav-item nav-subitem" data-view="creditor-entry" type="button">Acreedores</button>
             <button class="nav-item nav-subitem" data-view="other-expenses-entry" type="button">Otros gastos</button>
@@ -353,8 +352,8 @@
           <p id="production-status" class="form-status" role="status" aria-live="polite"></p>
           <div class="table-wrap">
             <table class="production-report-table">
-              <thead><tr><th>Fecha / turno</th><th>Producto</th><th class="num">Inventario inicial</th><th class="num">Salidas ventas</th><th class="num">Inventario final</th><th class="num">Producción</th><th>Estado</th></tr></thead>
-              <tbody id="production-body"><tr><td class="empty" colspan="7">Abrí la pestaña para cargar el reporte.</td></tr></tbody>
+              <thead><tr><th>Fecha / turno</th><th>Producto</th><th class="num">Inventario inicial</th><th class="num">Salidas ventas</th><th class="num">Inventario final</th><th class="num">Producción</th><th class="num">Unidades individuales</th><th>Estado</th></tr></thead>
+              <tbody id="production-body"><tr><td class="empty" colspan="8">Abrí la pestaña para cargar el reporte.</td></tr></tbody>
             </table>
           </div>
         </section>
@@ -566,7 +565,7 @@
           </div>
         </div>
 
-        <section class="panel">
+        <section class="panel" id="bank-movements-stage" hidden>
           <div class="panel-header">
             <div>
               <h2>Movimientos bancarios</h2>
@@ -631,7 +630,7 @@
           </section>
 
           <div class="bank-reconciliation-stages">
-            <section class="panel bank-stage-panel" id="bank-expense-stage">
+            <section class="panel bank-stage-panel" id="bank-expense-stage" hidden>
               <div class="panel-header">
                 <div>
                   <h2>Gastos para agregar</h2>
@@ -662,7 +661,7 @@
               </div>
             </section>
 
-            <section class="panel bank-stage-panel" id="bank-egress-stage">
+            <section class="panel bank-stage-panel" id="bank-egress-stage" hidden>
               <div class="panel-header">
                 <div>
                   <h2>Egresos para agregar</h2>
@@ -692,7 +691,7 @@
               </div>
             </section>
 
-            <section class="panel bank-stage-panel" id="bank-payment-stage">
+            <section class="panel bank-stage-panel" id="bank-payment-stage" hidden>
               <div class="panel-header">
                 <div>
                   <h2>Pagos para agregar</h2>
@@ -722,7 +721,7 @@
               </div>
             </section>
 
-            <section class="panel bank-stage-panel" id="bank-fund-stage">
+            <section class="panel bank-stage-panel" id="bank-fund-stage" hidden>
               <div class="panel-header">
                 <div>
                   <h2>Movimientos de fondo para agregar</h2>
@@ -982,14 +981,14 @@
 
       <section class="view" id="view-purchase-entry">
         <div class="data-entry-page-heading">
-          <h2>Compras</h2>
-          <p>Carga de pedidos a proveedores y detalle de insumos.</p>
+          <h2>Gesti&oacute;n de Compras</h2>
+          <p>Necesidades, recepciones, factura/egreso y cierre en una sola bandeja.</p>
         </div>
         <section class="panel purchase-inventory-suggestions" aria-labelledby="purchase-inventory-suggestions-title">
           <div class="purchase-inventory-suggestions-header">
             <div>
               <span>Ultimo inventario</span>
-              <h3 id="purchase-inventory-suggestions-title">Insumos a comprar</h3>
+              <h3 id="purchase-inventory-suggestions-title">Necesidad de insumos</h3>
             </div>
             <div class="purchase-inventory-suggestions-actions">
               <form id="inventory-production-rate-form" class="inventory-production-rate-form" novalidate>
@@ -1012,8 +1011,24 @@
           </div>
           <p id="purchase-inventory-suggestions-status" aria-live="polite">Cargando recomendacion del ultimo inventario...</p>
           <div class="purchase-inventory-suggestions-list" id="purchase-inventory-suggestions-list"></div>
+          <div class="purchase-inventory-free-action">
+            <span>¿Necesitás comprar otro insumo?</span>
+            <button type="button" class="secondary" id="purchase-workflow-new">Nueva compra libre</button>
+          </div>
         </section>
-        <div class="purchase-entry-layout">
+        <section class="panel purchase-workflow-panel">
+          <div class="purchase-workflow-toolbar">
+            <div><h2 id="purchase-workflow-title">Compras pendientes de recepci&oacute;n</h2><p id="purchase-workflow-subtitle">Las compras permanecen hasta su cierre manual.</p></div>
+            <button type="button" class="secondary" id="purchase-workflow-managed">Ver gestionadas</button>
+          </div>
+          <p class="form-status" id="purchase-workflow-status" role="status"></p>
+          <div class="table-wrap"><table class="purchase-workflow-table">
+            <thead><tr><th>N.&ordm; compra</th><th>Insumos</th><th>Proveedor</th><th>Entrega prevista</th><th>Recepci&oacute;n</th><th>Factura/Egreso</th><th>Cerrar</th></tr></thead>
+            <tbody id="purchase-workflow-body"><tr><td colspan="7" class="empty">Cargando compras...</td></tr></tbody>
+          </table></div>
+        </section>
+        <dialog class="purchase-entry-layout purchase-workflow-popup" id="purchase-workflow-purchase-popup" aria-label="Nueva compra">
+          <button type="button" class="purchase-workflow-popup-close" data-purchase-workflow-close aria-label="Cerrar">&times;</button>
           <section class="panel purchase-entry-panel">
             <form id="purchase-form" class="purchase-form">
               <div class="purchase-form-grid">
@@ -1147,7 +1162,28 @@
             <div class="purchase-order-body" id="purchase-order-body"></div>
             <button type="button" class="purchase-download-button" id="purchase-download-png">Descargar PNG</button>
           </aside>
-        </div>
+        </dialog>
+        <dialog id="purchase-workflow-reception-dialog" class="purchase-workflow-dialog">
+          <form method="dialog" class="purchase-workflow-dialog-shell" id="purchase-workflow-reception-form">
+            <header><h2>Recepci&oacute;n de compra <span data-purchase-number></span></h2><button type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
+            <div class="purchase-workflow-dialog-body"><p data-reception-history></p><div data-reception-items></div><label>Fecha de recepci&oacute;n<input type="date" name="receptionDate" required></label><label>Empleado<input name="employeeId" required></label><p class="form-status" data-dialog-status></p></div>
+            <footer><button type="button" data-dialog-close class="secondary">Cancelar</button><button type="submit">Guardar recepci&oacute;n</button></footer>
+          </form>
+        </dialog>
+        <dialog id="purchase-workflow-invoice-dialog" class="purchase-workflow-dialog">
+          <form method="dialog" class="purchase-workflow-dialog-shell" id="purchase-workflow-invoice-form">
+            <header><h2>Factura/Egreso de compra <span data-purchase-number></span></h2><button type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
+            <div class="purchase-workflow-dialog-body purchase-workflow-invoice-grid">
+              <label>Factura o imagen<input type="file" name="attachment" accept=".pdf,image/*" required></label><button type="button" data-read-invoice>Leer factura</button>
+              <label>Tipo<select name="invoiceType" required><option>Factura_A</option><option>Factura_B</option><option>Factura_C</option><option>Remito_X</option></select></label><label>N&uacute;mero<input name="invoiceNumber" required></label>
+              <label>Fecha factura<input type="date" name="invoiceDate" required></label><label>Fecha prevista pago<input type="date" name="paymentDate"></label>
+              <label>Subtotal<input type="number" step=".01" min="0" name="subtotal"></label><label>IVA<input type="number" step=".01" min="0" name="iva"></label>
+              <label>Per/Ret IVA<input type="number" step=".01" name="vatRetention"></label><label>Per/Ret IIBB<input type="number" step=".01" name="iibbRetention"></label>
+              <label>Impuestos internos<input type="number" step=".01" name="internalTaxes"></label><label>Total<input type="number" step=".01" min=".01" name="total" required></label>
+              <p class="form-status" data-dialog-status></p>
+            </div><footer><button type="button" data-dialog-close class="secondary">Cancelar</button><button type="submit">Crear egreso y adjuntar</button></footer>
+          </form>
+        </dialog>
       </section>
 
       <section class="view" id="view-reception-entry">
@@ -1807,7 +1843,7 @@
           </form>
         </section>
       </section>
-      <section class="view" id="view-logistics-entry">
+      <div id="logistics-delivery-panel-host" hidden>
         <section class="panel commercial-entry-panel">
           <div class="panel-header">
             <div>
@@ -1845,6 +1881,8 @@
           </div>
           <p id="logistics-status" class="form-status"></p>
         </section>
+      </div>
+      <section class="view" id="view-logistics-entry">
         <section class="panel commercial-entry-panel">
           <div class="panel-header">
             <div>
@@ -3173,8 +3211,9 @@
   <script src="assets/js/modules/collections-retentions.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/received-check-entry.js?v=20260726-pending-received-checks"></script>
   <script src="assets/js/modules/issued-check-entry.js?v=20260722-architecture-stage4"></script>
-  <script src="assets/js/modules/purchase-entry.js?v=20260727-inventory-purchase-history"></script>
+  <script src="assets/js/modules/purchase-entry.js?v=20260801-purchase-workflow-ui"></script>
   <script src="assets/js/modules/reception-entry.js?v=20260722-architecture-stage4"></script>
+  <script src="assets/js/modules/purchase-workflow.js?v=20260731-erp-com-21"></script>
   <script src="assets/js/modules/logistics-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/other-expense-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/commissions-entry.js?v=20260724-commissions-png"></script>
@@ -3184,6 +3223,6 @@
   <script src="assets/js/modules/reports-cashflow.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/modules/reports-production.js?v=20260730-production-report"></script>
   <script src="assets/js/modules/dashboard.js?v=20260727-inventory-purchase-history"></script>
-  <script src="assets/js/modules/sales-workflow.js?v=20260731-unified-sales-workflow"></script>
+  <script src="assets/js/modules/sales-workflow.js?v=20260801-remito-x-pdf"></script>
 </body>
 </html>

@@ -59,7 +59,10 @@ function createAttachmentsService({
   }
 
   async function handleSalesInvoiceRead(request, response) {
-    return handleInvoiceRead(request, response, { normalizeSalesFacturaB: true });
+    return handleInvoiceRead(request, response, {
+      normalizeSalesFacturaB: true,
+      normalizeSalesRemitoX: true
+    });
   }
 
   async function handleInvoiceRead(request, response, options) {
@@ -90,9 +93,14 @@ function createAttachmentsService({
       const extractedInvoice = isPdf
         ? await extractReceptionInvoiceFromPdf(apiKey, fileDataUrl, fileName, mimeType)
         : await extractReceptionInvoiceFromImage(apiKey, fileDataUrl);
+      const pdfText = isPdf
+        && options.normalizeSalesRemitoX
+        && extractedInvoice?.tipo_factura === "Remito_X"
+        ? tryExtractPdfText(fileDataUrl, fileName)
+        : "";
       const { invoice, missingFields, reviewWarnings } = normalizeReceptionInvoice(
         extractedInvoice,
-        options
+        { ...options, pdfText }
       );
       if (!Object.values(invoice).some((value) => (
         (typeof value === "string" && value !== "")
@@ -243,27 +251,38 @@ function createAttachmentsService({
     const tempDir = path.join(rootDir, "tmp", "uploads");
     fs.mkdirSync(tempDir, { recursive: true });
     const tempPath = path.join(tempDir, `${Date.now()}-${fileName}`);
-    fs.writeFileSync(tempPath, buffer);
-    const executable = fs.existsSync(pythonExecutable) ? pythonExecutable : "python";
-    const script = [
-      "import sys, pdfplumber",
-      "sys.stdout.reconfigure(encoding='utf-8')",
-      "path = sys.argv[1]",
-      "parts = []",
-      "with pdfplumber.open(path) as pdf:",
-      "    for page in pdf.pages:",
-      "        parts.append(page.extract_text() or '')",
-      "print('\\n'.join(parts))"
-    ].join("\n");
-    const result = childProcess.spawnSync(executable, ["-c", script, tempPath], {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024
-    });
-    fs.rmSync(tempPath, { force: true });
-    if (result.status !== 0) {
-      throw new Error((result.stderr || "No se pudo extraer texto del PDF.").trim());
+    try {
+      fs.writeFileSync(tempPath, buffer);
+      const executable = fs.existsSync(pythonExecutable) ? pythonExecutable : "python";
+      const script = [
+        "import sys, pdfplumber",
+        "sys.stdout.reconfigure(encoding='utf-8')",
+        "path = sys.argv[1]",
+        "parts = []",
+        "with pdfplumber.open(path) as pdf:",
+        "    for page in pdf.pages:",
+        "        parts.append(page.extract_text() or '')",
+        "print('\\n'.join(parts))"
+      ].join("\n");
+      const result = childProcess.spawnSync(executable, ["-c", script, tempPath], {
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024
+      });
+      if (result.status !== 0) {
+        throw new Error((result.stderr || "No se pudo extraer texto del PDF.").trim());
+      }
+      return result.stdout || "";
+    } finally {
+      fs.rmSync(tempPath, { force: true });
     }
-    return result.stdout || "";
+  }
+
+  function tryExtractPdfText(fileDataUrl, fileName) {
+    try {
+      return extractPdfTextWithPython(fileDataUrl, fileName);
+    } catch {
+      return "";
+    }
   }
   
   function parsePayrollScaleText(text, requestedPeriod = "") {
@@ -375,6 +394,8 @@ function createAttachmentsService({
     "total": numero
   }
   Si un texto no aparece, usa string vacio. Si un importe no aparece, usa null.
+  En Remito X, el encabezado puede mostrar N° 00001 - 01018: el primer bloque es el punto fijo de emision.
+  Para nro_factura devuelve solo el correlativo ubicado a la derecha del guion (01018 en el ejemplo), nunca 00001.
   Conserva 0 solo cuando el comprobante muestre explicitamente ese importe. No inventes datos.`;
   }
   
@@ -501,10 +522,24 @@ function createAttachmentsService({
     if (options.normalizeSalesFacturaB) {
       normalizeSalesFacturaB(invoice, value, reviewWarnings);
     }
+    if (options.normalizeSalesRemitoX) {
+      normalizeSalesRemitoX(invoice, options.pdfText);
+    }
     const missingFields = Object.entries(invoice)
       .filter(([, fieldValue]) => fieldValue === "" || fieldValue === null)
       .map(([field]) => field);
     return { invoice, missingFields, reviewWarnings };
+  }
+
+  function normalizeSalesRemitoX(invoice, pdfText = "") {
+    if (invoice.tipo_factura !== "Remito_X") return;
+    const correlative = remitoXNumberFromText(pdfText)
+      || remitoXNumberFromText(invoice.nro_factura);
+    if (correlative) invoice.nro_factura = correlative;
+    invoice.iva = 0;
+    invoice.per_ret_iva = 0;
+    invoice.per_ret_iibb = 0;
+    invoice.imp_internos = 0;
   }
 
   function normalizeSalesFacturaB(invoice, source, reviewWarnings) {
@@ -587,4 +622,10 @@ function createAttachmentsService({
   };
 }
 
-module.exports = { createAttachmentsService };
+function remitoXNumberFromText(value) {
+  const text = String(value || "");
+  const match = text.match(/(?:N\s*[°ºo]?\s*)?([0-9]{4,8})\s*-\s*([0-9]{4,12})/i);
+  return match?.[2] || "";
+}
+
+module.exports = { createAttachmentsService, remitoXNumberFromText };

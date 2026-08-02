@@ -82,6 +82,7 @@ async function refreshBankReconciliationFromBackend({ force = false } = {}) {
     })
     .catch((error) => {
       console.error("No se pudieron cargar los movimientos bancarios pendientes.", error);
+      setBankReconciliationStageVisibility("bank-movements-stage", true);
       setBankReconciliationStatus(error.message, "warn");
       return null;
     })

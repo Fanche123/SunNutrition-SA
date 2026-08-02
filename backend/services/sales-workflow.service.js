@@ -1,4 +1,10 @@
 const { expectedOrderSubtotal, validDeliveryByOrder } = require("./sales-invoice-entry.service");
+const {
+  buildRemitoXData,
+  generateRemitoXPdf,
+  normalizeReceiptType,
+  remitoXFileName
+} = require("./remito-x-pdf.service");
 
 const WORKFLOW_TABLE = "gestion_ventas";
 
@@ -29,6 +35,37 @@ function createSalesWorkflowService({
 
   function handleArcaConfirmation(request, response) {
     return enqueueSalesWrite(() => persistArcaConfirmation(request, response));
+  }
+
+  function handleRemitoX(request, response) {
+    return enqueueSalesWrite(() => persistRemitoX(request, response));
+  }
+
+  async function persistRemitoX(request, response) {
+    try {
+      const body = await readJsonBody(request);
+      const orderId = backendId(body.orderId);
+      if (!orderId) throw httpError(400, "El pedido es obligatorio.");
+      const cache = clone(loadCache());
+      prepareTables(cache, ensureBackendTable);
+      const data = buildRemitoXData(cache, orderId, backendId);
+      const template = fs.readFileSync(path.join(rootDir, "backend", "templates", "remito-x-template.pdf"));
+      const pdf = generateRemitoXPdf(template, data);
+      const workflow = ensureWorkflowRow(cache, orderId, {
+        backendId,
+        backendNextNumericId,
+        origin: "remito_x_generado"
+      });
+      const timestamp = workflow.factura_arca_confirmada_en || new Date().toISOString();
+      workflow.factura_arca_confirmada_en = timestamp;
+      workflow.factura_arca_confirmada_por ||= actorFromRequest(request);
+      workflow.actualizado_en = new Date().toISOString();
+      finalizeWorkflowTable(cache, workflow.actualizado_en);
+      saveBackendCache(cache);
+      sendPdf(response, pdf, remitoXFileName(data));
+    } catch (error) {
+      return sendJson(response, error.statusCode || 400, { ok: false, error: `No se generó el Remito X: ${error.message}` });
+    }
   }
 
   async function persistArcaConfirmation(request, response) {
@@ -96,7 +133,7 @@ function createSalesWorkflowService({
     }
   }
 
-  return { handleArcaConfirmation, handleClose, handleList };
+  return { handleArcaConfirmation, handleClose, handleList, handleRemitoX };
 }
 
 function workflowRows(cache, backendId, attachmentStorage) {
@@ -141,6 +178,8 @@ function workflowRows(cache, backendId, attachmentStorage) {
       id_cliente: backendId(order.id_cliente),
       cliente: client.nombre_cliente || "",
       cuit_cliente: client.cuit || client.CUIT || "",
+      plazo_cobro: client.plazo_cobro ?? "",
+      tipo_comprobante_configurado: normalizeReceiptType(client.tipo_comprobante),
       productos: details,
       cantidad_cajas: details.reduce((total, detail) => total + numeric(detail.cantidad_cajas), 0),
       detalle_resumido: details.map((detail) => `${detail.producto || `Producto ${detail.id_producto}`} (${detail.cantidad_cajas || 0})`).join(", "),
@@ -314,6 +353,16 @@ function httpError(statusCode, message) {
   const error = new Error(message);
   error.statusCode = statusCode;
   return error;
+}
+
+function sendPdf(response, buffer, fileName) {
+  response.writeHead(200, {
+    "Content-Type": "application/pdf",
+    "Content-Length": buffer.length,
+    "Content-Disposition": `attachment; filename="${fileName}"`,
+    "Cache-Control": "no-store"
+  });
+  response.end(buffer);
 }
 
 module.exports = {

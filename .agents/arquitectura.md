@@ -43,6 +43,8 @@ Fuera de alcance: implementar una función operativa cuyo dueño sea Inventario,
 - Compartidos sensibles: `index.html`, `assets/css/styles.css`, `backend/data-store.js`, `backend/table-registry.json`.
 - Referencias/validación: `docs/architecture.md`, `docs/refactor-architecture-plan.md`, `backend/README.md`, `tools/check-js.ps1`. `.codex-snippet.txt` es un snippet no cargado por runtime y queda bajo revisión arquitectónica, no como fuente funcional.
 
+- Excepción LAN doméstica: tools/erp-lan-access.js, tests/erp-lan-access.test.js y docs/acceso-lan.md concentran el proxy separado, su lifecycle con PID/comando/cwd/huella/lock autenticado, la restricción por subred y el procedimiento de revocación. El servidor principal conserva localhost y server:ensure.
+
 ## Tablas y contratos
 
 Arquitectura no posee tablas operativas. Posee el diseño de despacho y los contratos globales confirmados en `router.js`: health, schema, overview/map, tablas genéricas, app-state, SQL, reportes y rutas exactas de dominio. Cambiar método/path/JSON o el registro de tablas es alto riesgo y requiere coordinar dueño funcional y Base de datos.
@@ -86,6 +88,8 @@ Validación: sintaxis/imports para composición; arranque/health para backend; c
 No usar datos reales ni ampliar permisos funcionales. La creación/movimiento/eliminación de cualquier archivo permanente obliga a actualizar este AGENT o el dueño correspondiente, `file-ownership.md` y dependencias; una integración nueva actualiza ambos dueños. Esta actualización es parte del terminado.
 
 El despliegue predeterminado es local sobre `127.0.0.1`. `backend/config/access.js` rechaza modo LAN o interfaces no locales mientras no exista autenticación/autorización. `backend/services/access-control.service.js` concentra CORS/origen y el punto futuro de identidad, sesión, roles y permisos por endpoint. Los requisitos previos a LAN están en `docs/administration-security.md`.
+
+La prohibición LAN general permanece. La excepción doméstica explícita y revocable ERP-INF-20260801-04 está documentada en docs/administration-security.md y docs/acceso-lan.md; no cambia el bind ni habilita modo LAN general.
 
 ## Trabajo con subagentes nativos
 

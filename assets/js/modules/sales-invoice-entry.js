@@ -103,16 +103,19 @@ async function readSalesInvoiceAttachment() {
       body: JSON.stringify({ fileDataUrl, fileName: file.name, mimeType: file.type })
     });
     if (!salesInvoiceReadIsCurrent(file, input, readToken)) return;
-    applySalesInvoiceProposal(payload.invoice || {});
+    const proposal = applySalesInvoiceProposal(payload.invoice || {});
     const missing = Array.isArray(payload.missingFields) && payload.missingFields.length
       ? ` Faltan: ${payload.missingFields.join(", ")}.`
       : "";
     const warnings = Array.isArray(payload.reviewWarnings) && payload.reviewWarnings.length
       ? ` ${payload.reviewWarnings.join(" ")}`
       : "";
+    const agreedDateWarning = proposal.needsManualAgreedDate
+      ? " El cliente no tiene un Plazo cobro válido; completá Fecha acordada manualmente si corresponde."
+      : "";
     setSalesInvoiceStatus(
-      `Lectura completada. Revisá y corregí todos los campos antes de guardar.${missing}${warnings}`,
-      warnings ? "pending" : "success"
+      `Lectura completada. Revisá y corregí todos los campos antes de guardar.${missing}${warnings}${agreedDateWarning}`,
+      warnings || agreedDateWarning ? "pending" : "success"
     );
   } catch (error) {
     if (salesInvoiceReadIsCurrent(file, input, readToken)) {
@@ -218,19 +221,63 @@ function clearSalesInvoiceFile() {
 }
 
 function applySalesInvoiceProposal(invoice) {
+  const selectedOrder = salesInvoiceOrders.find(
+    (order) => String(order.id_pedido) === selectedSalesInvoiceOrderId
+  );
+  const isRemitoX = invoice.tipo_factura === "Remito_X";
+  const agreedDate = isRemitoX
+    ? salesInvoiceAgreedDate(invoice.fecha_factura, selectedOrder?.plazo_cobro)
+    : invoice.fecha_acordada || "";
   const values = {
     "sales-invoice-type": invoice.tipo_factura,
     "sales-invoice-number": invoice.nro_factura,
     "sales-invoice-date": invoice.fecha_factura,
     "sales-invoice-subtotal": invoice.subtotal,
     "sales-invoice-iva": invoice.iva,
-    "sales-invoice-total": invoice.total
+    "sales-invoice-total": invoice.total,
+    "sales-invoice-due-date": agreedDate
   };
   Object.entries(values).forEach(([id, value]) => {
     const input = document.getElementById(id);
-    if (input && value !== null && value !== undefined && value !== "") input.value = value;
+    if (input && id === "sales-invoice-due-date" && isRemitoX) input.value = value || "";
+    else if (input && value !== null && value !== undefined && value !== "") input.value = value;
   });
   updateSalesInvoiceComparison();
+  return {
+    agreedDate,
+    needsManualAgreedDate: isRemitoX && Boolean(invoice.fecha_factura) && !agreedDate
+  };
+}
+
+function salesInvoiceAgreedDate(invoiceDate, collectionTermDays) {
+  const dateText = String(invoiceDate || "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return "";
+  const days = salesInvoiceCollectionTermDays(collectionTermDays);
+  if (days === null) return "";
+  const [year, month, day] = dateText.split("-").map(Number);
+  const date = new Date(year, month - 1, day, 12, 0, 0, 0);
+  if (
+    date.getFullYear() !== year
+    || date.getMonth() !== month - 1
+    || date.getDate() !== day
+  ) return "";
+  date.setDate(date.getDate() + days);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+function salesInvoiceCollectionTermDays(value) {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  const text = String(value ?? "").trim();
+  const match = text.match(/^(\d+)(?:[_\s]+d[ií]as?)?$/i);
+  if (!match) return null;
+  const days = Number(match[1]);
+  return Number.isSafeInteger(days) ? days : null;
 }
 
 function salesInvoiceComparison(
@@ -428,6 +475,7 @@ function selectSalesInvoiceWorkflowOrder(order) {
     id_cliente: order.id_cliente || "",
     cliente: order.cliente || "",
     cuit_cliente: order.cuit_cliente || "",
+    plazo_cobro: order.plazo_cobro ?? "",
     id_entrega: order.delivery?.id_entrega || "",
     fecha_entrega: order.delivery?.fecha || "",
     cantidad_cajas: order.cantidad_cajas || 0,
@@ -486,6 +534,8 @@ if (typeof module !== "undefined" && module.exports) {
     salesInvoiceReadIsCurrent,
     salesInvoiceComparison,
     salesInvoiceFileUiState,
-    salesInvoiceReadErrorMessage
+    salesInvoiceReadErrorMessage,
+    salesInvoiceAgreedDate,
+    salesInvoiceCollectionTermDays
   };
 }

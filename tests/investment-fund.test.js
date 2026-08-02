@@ -515,6 +515,8 @@ test("la integracion visual declara formulario, historial, estados y breakpoint 
   assert.doesNotMatch(reconciliationView, /id="investment-fund-form"/);
   assert.match(reconciliationView, /Pagos para agregar[\s\S]*Movimientos de fondo para agregar/);
   assert.match(reconciliationView, /id="bank-fund-stage-body"/);
+  ["bank-movements-stage", "bank-expense-stage", "bank-egress-stage", "bank-payment-stage", "bank-fund-stage"]
+    .forEach((id) => assert.match(reconciliationView, new RegExp(`id="${id}" hidden`)));
   assert.match(css, /@media \(max-width: 700px\)[\s\S]*\.investment-fund-form\s*\{[\s\S]*grid-template-columns: 1fr/);
   assert.match(css, /\.investment-fund-history\s*\{[\s\S]*min-width: 940px/);
   assert.match(frontend, /escapeHtml\(row\.observacion/);
