@@ -21,6 +21,10 @@ test("Producción presenta unidades individuales y estados de conversión legibl
   assert.match(source, /No aplica/);
   assert.match(source, /No hubo producción positiva para el período/);
 <<<<<<< ours
+<<<<<<< ours
+=======
+  assert.match(source, /daily\.length} totales diarios con producción positiva/);
+>>>>>>> theirs
 =======
   assert.match(source, /daily\.length} totales diarios con producción positiva/);
 >>>>>>> theirs

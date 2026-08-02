@@ -163,7 +163,11 @@ function individualProduction(production, measurement) {
 
 function visibleProductionRow(row) {
 <<<<<<< ours
+<<<<<<< ours
   return row.production > 0 || row.status === "warning" || row.status === "insufficient";
+=======
+  return Number.isFinite(row.production) && row.production > 0;
+>>>>>>> theirs
 =======
   return Number.isFinite(row.production) && row.production > 0;
 >>>>>>> theirs

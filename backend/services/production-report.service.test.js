@@ -67,6 +67,7 @@ test("calcula mañana, tarde y día; ventas sólo en Mañana y deduplica entrega
 });
 
 <<<<<<< ours
+<<<<<<< ours
 test("elige el mayor id como snapshot canónico, oculta cero y conserva alertas negativas", () => {
   const report = createProductionReportService({ loadCache: () => fixture() })
     .buildProductionReport("2026-07-30", "2026-07-30");
@@ -77,12 +78,17 @@ test("elige el mayor id como snapshot canónico, oculta cero y conserva alertas 
   assert.equal(productB[0].status, "warning");
   assert.equal(report.daily.some((row) => row.productId === "2"), true);
 =======
+=======
+>>>>>>> theirs
 test("elige el mayor id como snapshot canónico y oculta resultados cero o negativos", () => {
   const report = createProductionReportService({ loadCache: () => fixture() })
     .buildProductionReport("2026-07-30", "2026-07-30");
   const productB = report.rows.filter((row) => row.productId === "2");
   assert.equal(productB.length, 0);
   assert.equal(report.daily.some((row) => row.productId === "2"), false);
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
 });
 
@@ -102,6 +108,10 @@ test("respeta unidades no convertibles e informa factores faltantes", () => {
   cache.tables.items.rows[0].ud_conteo = "kg";
   cache.tables.productos.rows[1].cantidad_individual = "";
 <<<<<<< ours
+<<<<<<< ours
+=======
+  cache.tables.detalle_inventarios.rows.find((row) => row.id_inventario === 4 && row.id_item === 102).cantidad = 6;
+>>>>>>> theirs
 =======
   cache.tables.detalle_inventarios.rows.find((row) => row.id_inventario === 4 && row.id_item === 102).cantidad = 6;
 >>>>>>> theirs
@@ -133,7 +143,10 @@ test("cada fecha se calcula y filtra sin arrastrar productos del día anterior",
   assert.deepEqual(report.daily.map((row) => row.productId), ["2"]);
   assert.equal(report.daily[0].production, 2);
 <<<<<<< ours
+<<<<<<< ours
 =======
+=======
+>>>>>>> theirs
 });
 
 test("muestra sólo A y cuenta un total ante producción positiva, cero y datos insuficientes", () => {
@@ -151,6 +164,9 @@ test("muestra sólo A y cuenta un total ante producción positiva, cero y datos 
   assert.equal(report.daily.length, 1);
   assert.equal(report.rows.every((row) => Number.isFinite(row.production) && row.production > 0), true);
   assert.equal(report.rows.some((row) => row.productId === "2" || row.productId === "3"), false);
+<<<<<<< ours
+>>>>>>> theirs
+=======
 >>>>>>> theirs
 });
 
