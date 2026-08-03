@@ -1,5 +1,6 @@
 const { fromCents, toCents } = require("../../shared/money");
 const { strictMoneyToCents } = require("../utils/money-input");
+const { appendCashSourceMovement, assertCashSourceMovement } = require("./cash-ledger.service");
 
 function createCollectionEntryService({
   backendId,
@@ -32,6 +33,7 @@ function createCollectionEntryService({
       if (existing) {
         assertSameOperation(existing._operationPayload, operationPayload);
         assertCollectionRelations(cache.tables, existing, operationId, details, retentions);
+        assertCashSourceMovement(cache, { sourceType: "cobro", sourceRow: existing, operationId });
         return sendJson(response, 200, { ok: true, idempotent: true, collectionId: existing.id_cobro });
       }
 
@@ -79,6 +81,13 @@ function createCollectionEntryService({
         clientId: collection.idCliente,
         operationId,
         timestamp
+      });
+      appendCashSourceMovement(cache, {
+        sourceType: "cobro",
+        sourceRow: cache.tables.cobros.rows.at(-1),
+        operationId,
+        actor: request.accessIdentity?.user,
+        registeredAt: timestamp
       });
       updateCounts(cache.tables, ["cobros", "cobros_detalle", "retenciones_ganancias", "retenciones_iibb"]);
       cache.generatedAt = timestamp;

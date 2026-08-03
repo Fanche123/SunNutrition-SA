@@ -26,7 +26,7 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Estructura: `index.html`.
 - Estilos: `assets/css/styles.css`.
 - Iconos: `banco.svg`, `cheques.svg`, `cheques-a-cubrir.svg`, `costo-de-ventas.svg`, `deudas.svg`, `efectivo.svg`, `gastos-no-operativos.svg`, `gastos-operativos.svg`, `por-cobrar.svg`, `produccion.svg`, `purchase-invoice.svg`, `purchase-order.svg`, `purchase-quantities.svg`, `unidades-vendidas.svg`, `utilidad.svg`, `ventas-netas.svg` bajo `assets/icons/`.
-- Compartidos/consumidores: `assets/js/dom-utils.js`, `assets/js/core/formatters.js`, `assets/js/app.js`, `assets/js/modules/cash-boxes.js` y los scripts actuales de `assets/js/modules/` que consultan IDs, clases o `data-*`.
+- Compartidos/consumidores: `shared/access-policy.js`, `assets/js/dom-utils.js`, `assets/js/core/formatters.js`, `assets/js/app.js`, `assets/js/modules/access.js`, `assets/js/modules/cash-boxes.js` y los scripts actuales de `assets/js/modules/` que consultan IDs, clases o `data-*`.
 
 ## Contratos DOM confirmados
 
@@ -44,9 +44,10 @@ Fuera de alcance: cálculos, validación operativa, persistencia, servicios, tab
 - Estados de formulario usan `.form-status`/`[data-status]`; contenido dinámico no confiable debe pasar por `escapeHtml`.
 - `view-payment-plans` conserva una grilla semántica compacta de cuotas en consulta y edición; la edición de una cuota reemplaza sus celdas por inputs dentro de la misma fila, y el borrador completo mantiene el guardado atómico del módulo sin reutilizar el Editor genérico.
 - `view-bank-reconciliation` integra el panel `investment-fund-panel`: distingue saldo bancario y saldo del fondo, ofrece alta de depósito/rescate/rendimiento y una tabla horizontal desplazable con saldos resultantes. En ancho reducido el formulario pasa a una columna sin ocultar campos ni acciones.
-- `view-cashbox` se presenta como `Caja` y mantiene separado el control ICBC de Conciliación bancaria: resume fórmula/saldos/diferencia, enlaza Banco → ERP y muestra tablas ERP → Banco con estados de carga, vacío y error. En móvil las tarjetas pasan a una columna y las tablas conservan scroll horizontal.
+- `view-cashbox` se presenta como `Gestión de Tesorería`: tarjetas de posición arriba y Cobros/Pagos debajo; Planes de pago y Conciliación bancaria se acceden sólo desde el menú lateral. Banco, efectivo, cheques, fondo y otros movimientos abren un diálogo sólo bajo demanda; cierra con ×, fondo o Escape, restaura foco y conserva scroll horizontal en tablas. Los popups de cheques muestran dos resúmenes y únicamente pendientes. En móvil (390 px) tarjetas y bloques pasan a una columna.
 - `view-commissions-entry` usa `#commissions-select-all` como checkbox real dentro del encabezado de la primera columna y lo sincroniza con las filas visibles y elegibles mediante estados marcado, desmarcado e indeterminado, sin alterar cálculos ni persistencia.
-- `index.html` declara actualmente 28 secciones `.view`; 26 aparecen en navegación. `view-settings` y `view-deposited-checks-entry` no tienen botón directo. La pantalla histórica `view-imports` fue eliminada y `switchView("imports")` redirige a `data-editor`.
+- `index.html` declara actualmente 33 secciones `.view`; para `employee_admin`, el grupo Análisis y sus vistas desaparecen por completo, mientras Administración conserva Editor, Mapa y SQL. Registro de actividad y Usuarios permanecen ocultas. `switchView()` valida la misma matriz compartida y redirige estados no permitidos a Dashboard antes de cargar datos; la pantalla histórica `view-imports` fue eliminada y `switchView("imports")` redirige a `data-editor`.
+- `#auth-screen` bloquea el shell hasta resolver `window.erpAuthentication.ready`; `#session-logout` cierra la sesión. `#view-activity-log` y `#view-user-management` son contratos owner-only y no insertan valores del backend mediante HTML sin escape.
 - El grupo Ventas y distribución distingue `view-sales-invoice-entry` como “Ventas” para cargar facturas desde pedidos y conserva `view-sales-entry` como “Saldos Pendientes”, sin alterar su tabla ni filtros históricos.
 - `view-data-editor` ocupa el espacio útil con una única grilla tipo planilla: barra compacta, scroll vertical continuo, encabezado fijo, selección mínima, filtros bajo encabezados y columnas redimensionables. No usa tarjetas, posiciones artificiales, paginación visible ni formularios permanentes por fila.
 - La grilla virtualiza verticalmente las tablas grandes: todas las filas están en el modelo y en un único scroll, pero el DOM contiene solo la ventana visible y un margen. Las celdas en reposo son texto y se convierten en controles únicamente mientras se editan.
@@ -95,6 +96,10 @@ Todo HTML/CSS/SVG permanente nuevo, movido, renombrado o eliminado exige actuali
 ## Entrega
 
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
+
+## Caja Efectivo canónica (2026-08-03)
+
+El detalle bajo demanda de Efectivo muestra apertura, movimientos posteriores, fuente, actor y saldo acumulado desde el libro canónico, sin reconstruir históricos.
 
 ## Trabajo directo
 

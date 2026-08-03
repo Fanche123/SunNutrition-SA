@@ -137,6 +137,42 @@ async function testReadAndCreate() {
   assert.strictEqual(conflict.status, 409);
 }
 
+async function testTreasuryObligationsReadIsFocused() {
+  const initial = fixture();
+  initial.tables.cuotas_planes_pagos.rows.push(quota(3, 1, 3, { id_egreso: 11 }));
+  initial.tables.cuotas_planes_pagos.rowCount = 3;
+  initial.tables.egresos.rows.push({ id_egreso: 11, total: 120, fecha_prevista_pago: "2026-08-10" });
+  initial.tables.egresos.rowCount = 2;
+  initial.tables.detalle_pagos.rows.push({ id_detalle_pago: 2, id_egreso: 11, monto_cancelado: 45.25 });
+  initial.tables.detalle_pagos.rowCount = 2;
+  const harness = createHarness(initial, { currentDateIso: "2026-08-11" });
+  const response = await invoke(
+    harness.service.handlePaymentPlansList,
+    "/api/treasury/payment-plans?view=obligations"
+  );
+  assert.strictEqual(response.status, 200);
+  assert.strictEqual(response.payload.total, 2);
+  assert.strictEqual(response.payload.obligations.length, 2);
+  const partial = response.payload.obligations.find((item) => item.nro_cuota === 3);
+  assert.strictEqual(partial.estado, "Segundo vencimiento");
+  assert.strictEqual(partial.saldo_pendiente_centavos, 7975);
+  assert.strictEqual(partial.fecha_vencimiento_vigente, "2026-08-20");
+  assert.strictEqual(partial.vencimiento_expirado, false);
+  assert.strictEqual(Object.hasOwn(response.payload, "expenses"), false);
+  assert.strictEqual(harness.getSaves(), 0);
+
+  const expiredHarness = createHarness(initial, { currentDateIso: "2026-08-21" });
+  const expiredResponse = await invoke(
+    expiredHarness.service.handlePaymentPlansList,
+    "/api/treasury/payment-plans?view=obligations"
+  );
+  const expiredPartial = expiredResponse.payload.obligations.find((item) => item.nro_cuota === 3);
+  assert.strictEqual(expiredPartial.estado, "Vencida");
+  assert.strictEqual(expiredPartial.saldo_pendiente_centavos, 7975);
+  assert.strictEqual(expiredPartial.fecha_vencimiento_vigente, "2026-08-20");
+  assert.strictEqual(expiredPartial.vencimiento_expirado, true);
+}
+
 async function testPendingBalanceFromAppliedPayments() {
   const initial = fixture();
   initial.tables.cuotas_planes_pagos.rows.push(quota(3, 1, 3, { id_egreso: 11 }));
@@ -525,6 +561,7 @@ function testExpenseLinkEditorContract() {
   assert.match(source, /payment-plan-quota-field-error/);
   assert.match(source, /function hasUnsavedChanges\(\)/);
   assert.match(source, /global\.PaymentPlansModule = \{ renderPaymentPlans, hasUnsavedChanges \}/);
+  assert.doesNotMatch(source, /preferredPlanId|function preferPlan\(/);
   assert.match(source, /global\.addEventListener\("beforeunload"/);
   assert.match(source, /const firstTotalCents = capitalCents \+ financialInterestCents/);
   assert.match(source, /total_primer_vencimiento: centsToMoney\(moneyToCents\(quota\.total_primer_vencimiento\)\)/);
@@ -542,6 +579,7 @@ function testExpenseLinkEditorContract() {
 
 async function main() {
   await testReadAndCreate();
+  await testTreasuryObligationsReadIsFocused();
   await testPendingBalanceFromAppliedPayments();
   await testQuotaStateDateBoundaries();
   await testCanonicalCentValidation();

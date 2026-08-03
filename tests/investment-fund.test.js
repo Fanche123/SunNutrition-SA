@@ -498,6 +498,7 @@ test("la integracion visual declara formulario, historial, estados y breakpoint 
   const html = fs.readFileSync(path.join(root, "index.html"), "utf8");
   const css = fs.readFileSync(path.join(root, "assets/css/styles.css"), "utf8");
   const frontend = fs.readFileSync(path.join(root, "assets/js/modules/investment-fund.js"), "utf8");
+  const treasuryFrontend = fs.readFileSync(path.join(root, "assets/js/modules/cash-boxes.js"), "utf8");
   const bankRender = fs.readFileSync(path.join(root, "assets/js/modules/bank-reconciliation-render.js"), "utf8");
   [
     "investment-fund-balance",
@@ -508,7 +509,11 @@ test("la integracion visual declara formulario, historial, estados y breakpoint 
     "investment-fund-form-status"
   ].forEach((id) => assert.match(html, new RegExp(`id=\"${id}\"`)));
   assert.match(html, /assets\/js\/modules\/investment-fund\.js/);
-  assert.match(html, /data-view="payment-plans"[\s\S]*data-view="investment-fund"[\s\S]*data-view="partner-contributions-entry"/);
+  assert.match(html, /data-view="cashbox"[^>]*>Gestión de Tesorería/);
+  assert.match(html, /data-view="payment-plans"[^>]*>Planes de pago/);
+  assert.match(html, /data-treasury-detail="fund"/);
+  assert.match(treasuryFrontend, /data-treasury-view="investment-fund"/);
+  assert.match(treasuryFrontend, /data-treasury-view="partner-contributions-entry"/);
   const fundView = html.slice(html.indexOf('id="view-investment-fund"'), html.indexOf('id="view-bank-reconciliation"'));
   const reconciliationView = html.slice(html.indexOf('id="view-bank-reconciliation"'), html.indexOf('id="view-dashboard"'));
   assert.match(fundView, /id="investment-fund-form"/);

@@ -1,5 +1,6 @@
 const { fromCents, toCents } = require("../../shared/money");
 const { strictMoneyToCents } = require("../utils/money-input");
+const { appendCashSourceMovement, assertCashSourceMovement } = require("./cash-ledger.service");
 
 function createPaymentEntryService({
   backendId,
@@ -39,6 +40,7 @@ function createPaymentEntryService({
         if (savedDetails.length !== details.length) {
           throwConflict("La operación existente tiene detalles incompletos o contradictorios.");
         }
+        assertCashSourceMovement(cache, { sourceType: "pago", sourceRow: existing, operationId });
         return sendJson(response, 200, { ok: true, idempotent: true, paymentId: existing.id_pago });
       }
 
@@ -76,6 +78,13 @@ function createPaymentEntryService({
           _operationId: operationId,
           _editedLocallyAt: timestamp
         });
+      });
+      appendCashSourceMovement(cache, {
+        sourceType: "pago",
+        sourceRow: cache.tables.pagos.rows.at(-1),
+        operationId,
+        actor: request.accessIdentity?.user,
+        registeredAt: timestamp
       });
       cache.tables.pagos.rowCount = cache.tables.pagos.rows.length;
       cache.tables.detalle_pagos.rowCount = cache.tables.detalle_pagos.rows.length;

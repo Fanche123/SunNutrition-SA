@@ -51,6 +51,10 @@ Usá fixtures y caches temporales para validar. Una carga real autorizada exige 
 
 El materializador reconoce `egresos.imp_internos` por `fecha_factura`, con identidad `egreso + impuestos_internos`, etiqueta maestra `Impuestos Internos` y presentaciĂłn bajo `Otros Impuestos`; cambios y anulaciones son append-only.
 
+## Caja Efectivo canónica (2026-08-03)
+
+La Caja Efectivo es posición financiera: apertura, cobros, pagos y compensaciones viven sólo en `caja_efectivo_movimientos` y no crean `gastos_economicos`, `gastos_egresos` ni un segundo impacto económico.
+
 ## Trabajo directo
 
 Las transferencias internas bancarias provisionales crean sólo `egresos`, `pagos` y `detalle_pagos`; quedan explícitamente fuera de `gastos_economicos` y `gastos_egresos`, por lo que no modifican el Estado de Resultados.

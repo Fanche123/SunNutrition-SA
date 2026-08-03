@@ -19,6 +19,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva. `GET /api/inventory/purchase-snapshot` conserva ese resultado si está vigente o lo reconstruye en memoria desde el último lote de `inventarios`/`detalle_inventarios` si falta o está obsoleto; Inventario, Dashboard y Compras leen el mismo contrato.
 - `movimientos_bancarios` conserva importados, asociaciones y pendientes bancarios. `GET /api/bank-reconciliation/state` reanaliza las filas sin asociación y `GET /api/bank-reconciliation/summary` entrega la última fecha efectiva al Dashboard.
 - `cash-boxes.service.js` calcula Caja ICBC desde cobros/pagos ICBC por encabezado, depósitos efectivos de cheques recibidos y cheques emitidos debitados. El fondo vincula depósito/rescate con su pago mediante `fondos_inversion_movimientos.id_pago`; el rendimiento permanece exclusivamente económico.
+- `cash-ledger.service.js` mantiene Caja Efectivo en un libro append-only con apertura y corte persistidos; los cobros/pagos efectivos posteriores y sus compensaciones se guardan atómicamente sin reconstrucción histórica ni impacto económico adicional.
 - El OCR de adjuntos o fotos solo interpreta el archivo entregado por el usuario; no constituye una fuente de tablas.
 
 - `server.js`: composicion del servidor y dominios backend operativos aun no extraidos.
@@ -34,6 +35,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `shared/money-columns.js`: clasificación única de columnas monetarias usada por editor, SQL y escritura operativa genérica.
 - `shared/inventory-purchase-evaluation.js`: regla única de Inventario para consumo diario, umbral de compra y días disponibles, compatible con navegador y CommonJS.
 - `shared/order-pricing.js`: cálculo comercial/fiscal centralizado por unidades individuales o cantidades medidas, usado por Facturación ARCA sin duplicar fórmulas en el DOM.
+- `shared/access-policy.js`: matriz de vistas y familias de API reservadas, compartida por navegador y backend. Para `employee_admin` bloquea Análisis y usuarios/auditoría, pero habilita Editor, Mapa y SQL read-only.
 - `tools/arca-extension/arca-fiscal-contract.js`: contrato fiscal único de la preparación ARCA, compatible con CommonJS, navegador y extensión; fija reglas A/B, IVA/punto de venta, valida fecha y coherencia financiera, y se carga antes de `arca-invoicing.js`.
 - `backend/utils/money-input.js`: validación estricta de payloads monetarios antes de persistir, incluida la prohibición de subcentavos.
 - `assets/js/app.js`: punto de entrada del frontend y modulos historicos aun acoplados al estado global.
@@ -43,13 +45,15 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 ## Flujo HTTP
 
 1. `server.js` carga `.env`, configura repositorios/servicios y crea el servidor nativo de Node.
-2. `backend/routes/router.js` aplica CORS y selecciona la ruta sin modificar el pathname ni el metodo existentes.
-3. La ruta delega al handler/servicio inyectado.
-4. Los servicios consultan `backend/data-store.js` o su repositorio especifico.
-5. `backend/utils/http.js` conserva el formato JSON y los codigos HTTP.
-6. Las rutas no API terminan en el servidor de archivos estaticos de `backend/utils/files.js`.
+2. `backend/services/access-control.service.js` valida origen, sesión y rol; las mutaciones entran en la cola/auditoría central antes del despacho.
+3. `backend/routes/router.js` selecciona la ruta sin modificar el pathname ni el método existentes.
+4. La ruta delega al handler/servicio inyectado.
+5. Los servicios consultan `backend/data-store.js` o su repositorio específico.
+6. Una respuesta mutante 2xx agrega un único evento append-only con el diff persistido y el actor de la sesión.
+7. `backend/utils/http.js` conserva el formato JSON y los códigos HTTP.
+8. Las rutas no API terminan en el servidor de archivos estáticos de `backend/utils/files.js`.
 
-Antes del despacho, `access-control.service.js` valida el origen y concentra el punto futuro de autenticacion, sesion, roles y autorizacion. `backend/config/access.js` fuerza por defecto modo local y bind `127.0.0.1`; el modo LAN no puede arrancar mientras autenticacion/autorizacion no esten implementadas.
+`auth.service.js` mantiene sesiones server-side y `security-store.repository.js` persiste sólo hashes `scrypt` con salt. `audit.service.js` serializa mutaciones HTTP dentro del proceso, difiere el commit de la respuesta hasta registrar el resultado y usa un journal durable de intención/recuperación sin valores sensibles. `shared/access-policy.js` alimenta la autorización backend y el control de navegación: el cliente no decide actor ni rol, y ocultar Análisis no sustituye el rechazo de `/api/reports/*`. `backend/config/access.js` conserva modo local y bind `127.0.0.1`; el modo LAN sigue prohibido aunque la autenticación local ya esté implementada.
 
 `GET /api/health` agrega la identidad pública del runtime: instancia, PID, inicio, checkout, working directory, ejecutable, línea de comando, host, puerto, Node y huella del código. `backend/utils/server-runtime.js` calcula esa identidad y administra un lock ignorado por Git. `POST /api/runtime/shutdown` es un control local interno: exige el token secreto del lock y hace que la instancia verificada se cierre a sí misma; el token nunca se publica en health.
 

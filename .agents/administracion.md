@@ -24,7 +24,7 @@ Fuera de alcance: definir columnas, claves o migraciones (Base de datos); cambia
 
 ## Inventario actual de archivos
 
-- Frontend: `assets/js/modules/data-editor.js`, `data-map.js`, `sql-console.js`.
+- Frontend: `assets/js/modules/data-editor.js`, `data-map.js`, `sql-console.js`; `assets/js/modules/access.js` aporta las vistas propietarias Usuarios y Registro de actividad como integración transversal con Arquitectura. Editor, Mapa y SQL read-only están habilitados para `employee_admin`.
 - El Editor usa una única grilla compacta y virtualizada. Solicita todas las filas filtradas, mantiene un único scroll continuo y solo materializa en el DOM la ventana visible. No expone posiciones internas, rangos, páginas ni tamaños de bloque; la selección para borrado ocupa una columna mínima.
 - Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `admin-table.service.js`, `expense-deletion.service.js`, `delivery-deletion.service.js`, `sql.service.js`.
 - Compartidos relevantes: `index.html`, `assets/css/styles.css`, `assets/js/app.js`, `assets/js/core/formatters.js`, `backend/services/core-handlers.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`, `backend/routes/router.js`, `tools/backend-sqlite-query.py`.
@@ -39,6 +39,10 @@ Administración no posee tablas de negocio: opera las definiciones registradas e
 - `POST /api/backend/tables/:tabla` recibe `{ rows, deletedIds, search, limit, offset }` y devuelve tabla más `updated`, `inserted`, `deleted`.
 - `GET /api/backend/map` → `{ ok, map }` con columnas esperadas/reales, faltantes y extras.
 - `POST /api/backend/sql` recibe `{ sql }`; solo una sentencia `SELECT` o `WITH`, máximo 5000 filas, sobre SQLite efímero de solo lectura.
+- `GET|POST /api/auth/users` lista o crea identidades sin devolver hashes; sólo el propietario puede acceder.
+- `GET /api/audit/events` consulta el registro append-only con filtros por fecha, usuario, módulo/entidad y acción; no existe endpoint de modificación o borrado.
+- `shared/access-policy.js` reserva usuarios, auditoría y `/api/reports/*` al propietario; no reserva `/api/admin/*`, mapa/esquema ni SQL read-only.
+- `POST /api/backend/tables/:tabla` es owner-only salvo la allowlist cerrada de consumidores operativos legados; `employee_admin` nunca puede enviar `deletedIds` por esa vía.
 - `GET /api/admin/tables` → overview de tablas visibles y capacidades administrativas.
 - `GET /api/admin/tables/:tabla?all=true&search&filter&orderBy&orderDir` → todas las filas coincidentes, schema y metadata de relaciones. El Editor solicita `all=true`; el windowing es exclusivamente frontend.
 - `PATCH /api/admin/tables/:tabla/cell` recibe `{ primaryKey, column, value, originalValue, tableVersion }` y devuelve `{ ok, row, tableVersion }`; valida y persiste una sola celda de forma atómica, con conflicto por versión/valor original.
@@ -77,6 +81,8 @@ Antes de la primera escritura administrativa de cada proceso se crea un backup v
 - Contrato/esquema: coordinar Base de datos/Arquitectura y ejecutar regresión de consumidores.
 
 ## Seguridad de datos
+
+Editor, Mapa y SQL read-only están habilitados para `employee_admin`. Usuarios, Registro de actividad y Análisis requieren rol `owner`. El empleado administrativo no puede elegir `userId` ni rol desde payload o almacenamiento del navegador.
 
 El editor y SQL solo aplican `shared/money.js` a columnas monetarias identificadas semánticamente. No inferir dinero por el tipo numérico ni formatear aliases SQL arbitrarios como moneda.
 

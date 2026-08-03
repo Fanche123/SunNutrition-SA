@@ -28,6 +28,7 @@ const EXPECTED_BACKEND_COLUMNS = {
   retenciones_ganancias: ["id_retencion_ganancias", "id_cobro", "fecha", "id_cliente", "monto"],
   retenciones_iibb: ["id_retencion_iibb", "id_cobro", "fecha", "id_cliente", "monto"],
   caja: ["cuenta", "monto"],
+  caja_efectivo_movimientos: ["id_movimiento_caja", "fecha_registro", "fecha_operativa", "tipo", "importe", "fuente_tipo", "fuente_id", "id_cobro", "id_pago", "operacion_id", "referencia", "usuario_id", "usuario_nombre", "corte_id_cobro", "corte_id_pago", "clave_idempotencia", "hash_payload"],
   cheques_entregados: ["id_cheque_entregado", "id_pago", "id_acreedor", "nro_cheque", "fecha_entregado", "fecha_uso", "monto", "banco", "estado"],
   cheques_recibidos: ["id_cheque_recibido", "id_cobro", "fecha_entregado", "monto", "cliente", "id_cliente", "nro_cheque", "fecha_uso", "estado", "banco", "fecha_deposito", "id_deposito", "id_pago_endoso", "fecha_endoso"],
   compras: ["id_compra", "id_proveedor", "fecha_pedido", "fecha_entrega_prevista"],

@@ -278,7 +278,9 @@ const state = loadState();
 // Cache de nodos del DOM usados varias veces durante renderizados.
 const els = {};
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
+  const authenticatedUser = await (window.erpAuthentication?.ready || Promise.resolve(null));
+  if (!authenticatedUser) return;
   cacheElements();
   persistBackendOnlyStateCleanup();
   setupPeriodSelectors();
@@ -1853,6 +1855,8 @@ async function initializeReportView(view) {
 
 function switchView(view) {
   if (view === "imports") view = "data-editor";
+  const authenticatedRole = window.erpAuthentication?.user?.role;
+  if (!window.erpAccessPolicy?.isViewAllowed(authenticatedRole, view)) view = "dashboard";
   if (!document.getElementById(`view-${view}`)) view = "dashboard";
   const leavingArcaInvoicing = document.getElementById("view-arca-invoicing")?.classList.contains("active")
     && view !== "arca-invoicing";
@@ -1903,6 +1907,7 @@ function switchView(view) {
   ];
   document.body.classList.toggle("view-results-active", view === "results");
   document.body.classList.toggle("view-cashflow-active", view === "cashflow");
+  document.body.classList.toggle("view-production-active", view === "production");
   document.body.classList.toggle("view-cashbox-active", view === "cashbox");
   document.body.classList.toggle("view-operational-active", dataEntryViews.includes(view));
   document.body.classList.toggle("view-bank-reconciliation-active", view === "bank-reconciliation");
@@ -1942,7 +1947,7 @@ function switchView(view) {
       "partner-contributions-entry"
     ],
     hr: ["salary-entry"],
-    administration: ["data-editor", "data-map", "sql"]
+    administration: ["activity-log", "user-management", "data-editor", "data-map", "sql"]
   };
   document.querySelectorAll("[data-nav-toggle]").forEach((button) => {
     const groupViews = navGroupViews[button.dataset.navToggle] || [button.dataset.navToggle];
@@ -1959,7 +1964,7 @@ function switchView(view) {
     results: ["Estado de Resultados", "Resultado mensual estimado desde egresos, ventas e inventario."],
     cashflow: ["Cashflow", "Flujo de caja proyectado y editable por fecha."],
     production: ["Producción", "Producción calculada por producto, turno y día."],
-    cashbox: ["Cajas", "Control bidireccional de saldos bancarios y movimientos registrados."],
+    cashbox: ["Gestión de Tesorería", "Posición financiera, cobros, pagos y control bancario en una única pantalla."],
     "bank-reconciliation": ["Conciliacion bancaria", "Comparacion del extracto bancario contra pagos, cobros y egresos del backend."],
     "creditor-entry": ["Acreedores", "Alta de acreedores, origenes y etiquetas."],
     "expense-entry": ["Egresos", "Carga agrupada de recepciones, sueldos, logistica, otros gastos y comisiones."],
@@ -1983,6 +1988,8 @@ function switchView(view) {
     "collections-entry": ["Cobros", "Carga agrupada de cobros y cheques recibidos."],
     "received-check-entry": ["Cheques recibidos", "Carga y control de cheques recibidos."],
     "deposited-checks-entry": ["Cheques depositados", "Seleccion de cheques pendientes y conciliacion de depositos."],
+    "activity-log": ["Registro de actividad", "Quién cambió qué y cuándo, con filtros de investigación."],
+    "user-management": ["Usuarios", "Identidades y roles autorizados para operar el ERP."],
     "data-editor": ["Editor de datos", "Edicion puntual de tablas limpias del backend."],
     "data-map": ["Mapa de datos", "Auditoria de tablas y columnas importadas al backend."],
     sql: ["Consultas SQL", "Consulta las tablas limpias del backend con SQL de solo lectura."]

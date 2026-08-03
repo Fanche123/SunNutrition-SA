@@ -8,6 +8,8 @@ La base de datos backend es la unica fuente de verdad del ERP.
 - `data-store.js`: lectura y persistencia de las tablas backend.
 - `config/backend-columns.js`: columnas canonicas.
 - `services/`: reglas y escrituras operativas por dominio.
+- `repositories/security-store.repository.js`: usuarios con escritura atómica y backup verificable.
+- `services/auth.service.js` y `services/audit.service.js`: sesiones, roles y auditoría append-only.
 
 ## Endpoints de tablas
 
@@ -29,11 +31,13 @@ No existen endpoints de fuentes, refresh ni imports externos. Las tablas se carg
 
 La producción diaria se guarda como `inventoryPurchaseConfig.barsPerDay`, metadato superior del mismo cache. El valor compatible inicial es 30100 y el contrato admite enteros entre 1 y 1000000. El POST de configuración recalcula y guarda config y snapshot en una sola escritura atómica, sin modificar tablas operativas; si la escritura falla, permanece el último valor persistido.
 
-El Editor usa exclusivamente `/api/admin/tables`. Todas las tablas visibles tienen CRUD administrativo completo con validacion de columnas, tipos, PK y relaciones; los borrados referenciados se bloquean. El endpoint generico se conserva temporalmente para flujos operativos y debe migrarse antes de habilitar LAN.
+El Editor usa exclusivamente `/api/admin/tables`. Todas las tablas visibles tienen CRUD administrativo completo con validacion de columnas, tipos, PK y relaciones; los borrados referenciados se bloquean. `POST /api/backend/tables/:tabla` es owner-only salvo la allowlist cerrada de tablas que todavía consumen pantallas operativas; `employee_admin` no puede enviar borrados genéricos. Estos consumidores deben migrarse antes de habilitar LAN.
 
 ## Acceso local
 
-Sin configuracion explicita el servidor escucha solo en `127.0.0.1`. El modo LAN y cualquier bind no local se rechazan mientras no exista autenticacion/autorizacion. La configuracion esta en `backend/config/access.js` y el control comun en `backend/services/access-control.service.js`.
+Sin configuración explícita el servidor escucha sólo en `127.0.0.1`. El modo LAN y cualquier bind no local continúan rechazados. La API operativa requiere una sesión server-side. `employee_admin` accede a los flujos operativos, `/api/admin/*`, SQL read-only y mapa/esquema, pero no a `/api/reports/*`, usuarios ni auditoría; el propietario conserva acceso total. Health, control autenticado del runtime y archivos estáticos conservan su contrato local.
+
+Endpoints de acceso: `POST /api/auth/login`, `GET /api/auth/session`, `POST /api/auth/logout`, `GET|POST /api/auth/users` (propietario) y `GET /api/audit/events` (propietario).
 
 El arranque, identidad de `/api/health`, deteccion de codigo obsoleto y comandos seguros `start/status/restart/stop` se documentan en `docs/local-server.md`.
 

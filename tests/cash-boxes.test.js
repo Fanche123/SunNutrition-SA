@@ -59,6 +59,23 @@ function serviceFor(cache) {
 function fixture() {
   return {
     tables: {
+      caja_efectivo_movimientos: {
+        headers: [],
+        rows: [{
+          id_movimiento_caja: 1,
+          fecha_registro: "2026-08-03T12:00:00.000Z",
+          fecha_operativa: "2026-08-03",
+          tipo: "apertura",
+          importe: 145000,
+          fuente_tipo: "inicializacion",
+          fuente_id: "20260803-cash-ledger",
+          corte_id_cobro: 3,
+          corte_id_pago: 12,
+          clave_idempotencia: "20260803-cash-ledger:opening",
+          hash_payload: "fixture"
+        }],
+        rowCount: 1
+      },
       clientes: {
         rows: [
           { id_cliente: 1, nombre_cliente: "Cliente asociado" },
@@ -503,7 +520,115 @@ test("cheques emitidos entran sólo con evidencia de débito ICBC", () => {
   assert.match(snapshot.warnings.join(" "), /Pago 50 excluido/);
 });
 
-test("frontend conserva filtros focalizados y estados vacíos declarados", () => {
+test("Gestión de Tesorería centraliza liquidez en centavos y no descuenta compromisos", () => {
+  const cache = fixture();
+  cache.tables.cheques_recibidos = { rows: [
+    { id_cheque_recibido: 1, estado: "Pendiente", monto: 25 },
+    { id_cheque_recibido: 2, estado: "Depositado", monto: 30, id_deposito: 8, fecha_deposito: "2026-06-12" }
+  ] };
+  cache.tables.cheques_entregados = { rows: [
+    { id_cheque_entregado: 1, estado: "Pendiente", monto: 40 },
+    { id_cheque_entregado: 2, estado: "Debitado", monto: 10 }
+  ] };
+  cache.tables.fondos_inversion_movimientos = { rows: [
+    { id_movimiento_fondo: 1, fecha: "2026-06-10", tipo: "deposito", importe: 50 }
+  ] };
+
+  const management = serviceFor(cache).buildTreasuryManagementSnapshot(cache, "icbc");
+  assert.equal(management.position.banksTotalCents, 380120510);
+  assert.equal(management.position.cash.balanceCents, 14500000);
+  assert.equal(management.position.receivedChecks.availableTotalCents, 2500);
+  assert.equal(management.position.issuedChecks.pendingTotalCents, 4000);
+  assert.equal(management.position.fund.balanceCents, 5000);
+  assert.equal(management.position.liquidityTotalCents, 394628010);
+  assert.equal(
+    management.position.liquidityTotalCents,
+    management.position.banksTotalCents
+      + management.position.cash.balanceCents
+      + management.position.receivedChecks.availableTotalCents
+      + management.position.fund.balanceCents
+  );
+});
+
+test("sin fuente canónica de efectivo bloquea el total de liquidez sin inventar cero", () => {
+  const cache = fixture();
+  cache.tables.fondos_inversion_movimientos = { rows: [] };
+  delete cache.tables.caja_efectivo_movimientos;
+  const management = serviceFor(cache).buildTreasuryManagementSnapshot(cache, "icbc");
+  assert.equal(management.position.cash.available, false);
+  assert.equal(management.position.cash.balanceCents, null);
+  assert.equal(management.position.liquidityAvailable, false);
+  assert.equal(management.position.liquidityTotalCents, null);
+  assert.match(management.warnings.join(" "), /no fue inicializada/i);
+
+  for (const nonCanonicalAccount of ["EFECTIVO", " Efectivo "]) {
+    cache.tables.caja = { rows: [{ cuenta: nonCanonicalAccount, monto: 100 }] };
+    const variant = serviceFor(cache).buildTreasuryManagementSnapshot(cache, "icbc");
+    assert.equal(variant.position.cash.available, false);
+    assert.equal(variant.position.liquidityAvailable, false);
+  }
+});
+
+test("los popups de cheques usan únicamente pendientes y el mismo conjunto para totales y próxima fecha", async () => {
+  const cache = fixture();
+  cache.tables.fondos_inversion_movimientos = { rows: [] };
+  cache.tables.cheques_recibidos = { rows: [
+    { id_cheque_recibido: 1, nro_cheque: "R-2", fecha_uso: "2026-08-05", estado: "Pendiente", monto: 100, cliente: "Cliente B" },
+    { id_cheque_recibido: 2, nro_cheque: "R-3", fecha_uso: "2026-08-02", estado: "Depositado", monto: 300, id_deposito: 9 },
+    { id_cheque_recibido: 3, nro_cheque: "R-4", fecha_uso: "2026-08-01", estado: "Endosado", monto: 400, id_pago_endoso: 12 },
+    { id_cheque_recibido: 4, nro_cheque: "R-1", fecha_uso: "2026-08-03", estado: "Pendiente", monto: 50, cliente: "Cliente A" },
+    { id_cheque_recibido: 5, nro_cheque: "R-SF", fecha_uso: "", estado: "Pendiente", monto: 25, cliente: "Sin fecha" }
+  ] };
+  cache.tables.cheques_entregados = { rows: [
+    { id_cheque_entregado: 10, nro_cheque: "E-2", fecha_uso: "2026-08-06", estado: "Pendiente", monto: 200 },
+    { id_cheque_entregado: 11, nro_cheque: "E-3", fecha_uso: "2026-08-02", estado: "Debitado", monto: 500 },
+    { id_cheque_entregado: 12, nro_cheque: "E-1", fecha_uso: "2026-08-04", estado: "Pendiente", monto: 150 },
+    { id_cheque_entregado: 13, nro_cheque: "E-4", fecha_uso: "2026-08-01", estado: "Conciliado", monto: 600 }
+  ] };
+  const service = serviceFor(cache);
+  const receivedDetail = service.buildTreasuryManagementDetail(cache, "icbc", "received-checks");
+  assert.deepEqual(receivedDetail.checks.map((row) => row.id), ["4", "1", "5"]);
+  assert.equal(receivedDetail.summary.availableCount, receivedDetail.checks.length);
+  assert.equal(receivedDetail.summary.availableTotalCents, 17500);
+  assert.equal(receivedDetail.summary.next.id, "4");
+  assert.equal(receivedDetail.summary.next.date, "2026-08-03");
+  assert.equal(receivedDetail.checks.every((row) => row.status === "Pendiente"), true);
+
+  const issuedDetail = service.buildTreasuryManagementDetail(cache, "icbc", "issued-checks");
+  assert.deepEqual(issuedDetail.checks.map((row) => row.id), ["12", "10"]);
+  assert.equal(issuedDetail.summary.pendingCount, issuedDetail.checks.length);
+  assert.equal(issuedDetail.summary.pendingTotalCents, 35000);
+  assert.equal(issuedDetail.summary.next.id, "12");
+  assert.equal(issuedDetail.summary.next.date, "2026-08-04");
+  assert.equal(issuedDetail.checks.every((row) => row.status === "Pendiente"), true);
+  assert.equal(issuedDetail.checks.some((row) => row.instrument === "Cheque recibido endosado"), false);
+
+  cache.tables.movimientos_bancarios.rows.push(...Array.from({ length: 12 }, (_, index) => ({
+    id_movimiento_bancario: 500 + index,
+    banco: "ICBC",
+    fecha: `2026-07-${String(index + 1).padStart(2, "0")}`,
+    importe: 1 + index,
+    debito: 0,
+    credito: 1 + index,
+    saldo: 3800000 + index
+  })));
+  const bankDetail = service.buildTreasuryManagementDetail(cache, "icbc", "bank");
+  assert.equal(bankDetail.bank.bankToErp.movements.length, 8);
+  assert.equal(bankDetail.bank.bankToErp.movementsLimited, true);
+  assert.equal(bankDetail.bank.bankToErp.credits.length, 0);
+  assert.equal(bankDetail.bank.bankToErp.debits.length, 0);
+
+  let response;
+  await service.handleCashBoxesGet(
+    { url: "/api/treasury/cash-boxes?box=icbc&view=management&detail=received-checks" },
+    { json(status, payload) { response = { status, payload }; } }
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.payload.detail.id, "received-checks");
+  assert.equal(Object.hasOwn(response.payload, "tables"), false);
+});
+
+test("frontend conserva filtros, carga bajo demanda y cierre accesible", () => {
   const source = fs.readFileSync(
     path.join(__dirname, "../assets/js/modules/cash-boxes.js"),
     "utf8"
@@ -517,32 +642,99 @@ test("frontend conserva filtros focalizados y estados vacíos declarados", () =>
   };
   context.globalThis = context;
   vm.runInNewContext(source, context);
-
-  const rows = [
-    { date: "2026-06-09", counterparty: "Cliente Norte", reference: "Cobro #1" },
-    { date: "2026-06-10", counterparty: "Proveedor Sur", reference: "Pago #2" }
-  ];
-  assert.deepEqual(
-    Array.from(context.CashBoxesModule.filterRows(rows, "norte"), (row) => row.reference),
-    ["Cobro #1"]
-  );
-  assert.deepEqual(
-    Array.from(context.CashBoxesModule.filterRows(rows, "10/06")),
-    []
-  );
-  assert.match(source, /No hay cobros sin contrapartida ICBC/);
-  assert.match(source, /No hay créditos bancarios sin contrapartida ERP en el corte/);
-  assert.match(source, /El saldo cuadra, pero faltan asociaciones individuales/);
-  assert.match(source, /No se pudo cargar Caja/);
+  assert.doesNotMatch(source, /payment-plans\?view=obligations/);
+  assert.match(source, /Total pendiente disponible/);
+  assert.match(source, /Total pendiente a cubrir/);
+  assert.match(source, /const focusIsInside = focusable\.includes\(document\.activeElement\)/);
+  assert.match(source, /closeTreasuryDetail\(\{ restoreFocus: false \}\)/);
+  assert.match(source, /requestAnimationFrame\?\.\(\(\) =>/);
+  assert.match(source, /querySelector\("\.treasury-dialog-close"\)/);
+  assert.match(source, /const detailSequence = \+\+state\.detailRequestSequence/);
+  assert.match(source, /detailSequence !== state\.detailRequestSequence/);
+  assert.match(source, /state\.detailRequestSequence \+= 1/);
+  assert.doesNotMatch(source, /function filterRows\(|function normalizedText\(/);
+  assert.match(source, /detail=\$\{encodeURIComponent\(detailId\)\}/);
+  assert.match(source, /event\.key === "Escape"/);
+  assert.match(source, /state\.lastFocus/);
+  assert.match(source, /No se pudo actualizar Gestión de Tesorería/);
 });
 
-test("DOM de Caja declara filas, totales y estados vacíos Banco → ERP", () => {
+test("una respuesta anterior del mismo popup no reemplaza la reapertura vigente", async () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../assets/js/modules/cash-boxes.js"),
+    "utf8"
+  );
+  let documentMock;
+  const card = { focus() { documentMock.activeElement = card; } };
+  const closeButton = { focus() { documentMock.activeElement = closeButton; } };
+  const body = { innerHTML: "" };
+  const dialog = {
+    hidden: true,
+    querySelector(selector) {
+      if (selector === ".treasury-dialog-card") return card;
+      if (selector === ".treasury-dialog-close") return closeButton;
+      return null;
+    }
+  };
+  const elements = {
+    "treasury-detail-dialog": dialog,
+    "treasury-detail-body": body,
+    "treasury-detail-title": { textContent: "" },
+    "treasury-detail-eyebrow": { textContent: "" }
+  };
+  documentMock = {
+    activeElement: null,
+    body: { classList: { add() {}, remove() {} } },
+    addEventListener() {},
+    contains() { return true; },
+    getElementById(id) { return elements[id] || null; }
+  };
+  const pendingRequests = [];
+  const context = {
+    globalThis: null,
+    document: documentMock,
+    ErpMoney: { fromCents(value) { return value; }, format(value) { return String(value); } },
+    requestAnimationFrame(callback) { callback(); },
+    escapeHtml(value) { return String(value); },
+    requestBackendApi() {
+      return new Promise((resolve, reject) => pendingRequests.push({ resolve, reject }));
+    }
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context);
+
+  const first = context.CashBoxesModule.openDetail("received-checks", { focus() {} });
+  const second = context.CashBoxesModule.openDetail("received-checks", { focus() {} });
+  assert.equal(documentMock.activeElement, closeButton);
+  pendingRequests[1].resolve({
+    detail: {
+      id: "received-checks",
+      summary: { availableCount: 1, availableTotalCents: 1, next: null },
+      checks: [{ date: "", number: "RESPUESTA_NUEVA", counterparty: "", amountCents: 1 }]
+    }
+  });
+  await second;
+  assert.match(body.innerHTML, /RESPUESTA_NUEVA/);
+
+  pendingRequests[0].resolve({
+    detail: {
+      id: "received-checks",
+      summary: { availableCount: 1, availableTotalCents: 1, next: null },
+      checks: [{ date: "", number: "RESPUESTA_ANTIGUA", counterparty: "", amountCents: 1 }]
+    }
+  });
+  await first;
+  assert.match(body.innerHTML, /RESPUESTA_NUEVA/);
+  assert.doesNotMatch(body.innerHTML, /RESPUESTA_ANTIGUA/);
+});
+
+test("DOM declara Gestión de Tesorería, popups y rutas especializadas", () => {
   const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
-  assert.match(html, /Movimientos bancarios sin contrapartida ERP/);
-  assert.match(html, /id="cash-box-bank-credits-body"/);
-  assert.match(html, /id="cash-box-bank-debits-body"/);
-  assert.match(html, /id="cash-box-erp-pending-net"/);
-  assert.match(html, /id="cash-box-pending-net-gap-bank"/);
-  assert.match(html, /id="cash-box-pending-net-gap"/);
-  assert.match(html, /Los importes brutos y conteos pueden diferir/);
+  assert.match(html, /Gestión de Tesorería/);
+  assert.match(html, /id="treasury-position-title"/);
+  assert.doesNotMatch(html, /id="treasury-obligations-list"/);
+  assert.doesNotMatch(html, /id="treasury-bank-control-body"/);
+  assert.match(html, /id="treasury-detail-dialog"[^>]*role="dialog"[^>]*aria-modal="true"[^>]*hidden/);
+  assert.match(html, /data-view="payment-plans"/);
+  assert.match(html, /data-view="bank-reconciliation"/);
 });

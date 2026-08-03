@@ -325,6 +325,10 @@ function bankReconciliationActionCell(movement, index) {
   const hasKnownClient = isCredit && movement.providerMatch?.type === "cliente";
   const checkNumber = String(movement.checkNumber || "").trim();
   const buttons = [];
+  const canUseDataEditor = globalThis.erpAccessPolicy?.isViewAllowed(
+    globalThis.erpAuthentication?.user?.role,
+    "data-editor"
+  );
 
   if (isCredit && !movement.checkMatch && bankMovementLooksLikeCheckDeposit(movement)) {
     buttons.push(`<button type="button" class="bank-add-provider" data-bank-review-check-deposit="${index}">Revisar deposito</button>`);
@@ -340,7 +344,9 @@ function bankReconciliationActionCell(movement, index) {
 
   if (!creditorId && !hasKnownClient && (movement.suggestedCounterparty?.name || movement.suggestedCounterparty?.cuit || movement.cuit || movement.cbuAlias)) {
     if (isCredit) {
-      buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-client="${index}">Agregar cliente</button>`);
+      if (canUseDataEditor) {
+        buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-client="${index}">Agregar cliente</button>`);
+      }
       buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-creditor="${index}">Agregar Acreedor</button>`);
       buttons.push(`<button type="button" class="bank-add-provider" data-bank-partner-contribution="${index}">Registrar aporte o retiro</button>`);
     } else {
@@ -348,7 +354,7 @@ function bankReconciliationActionCell(movement, index) {
     }
   }
 
-  if (!checkNumber && !hasCuit && !hasBankDetailRule) {
+  if (canUseDataEditor && !checkNumber && !hasCuit && !hasBankDetailRule) {
     buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-data="${index}">${creditorId ? "Agregar detalle bancario" : "Asociar detalle bancario"}</button>`);
   }
 
@@ -358,7 +364,9 @@ function bankReconciliationActionCell(movement, index) {
     buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-issued-check="${index}">Agregar cheque entregado</button>`);
   } else if (checkNumber && !movement.checkMatch) {
     buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-collection="${index}">Agregar cobro</button>`);
-    buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-check="${index}">Agregar cheque</button>`);
+    if (canUseDataEditor) {
+      buttons.push(`<button type="button" class="bank-add-provider" data-bank-add-check="${index}">Agregar cheque</button>`);
+    }
   }
 
   if (!buttons.length) return baseAction;

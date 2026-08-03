@@ -1,4 +1,6 @@
 const { toCents } = require("../../shared/money");
+const { investmentFundLedger } = require("./investment-fund.service");
+const { cashLedgerSnapshot } = require("./cash-ledger.service");
 
 const CASH_BOX_DEFINITIONS = Object.freeze({
   icbc: Object.freeze({
@@ -170,6 +172,112 @@ function createCashBoxesService({
     };
   }
 
+  function buildTreasuryManagementSnapshot(sourceCache, boxId) {
+    const cashBox = buildCashBoxSnapshot(sourceCache, boxId);
+    const tables = sourceCache?.tables || {};
+    const warnings = [...(cashBox.warnings || [])];
+    const cash = cashPositionSummary(tables, warnings);
+    const receivedChecks = receivedChecksSummary(tables.cheques_recibidos?.rows, warnings);
+    const issuedChecks = issuedChecksSummary(tables.cheques_entregados?.rows, warnings);
+    const fund = investmentFundSummary(tables.fondos_inversion_movimientos?.rows, warnings);
+    const bankBalanceCents = cashBox.summary.calculatedBalanceCents;
+    const liquidityTotalCents = cash.available && fund.available
+      ? sumSafeCents([
+        bankBalanceCents,
+        cash.balanceCents,
+        receivedChecks.availableTotalCents,
+        fund.balanceCents
+      ])
+      : null;
+
+    return {
+      generatedAt: new Date().toISOString(),
+      formula: {
+        liquidity: "bancos + efectivo + cheques recibidos disponibles + fondo de inversión",
+        issuedChecksTreatment: "Los cheques entregados pendientes se informan como compromiso y no se descuentan nuevamente."
+      },
+      position: {
+        banksTotalCents: bankBalanceCents,
+        bankAccounts: [{
+          id: cashBox.box.id,
+          label: cashBox.box.bank,
+          erpBalanceCents: bankBalanceCents,
+          latestBankMovement: cashBox.summary.latestBankMovement,
+          differenceCents: cashBox.summary.differenceCents
+        }],
+        cash,
+        receivedChecks,
+        issuedChecks,
+        fund,
+        liquidityTotalCents,
+        liquidityAvailable: Number.isSafeInteger(liquidityTotalCents)
+      },
+      operations: {
+        collections: financialOperationSummary(tables.cobros?.rows, "id_cobro", "fecha_cobro", warnings, "cobro"),
+        payments: financialOperationSummary(tables.pagos?.rows, "id_pago", "fecha_pago", warnings, "pago")
+      },
+      bankControl: [{
+        id: cashBox.box.id,
+        label: cashBox.box.bank,
+        erpBalanceCents: bankBalanceCents,
+        latestBankMovement: cashBox.summary.latestBankMovement,
+        lastReconciliationDate: latestReconciliationDate(tables.movimientos_bancarios?.rows, cashBox.box.bank),
+        differenceCents: cashBox.summary.differenceCents,
+        pendingBankCount: cashBox.bankToErp.pendingCount,
+        pendingCollectionCount: cashBox.erpToBank.pendingCollectionCount,
+        pendingPaymentCount: cashBox.erpToBank.pendingPaymentCount
+      }],
+      warnings: uniqueStrings(warnings)
+    };
+  }
+
+  function buildTreasuryManagementDetail(sourceCache, boxId, detailId) {
+    const tables = sourceCache?.tables || {};
+    const warnings = [];
+    if (detailId === "bank") return { id: detailId, bank: limitedBankDetail(sourceCache, boxId) };
+    if (detailId === "cash") return { id: detailId, ...cashPositionDetail(tables, warnings), warnings: uniqueStrings(warnings) };
+    if (detailId === "received-checks") {
+      return { id: detailId, ...receivedChecksDetail(tables.cheques_recibidos?.rows, warnings), warnings: uniqueStrings(warnings) };
+    }
+    if (detailId === "issued-checks") {
+      return {
+        id: detailId,
+        ...issuedChecksDetail(tables.cheques_entregados?.rows, warnings),
+        warnings: uniqueStrings(warnings)
+      };
+    }
+    if (detailId === "fund") return { id: detailId, ...investmentFundDetail(tables.fondos_inversion_movimientos?.rows, warnings), warnings: uniqueStrings(warnings) };
+    if (detailId === "other") return { id: detailId, ...otherFinancialMovementsDetail(tables, warnings), warnings: uniqueStrings(warnings) };
+    const error = new Error("El detalle de Tesorería solicitado no existe.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  function limitedBankDetail(sourceCache, boxId, limit = 8) {
+    const snapshot = buildCashBoxSnapshot(sourceCache, boxId);
+    const bankMovements = snapshot.bankToErp.credits.concat(snapshot.bankToErp.debits);
+    const internalTransfers = snapshot.erpToBank.payments.filter((row) => row.classification === "Transferencia interna");
+    return {
+      ...snapshot,
+      bankToErp: {
+        ...snapshot.bankToErp,
+        credits: [],
+        debits: [],
+        movements: newestRows(bankMovements, "date", "id", limit),
+        movementsLimited: bankMovements.length > limit
+      },
+      erpToBank: {
+        ...snapshot.erpToBank,
+        collections: newestRows(snapshot.erpToBank.collections, "date", "id", limit),
+        collectionsLimited: snapshot.erpToBank.collections.length > limit,
+        payments: newestRows(snapshot.erpToBank.payments, "date", "id", limit),
+        paymentsLimited: snapshot.erpToBank.payments.length > limit,
+        internalTransfers: newestRows(internalTransfers, "date", "id", limit),
+        internalTransfersLimited: internalTransfers.length > limit
+      }
+    };
+  }
+
   async function handleCashBoxesGet(request, response) {
     try {
       const url = new URL(request.url || "/api/treasury/cash-boxes", "http://127.0.0.1");
@@ -178,6 +286,15 @@ function createCashBoxesService({
         const error = new Error("El parámetro box es obligatorio.");
         error.statusCode = 400;
         throw error;
+      }
+      if (url.searchParams.get("view") === "management") {
+        const detailId = String(url.searchParams.get("detail") || "").trim();
+        const cache = loadCache();
+        return sendJson(response, 200, {
+          ok: true,
+          management: buildTreasuryManagementSnapshot(cache, boxId),
+          ...(detailId ? { detail: buildTreasuryManagementDetail(cache, boxId, detailId) } : {})
+        });
       }
       return sendJson(response, 200, {
         ok: true,
@@ -189,6 +306,226 @@ function createCashBoxesService({
         error: `No se pudo calcular la caja: ${error.message}`
       });
     }
+  }
+
+  function cashPositionSummary(tables, warnings) {
+    try {
+      const ledger = cashLedgerSnapshot({ tables });
+      return {
+        available: true,
+        balanceCents: ledger.balanceCents,
+        openingCents: ledger.openingCents,
+        cutoff: ledger.cutoff,
+        source: "caja_efectivo_movimientos append-only"
+      };
+    } catch (error) {
+      warnings.push(`Efectivo no disponible: ${error.message}`);
+      return { available: false, balanceCents: null, source: "caja_efectivo_movimientos" };
+    }
+  }
+
+  function cashPositionDetail(tables, warnings) {
+    const summary = cashPositionSummary(tables, warnings);
+    if (!summary.available) return { summary, movements: [] };
+    return { summary, movements: cashLedgerSnapshot({ tables }).movements };
+  }
+
+  function receivedChecksSummary(rows, warnings) {
+    const available = availableReceivedChecks(rows, warnings);
+    return {
+      availableCount: available.length,
+      availableTotalCents: sumSafeCents(available.map((row) => row.amountCents))
+    };
+  }
+
+  function receivedChecksDetail(rows, warnings) {
+    const checks = chronologicalPendingChecks(availableReceivedChecks(rows, warnings));
+    return {
+      summary: {
+        availableCount: checks.length,
+        availableTotalCents: sumSafeCents(checks.map((row) => row.amountCents)),
+        next: checks.find((row) => row.date) || null
+      },
+      checks
+    };
+  }
+
+  function availableReceivedChecks(rows, warnings) {
+    return (rows || []).reduce((result, row) => {
+      if (backendNormalizeText(row?.estado) !== "pendiente"
+        || backendId(row?.id_deposito)
+        || backendId(row?.id_pago_endoso)
+        || String(row?.fecha_deposito || "").trim()
+        || String(row?.fecha_endoso || "").trim()) return result;
+      const check = checkPresentation(row, "id_cheque_recibido", warnings);
+      if (check) result.push({
+        ...check,
+        date: backendIsoDate(row.fecha_uso) || backendIsoDate(row.fecha_entregado),
+        counterparty: String(row.cliente || "").trim()
+      });
+      return result;
+    }, []);
+  }
+
+  function issuedChecksSummary(rows, warnings) {
+    const pending = pendingIssuedChecks(rows, warnings);
+    return {
+      pendingCount: pending.length,
+      pendingTotalCents: sumSafeCents(pending.map((row) => row.amountCents))
+    };
+  }
+
+  function issuedChecksDetail(issuedRows, warnings) {
+    const checks = chronologicalPendingChecks(pendingIssuedChecks(issuedRows, warnings));
+    return {
+      summary: {
+        pendingCount: checks.length,
+        pendingTotalCents: sumSafeCents(checks.map((row) => row.amountCents)),
+        next: checks.find((row) => row.date) || null
+      },
+      checks
+    };
+  }
+
+  function pendingIssuedChecks(rows, warnings) {
+    return (rows || []).reduce((result, row) => {
+      if (backendNormalizeText(row?.estado) !== "pendiente") return result;
+      const check = checkPresentation(row, "id_cheque_entregado", warnings);
+      if (check) result.push({
+        ...check,
+        date: backendIsoDate(row.fecha_uso) || backendIsoDate(row.fecha_entregado),
+        instrument: "Cheque/eCheq propio",
+        paymentId: backendId(row.id_pago)
+      });
+      return result;
+    }, []);
+  }
+
+  function chronologicalPendingChecks(rows) {
+    return [...(rows || [])].sort((left, right) => (
+      String(left.date || "9999-12-31").localeCompare(String(right.date || "9999-12-31"))
+      || Number(left.id || 0) - Number(right.id || 0)
+    ));
+  }
+
+  function checkPresentation(row, idColumn, warnings) {
+    const id = backendId(row?.[idColumn]);
+    try {
+      return {
+        id,
+        number: String(row?.nro_cheque || "").trim(),
+        bank: String(row?.banco || "").trim(),
+        status: String(row?.estado || "Sin estado").trim(),
+        amountCents: Math.abs(toCents(row?.monto, { allowEmpty: false }))
+      };
+    } catch (_error) {
+      warnings.push(`Cheque ${id || "sin ID"} excluido por importe inválido.`);
+      return null;
+    }
+  }
+
+  function investmentFundSummary(rows, warnings) {
+    try {
+      const ledger = investmentFundLedger(rows || []);
+      return {
+        available: true,
+        balanceCents: ledger.balanceCents,
+        subscriptionCount: countByState(rows, /^deposito$/, "tipo"),
+        redemptionCount: countByState(rows, /^rescate$/, "tipo"),
+        yieldCount: countByState(rows, /^rendimiento$/, "tipo")
+      };
+    } catch (_error) {
+      warnings.push("Fondo no disponible: el libro mayor contiene un importe inválido y no se calculó un saldo parcial.");
+      return { available: false, balanceCents: null, subscriptionCount: 0, redemptionCount: 0, yieldCount: 0 };
+    }
+  }
+
+  function investmentFundDetail(rows, warnings) {
+    const summary = investmentFundSummary(rows, warnings);
+    if (!summary.available) return { summary, movements: [] };
+    const ledger = investmentFundLedger(rows || []);
+    const movements = newestRows(ledger.rows.map((entry) => ({
+      id: backendId(entry.row.id_movimiento_fondo),
+      date: backendIsoDate(entry.row.fecha),
+      type: String(entry.row.tipo || "").trim(),
+      amountCents: Math.abs(toCents(entry.row.importe || 0)),
+      balanceCents: entry.balanceCents,
+      reference: String(entry.row.referencia || entry.row.observacion || "").trim()
+    })), "date", "id");
+    return { summary, movements };
+  }
+
+  function otherFinancialMovementsDetail(tables, warnings) {
+    const contributions = newestRows((tables.aportes_socios?.rows || []).reduce((result, row) => {
+      const id = backendId(row.id_aporte_socio);
+      const date = backendIsoDate(row.fecha);
+      if (!date) return result;
+      try {
+        result.push({
+          id,
+          date,
+          type: String(row.tipo || "Aporte/retiro").trim(),
+          counterparty: String(row.nombre || "Socio sin identificar").trim(),
+          amountCents: toCents(row.monto, { allowEmpty: false }),
+          expenseId: backendId(row.id_egreso)
+        });
+      } catch (_error) {
+        warnings.push(`Movimiento de socio ${id || "sin ID"} excluido por importe inválido.`);
+      }
+      return result;
+    }, []), "date", "id");
+    const transfers = buildPaymentEntries(
+      financialRowsFromDate(tables.pagos?.rows, {
+        dateColumn: "fecha_pago",
+        idColumn: "id_pago",
+        label: "pago",
+        amountColumn: "monto"
+      }, CASH_BOX_DEFINITIONS.icbc, warnings),
+      tables,
+      [],
+      CASH_BOX_DEFINITIONS.icbc,
+      warnings,
+      null
+    ).filter((row) => row.classification === "Transferencia interna")
+      .map((row) => ({ id: row.id, date: row.date, amountCents: row.amountCents }));
+    return { contributions, internalTransfers: newestRows(transfers, "date", "id") };
+  }
+
+  function financialOperationSummary(rows, idColumn, dateColumn, warnings, label) {
+    let totalCents = 0;
+    let latestDate = "";
+    let validCount = 0;
+    (rows || []).forEach((row) => {
+      const date = backendIsoDate(row?.[dateColumn]);
+      if (date > latestDate) latestDate = date;
+      try {
+        totalCents = sumSafeCents([totalCents, Math.abs(toCents(row?.monto, { allowEmpty: false }))]);
+        validCount += 1;
+      } catch (_error) {
+        warnings.push(`${capitalize(label)} ${backendId(row?.[idColumn]) || "sin ID"} excluido del resumen por importe inválido.`);
+      }
+    });
+    return { count: validCount, totalCents, latestDate };
+  }
+
+  function latestReconciliationDate(rows, bank) {
+    return (rows || []).reduce((latest, row) => {
+      if (!isMovementForBank(row, bank)) return latest;
+      if (!backendId(row.id_pago) && !backendId(row.id_cobro) && !backendId(row.id_movimiento_fondo)) return latest;
+      const date = backendIsoDate(row.fecha);
+      return date > latest ? date : latest;
+    }, "");
+  }
+
+  function countByState(rows, pattern, column = "estado") {
+    return (rows || []).filter((row) => pattern.test(backendNormalizeText(row?.[column]))).length;
+  }
+
+  function newestRows(rows, dateColumn, idColumn, limit = 8) {
+    return [...(rows || [])].sort((left, right) => (
+      String(right?.[dateColumn] || "").localeCompare(String(left?.[dateColumn] || ""))
+      || Number(right?.[idColumn] || 0) - Number(left?.[idColumn] || 0)
+    )).slice(0, limit);
   }
 
   function financialRowsFromDate(rows, config, definition, warnings, cutoffDate = null) {
@@ -755,7 +1092,12 @@ function createCashBoxesService({
     return String(value || "").trim().toLowerCase();
   }
 
-  return { buildCashBoxSnapshot, handleCashBoxesGet };
+  return {
+    buildCashBoxSnapshot,
+    buildTreasuryManagementDetail,
+    buildTreasuryManagementSnapshot,
+    handleCashBoxesGet
+  };
 }
 
 function sumSafeCents(values) {

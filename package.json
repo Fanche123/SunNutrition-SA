@@ -10,6 +10,8 @@
     "server:ocr-status": "node tools/erp-server.js ocr-status",
     "server:restart": "node tools/erp-server.js restart",
     "server:stop": "node tools/erp-server.js stop",
+    "users:create": "node tools/manage-users.js create",
+    "users:list": "node tools/manage-users.js list",
     "lan:start": "node tools/erp-lan-access.js start",
     "lan:status": "node tools/erp-lan-access.js status",
     "lan:stop": "node tools/erp-lan-access.js stop",

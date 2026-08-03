@@ -12,22 +12,27 @@ const { createIncomeCalculationService } = require("../backend/services/income-c
 const { createIncomeStatementService } = require("../backend/services/income-statement.service");
 const { createPayrollSummaryService } = require("../backend/services/payroll-summary.service");
 
-test("Producción presenta unidades individuales y estados de conversión legibles", () => {
+test("Producción presenta selector, métricas, gráfico y equivalencias legibles", () => {
   const source = fs.readFileSync(path.join(__dirname, "../assets/js/modules/reports-production.js"), "utf8");
   const html = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
-  assert.match(html, /<th class="num">Unidades individuales<\/th>/);
+  assert.match(html, /id="production-product"/);
+  assert.match(html, /id="production-metrics"/);
+  assert.match(html, /id="production-chart"/);
+  assert.match(html, /class="production-day-list"/);
   assert.match(source, /individualConversionStatus === "available"/);
   assert.match(source, /Factor no disponible/);
   assert.match(source, /No aplica/);
   assert.match(source, /No hubo producción positiva para el período/);
-<<<<<<< ours
-<<<<<<< ours
-=======
-  assert.match(source, /daily\.length} totales diarios con producción positiva/);
->>>>>>> theirs
-=======
-  assert.match(source, /daily\.length} totales diarios con producción positiva/);
->>>>>>> theirs
+  assert.match(source, /renderProductionMetrics/);
+  assert.match(source, /renderProductionChart/);
+  assert.match(source, /productionReportRequestSequence/);
+  assert.match(source, /clearProductionPresentation/);
+  assert.match(source, /aria-label=/);
+  assert.match(source, /productionShiftPanel/);
+  assert.match(source, /productionFlow/);
+  assert.match(source, /shiftRows\.length/);
+  assert.match(source, /visibleShiftTotal - day\.production/);
+  assert.match(source, /detailRows\.length/);
 });
 
 const id = (value) => String(value ?? "").trim();

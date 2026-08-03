@@ -305,11 +305,14 @@ test("la navegación visible queda unificada y Pagos ofrece Endoso", () => {
     path.join(__dirname, "..", "assets", "js", "modules", "received-check-entry.js"),
     "utf8"
   );
-  assert.strictEqual((html.match(/data-view="received-check-entry"/g) || []).length, 1);
+  assert.strictEqual((html.match(/data-view="received-check-entry"/g) || []).length, 0);
   assert.strictEqual((html.match(/data-view="deposited-checks-entry"/g) || []).length, 0);
   assert.match(html, /<option value="Endoso">Endoso<\/option>/);
   assert.match(html, /id="view-deposited-checks-entry"/);
-  assert.match(html, /data-view="issued-check-entry"/);
+  assert.match(html, /data-treasury-view="received-check-entry"/);
+  assert.match(html, /data-treasury-view="issued-check-entry"/);
+  assert.match(html, /data-treasury-detail="received-checks"/);
+  assert.match(html, /data-treasury-detail="issued-checks"/);
   assert.match(receivedCheckModule, /\/api\/treasury\/received-checks\/pending-endorsement-payments/);
   assert.doesNotMatch(receivedCheckModule, /backendTableRowsForEntry\("pagos"\)/);
 });

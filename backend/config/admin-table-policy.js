@@ -34,6 +34,14 @@ const ADMIN_TABLE_POLICY = {
     "operational-readonly",
     "Los movimientos del fondo se administran desde Tesoreria para conservar saldos y relaciones."
   ),
+  caja_efectivo_movimientos: policy(
+    true,
+    false,
+    false,
+    false,
+    "operational-readonly",
+    "El libro de Caja Efectivo es append-only y se administra desde los flujos confirmados de Tesoreria."
+  ),
 
   movimientos_bancarios: editable(),
   pedidos: editable(),

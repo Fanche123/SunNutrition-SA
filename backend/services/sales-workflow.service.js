@@ -291,7 +291,8 @@ function publicWorkflow(row) {
 }
 
 function actorFromRequest(request) {
-  return String(request.accessIdentity?.user || request.accessIdentity?.mode || "local").trim() || "local";
+  const user = request.accessIdentity?.user;
+  return String(user?.username || user?.id || request.accessIdentity?.mode || "local").trim() || "local";
 }
 
 function compareWorkflowRows(left, right) {

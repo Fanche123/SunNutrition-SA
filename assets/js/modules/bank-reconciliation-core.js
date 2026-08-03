@@ -220,7 +220,9 @@ async function applyBankReconciliation(applyMode) {
       type: result.skipped && !result.expensesCreated && !result.egressesCreated
         && !result.paymentsCreated && !result.movementsReconciled ? "warn" : "ok"
     };
-    loadBackendCashflowReport();
+    if (window.erpAccessPolicy?.isViewAllowed(window.erpAuthentication?.user?.role, "cashflow")) {
+      loadBackendCashflowReport();
+    }
   } catch (error) {
     console.error("No se pudo aplicar la accion de conciliacion bancaria.", error);
     finalStatus = { message: error.message, type: "warn" };

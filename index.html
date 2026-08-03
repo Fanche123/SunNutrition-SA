@@ -7,10 +7,23 @@
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
   <title>SunNutrition</title>
-  <link rel="stylesheet" href="assets/css/styles.css?v=20260801-purchase-workflow-ui">
+  <link rel="stylesheet" href="assets/css/styles.css?v=20260803-treasury-pending-only">
 </head>
-<body>
-  <div class="app-shell">
+<body class="auth-pending">
+  <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
+    <form class="auth-card" id="auth-login-form">
+      <span class="auth-eyebrow">SunNutrition ERP</span>
+      <h1 id="auth-title">Ingresar</h1>
+      <p>Usá tu identidad personal para que cada operación quede atribuida correctamente.</p>
+      <label>Usuario<input id="auth-username" name="username" autocomplete="username" required></label>
+      <label>Contraseña<input id="auth-password" name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary-button" type="submit">Iniciar sesión</button>
+      <p class="form-status" id="auth-status" role="status" aria-live="polite"></p>
+      <p class="auth-bootstrap-note" id="auth-bootstrap-note" hidden>No hay usuarios configurados. El propietario debe ejecutar el alta inicial desde la terminal local segura.</p>
+    </form>
+  </section>
+
+  <div class="app-shell" id="app-shell" hidden>
     <!-- Navegación principal de la app. Cada botón activa una sección del main. -->
     <aside class="sidebar" aria-label="Menu principal">
       <div class="brand">
@@ -19,7 +32,7 @@
 
       <nav class="nav">
         <button class="nav-item active" data-view="dashboard" type="button">Dashboard</button>
-        <div class="nav-group is-collapsed">
+        <div class="nav-group is-collapsed" data-analysis-only>
           <button class="nav-item nav-group-title" data-nav-toggle="analysis" type="button" aria-expanded="false">
             <span>Análisis</span><span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
@@ -56,16 +69,10 @@
             <span>Tesorería</span><span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
           <div class="nav-group-items" inert>
+            <button class="nav-item nav-subitem" data-view="cashbox" type="button">Gestión de Tesorería</button>
             <button class="nav-item nav-subitem" data-view="bank-reconciliation" type="button">Conciliación bancaria</button>
-            <button class="nav-item nav-subitem" data-view="cashbox" type="button">Caja</button>
             <button class="nav-item nav-subitem" data-view="expense-entry" type="button">Egresos</button>
-            <button class="nav-item nav-subitem" data-view="payments-entry" type="button">Pagos</button>
-            <button class="nav-item nav-subitem" data-view="issued-check-entry" type="button">Cheques entregados</button>
-            <button class="nav-item nav-subitem" data-view="collections-entry" type="button">Cobros</button>
-            <button class="nav-item nav-subitem" data-view="received-check-entry" type="button">Cheques recibidos</button>
             <button class="nav-item nav-subitem" data-view="payment-plans" type="button">Planes de pago</button>
-            <button class="nav-item nav-subitem" data-view="investment-fund" type="button">Fondo de inversión</button>
-            <button class="nav-item nav-subitem" data-view="partner-contributions-entry" type="button">Aportes de socios</button>
           </div>
         </div>
         <div class="nav-group is-collapsed">
@@ -81,6 +88,8 @@
             <span>Administración</span><span class="nav-group-chevron" aria-hidden="true"></span>
           </button>
           <div class="nav-group-items" inert>
+            <button class="nav-item nav-subitem" data-view="activity-log" data-owner-only type="button">Registro de actividad</button>
+            <button class="nav-item nav-subitem" data-view="user-management" data-owner-only type="button">Usuarios</button>
             <button class="nav-item nav-subitem" data-view="data-editor" type="button">Editor de datos</button>
             <button class="nav-item nav-subitem" data-view="data-map" type="button">Mapa de datos</button>
             <button class="nav-item nav-subitem" data-view="sql" type="button">Consultas SQL</button>
@@ -107,10 +116,14 @@
           <label for="period-select">Período</label>
           <select id="period-select"></select>
         </div>
+        <div class="session-control" aria-label="Sesión actual">
+          <span><strong id="session-user-name">—</strong><small id="session-user-role">—</small></span>
+          <button type="button" class="secondary" id="session-logout">Cerrar sesión</button>
+        </div>
       </header>
 
       <!-- Reporte financiero mensual con grupos desplegables. -->
-      <section class="view" id="view-results" aria-labelledby="page-title">
+      <section class="view" id="view-results" aria-labelledby="page-title" data-analysis-only>
         <div class="summary-grid">
           <article class="metric metric-units-card metric-top-row">
             <span class="metric-icon-box"><img src="assets/icons/unidades-vendidas.svg?v=20260701-50" alt="" class="metric-icon"></span>
@@ -263,7 +276,7 @@
 
       </section>
 
-      <section class="view" id="view-cashflow">
+      <section class="view" id="view-cashflow" data-analysis-only>
         <div class="status-grid cashflow-summary-grid">
           <div class="cashflow-card cashflow-card-green">
             <img src="assets/icons/banco.svg?v=20260702-4" alt="" class="cashflow-card-icon">
@@ -336,26 +349,27 @@
       </section>
 
       <!-- Resumen rápido del volumen de datos guardados localmente. -->
-      <section class="view" id="view-production" aria-labelledby="page-title">
+      <section class="view" id="view-production" aria-labelledby="page-title" data-analysis-only>
         <section class="panel production-report-panel">
           <div class="panel-header production-report-header">
-            <div>
-              <h2>Producción por turno y día</h2>
-              <p>Inventario final − inventario inicial + salidas entregadas. Las salidas se asignan a Mañana.</p>
+            <div class="production-title-wrap">
+              <span class="production-title-icon" aria-hidden="true">▟</span>
+              <div><h2>Producción</h2><p>Seguimiento diario por producto y turno</p></div>
             </div>
             <form id="production-period-form" class="production-period-form">
-              <label>Desde <input id="production-start" type="date" required></label>
-              <label>Hasta <input id="production-end" type="date" required></label>
-              <button class="primary-button" type="submit">Consultar</button>
+              <label class="production-range-label">Rango de fechas <span class="production-date-range"><input id="production-start" type="date" required><i>—</i><input id="production-end" type="date" required></span></label>
+              <label>Producto <select id="production-product" aria-label="Producto"></select></label>
+              <button class="primary-button" type="submit">⌕&nbsp; Consultar</button>
             </form>
           </div>
           <p id="production-status" class="form-status" role="status" aria-live="polite"></p>
-          <div class="table-wrap">
-            <table class="production-report-table">
-              <thead><tr><th>Fecha / turno</th><th>Producto</th><th class="num">Inventario inicial</th><th class="num">Salidas ventas</th><th class="num">Inventario final</th><th class="num">Producción</th><th class="num">Unidades individuales</th><th>Estado</th></tr></thead>
-              <tbody id="production-body"><tr><td class="empty" colspan="8">Abrí la pestaña para cargar el reporte.</td></tr></tbody>
-            </table>
-          </div>
+          <div id="production-metrics" class="production-metrics" aria-label="Métricas de producción"></div>
+          <section class="production-chart-panel" aria-labelledby="production-chart-title">
+            <div class="production-section-heading"><div><span>EVOLUCIÓN DIARIA</span><h3 id="production-chart-title">Producción por día</h3></div><strong id="production-chart-unit"></strong></div>
+            <div id="production-chart" class="production-chart"></div>
+          </section>
+          <div class="production-section-heading production-detail-heading"><div><span>DETALLE</span><h3>Detalle por día y turno</h3></div></div>
+          <div id="production-body" class="production-day-list"><p class="production-empty">Abrí la pestaña para cargar el reporte.</p></div>
         </section>
       </section>
 
@@ -1446,171 +1460,71 @@
       <section class="view" id="view-cashbox" aria-labelledby="cash-boxes-title">
         <div class="data-entry-page-heading cash-boxes-page-heading">
           <div>
-            <h2 id="cash-boxes-title">Caja</h2>
-            <p>Control bidireccional entre los movimientos registrados y el saldo bancario observado.</p>
+            <h2 id="cash-boxes-title">Gestión de Tesorería</h2>
+            <p>Posición financiera, cobros y pagos desde un único punto operativo.</p>
           </div>
           <button type="button" class="secondary" id="cash-boxes-refresh">Actualizar</button>
         </div>
         <p class="form-status cash-boxes-status" id="cash-boxes-status" role="status" aria-live="polite">
-          Cargando Saldo del ICBC...
+          Cargando posición financiera...
         </p>
 
-        <section class="panel cash-box-balance-panel" aria-labelledby="cash-box-icbc-title">
-          <div class="panel-header cash-box-balance-heading">
-            <div>
-              <span class="cash-box-eyebrow">Tesorería · ICBC</span>
-              <h2 id="cash-box-icbc-title">Saldo del ICBC</h2>
-              <span id="cash-box-rule-caption">Saldo inicial + ingresos ICBC - pagos</span>
-            </div>
-            <strong class="cash-box-status-badge" id="cash-box-status-badge">Calculando</strong>
+        <section aria-labelledby="treasury-position-title">
+          <div class="treasury-section-heading">
+            <div><span>Resumen consolidado</span><h2 id="treasury-position-title">Posición actual</h2></div>
+            <small id="treasury-position-updated">Sin actualizar</small>
           </div>
-
-          <div class="cash-box-summary-grid">
-            <article>
-              <span>Saldo inicial</span>
-              <strong id="cash-box-initial-balance">$ 0,00</strong>
-              <small id="cash-box-initial-date">Desde -</small>
-            </article>
-            <article class="is-positive">
-              <span>Cobros computados</span>
-              <strong id="cash-box-collections-total">$ 0,00</strong>
-              <small id="cash-box-collections-count">0 registros</small>
-            </article>
-            <article class="is-negative">
-              <span>Pagos computados</span>
-              <strong id="cash-box-payments-total">$ 0,00</strong>
-              <small id="cash-box-payments-count">0 registros</small>
-            </article>
-            <article class="is-calculated">
-              <span>Saldo calculado ERP</span>
-              <strong id="cash-box-calculated-balance">$ 0,00</strong>
-              <small>Saldo inicial + cobros - pagos</small>
-            </article>
-            <article>
-              <span>Último saldo ICBC</span>
-              <strong id="cash-box-bank-balance">Sin saldo</strong>
-              <small id="cash-box-bank-movement">Sin movimientos bancarios</small>
-            </article>
-            <article class="cash-box-difference-card" id="cash-box-difference-card">
-              <span>Diferencia banco - ERP</span>
-              <strong id="cash-box-difference">Sin comparar</strong>
-              <small>Positiva: el banco supera al ERP. Negativa: el ERP supera al banco.</small>
+          <div class="treasury-position-grid">
+            <button type="button" class="treasury-position-card" data-treasury-detail="bank" aria-haspopup="dialog">
+              <span>Banco · ICBC</span><strong id="treasury-bank-balance">—</strong><small id="treasury-bank-caption">Saldo ERP</small>
+            </button>
+            <button type="button" class="treasury-position-card" data-treasury-detail="cash" aria-haspopup="dialog">
+              <span>Efectivo</span><strong id="treasury-cash-balance">—</strong><small id="treasury-cash-caption">Fuente pendiente</small>
+            </button>
+            <button type="button" class="treasury-position-card" data-treasury-detail="received-checks" aria-haspopup="dialog">
+              <span>Cheques recibidos disponibles</span><strong id="treasury-received-checks-balance">—</strong><small id="treasury-received-checks-caption">0 disponibles</small>
+            </button>
+            <button type="button" class="treasury-position-card is-commitment" data-treasury-detail="issued-checks" aria-haspopup="dialog">
+              <span>Cheques entregados pendientes</span><strong id="treasury-issued-checks-balance">—</strong><small id="treasury-issued-checks-caption">Compromiso, sin doble descuento</small>
+            </button>
+            <button type="button" class="treasury-position-card" data-treasury-detail="fund" aria-haspopup="dialog">
+              <span>Fondo de inversión</span><strong id="treasury-fund-balance">—</strong><small id="treasury-fund-caption">Saldo del libro mayor</small>
+            </button>
+            <article class="treasury-position-card is-liquidity">
+              <span>Liquidez total</span><strong id="treasury-liquidity-total">—</strong><small>Bancos + efectivo + cheques recibidos + fondo</small>
             </article>
           </div>
-
-          <div class="cash-box-scope-note">
-            <strong>Alcance inicial autorizado</strong>
-            <span id="cash-box-scope-description">Se incluyen cobros/pagos con ICBC y depósitos efectivos de cheques/eCheq desde la fecha inicial; los cheques emitidos sólo al debitarse.</span>
-          </div>
-          <div class="cash-box-warnings" id="cash-box-warnings" hidden></div>
+          <div class="cash-box-warnings treasury-position-warnings" id="cash-box-warnings" hidden></div>
         </section>
 
-        <section class="panel cash-box-bank-control" aria-labelledby="cash-box-bank-control-title">
-          <div class="panel-header">
-            <div>
-              <h2 id="cash-box-bank-control-title">Banco → ERP</h2>
-              <span>Movimientos de ICBC sin pago, cobro o movimiento de fondo asociado.</span>
-            </div>
-            <button type="button" class="secondary" id="cash-box-open-reconciliation">Abrir conciliación bancaria</button>
-          </div>
-          <div class="cash-box-direction-summary">
-            <div><span>Pendientes</span><strong id="cash-box-bank-pending-count">0</strong></div>
-            <div><span>Importe pendiente bruto</span><strong id="cash-box-bank-pending-gross">$ 0,00</strong></div>
-            <div><span>Neto pendiente</span><strong id="cash-box-bank-pending-net">$ 0,00</strong></div>
-            <div><span>Neto ERP sin banco (cobros - pagos)</span><strong id="cash-box-erp-pending-net">$ 0,00</strong></div>
-            <div><span>Neto banco sin ERP (créditos - débitos)</span><strong id="cash-box-pending-net-gap-bank">$ 0,00</strong></div>
-            <div><span>Brecha de netos (banco - ERP)</span><strong id="cash-box-pending-net-gap">$ 0,00</strong></div>
-          </div>
-          <p class="cash-box-scope-note">Los importes brutos y conteos pueden diferir por agrupaciones, diferencias temporales o asociaciones faltantes. Con el mismo corte y signos, la brecha entre ambos netos explica el saldo pendiente.</p>
-          <div class="cash-box-gap-factors" id="cash-box-gap-factors"></div>
-        </section>
-
-        <section class="panel cash-box-bank-control" aria-labelledby="cash-box-bank-pending-title">
-          <div class="panel-header">
-            <div>
-              <h2 id="cash-box-bank-pending-title">Movimientos bancarios sin contrapartida ERP</h2>
-              <span>ICBC desde el 09/06/2026 inclusive hasta el último movimiento bancario del corte.</span>
-            </div>
-          </div>
-          <div class="cash-box-pending-grid">
-            <section aria-labelledby="cash-box-bank-credits-title">
-              <div class="panel-header cash-box-pending-heading">
-                <div><h3 id="cash-box-bank-credits-title">Créditos sin ERP</h3><span id="cash-box-bank-credits-summary">0 pendientes</span></div>
-                <label><span class="visually-hidden">Filtrar créditos bancarios</span><input id="cash-box-bank-credits-filter" type="search" placeholder="Filtrar créditos..."></label>
-              </div>
-              <div class="table-wrap"><table class="cash-box-pending-table"><thead><tr><th>Fecha</th><th>Detalle</th><th>Referencia</th><th>Tipo</th><th class="num">Importe</th><th>Estado / motivo</th></tr></thead><tbody id="cash-box-bank-credits-body"><tr><td class="empty" colspan="6">Cargando créditos bancarios pendientes...</td></tr></tbody></table></div>
-            </section>
-            <section aria-labelledby="cash-box-bank-debits-title">
-              <div class="panel-header cash-box-pending-heading">
-                <div><h3 id="cash-box-bank-debits-title">Débitos sin ERP</h3><span id="cash-box-bank-debits-summary">0 pendientes</span></div>
-                <label><span class="visually-hidden">Filtrar débitos bancarios</span><input id="cash-box-bank-debits-filter" type="search" placeholder="Filtrar débitos..."></label>
-              </div>
-              <div class="table-wrap"><table class="cash-box-pending-table"><thead><tr><th>Fecha</th><th>Detalle</th><th>Referencia</th><th>Tipo</th><th class="num">Importe</th><th>Estado / motivo</th></tr></thead><tbody id="cash-box-bank-debits-body"><tr><td class="empty" colspan="6">Cargando débitos bancarios pendientes...</td></tr></tbody></table></div>
-            </section>
-          </div>
-        </section>
-
-        <div class="cash-box-pending-grid">
-          <section class="panel cash-box-pending-panel" aria-labelledby="cash-box-pending-collections-title">
-            <div class="panel-header cash-box-pending-heading">
-              <div>
-                <h2 id="cash-box-pending-collections-title">Cobros sin contrapartida ICBC</h2>
-                <span id="cash-box-pending-collections-summary">0 pendientes</span>
-              </div>
-              <label>
-                <span class="visually-hidden">Filtrar cobros por fecha, contraparte o referencia</span>
-                <input id="cash-box-collections-filter" type="search" placeholder="Filtrar cobros...">
-              </label>
-            </div>
-            <div class="table-wrap">
-              <table class="cash-box-pending-table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Contraparte</th>
-                    <th>Referencia</th>
-                    <th>Método / instrumento</th>
-                    <th class="num">Importe</th>
-                    <th>Estado / motivo</th>
-                  </tr>
-                </thead>
-                <tbody id="cash-box-pending-collections-body">
-                  <tr><td class="empty" colspan="6">Cargando cobros pendientes...</td></tr>
-                </tbody>
-              </table>
-            </div>
+        <div class="treasury-operations-grid">
+          <section class="panel treasury-operation-panel" aria-labelledby="treasury-collections-title">
+            <div class="treasury-operation-heading"><div><span>Ingresos</span><h2 id="treasury-collections-title">Cobros</h2></div><strong id="treasury-collections-count">0</strong></div>
+            <p>Transferencia, efectivo y cheque/eCheq mediante el flujo vigente, incluida la asociación del cheque recibido.</p>
+            <div class="treasury-operation-meta"><span id="treasury-collections-total">$ 0,00 registrados</span><span id="treasury-collections-latest">Sin cobros</span></div>
+            <div class="treasury-actions"><button type="button" data-treasury-view="collections-entry">Registrar o consultar cobros</button><button type="button" class="secondary" data-treasury-view="received-check-entry">Gestionar cheques recibidos</button></div>
           </section>
-
-          <section class="panel cash-box-pending-panel" aria-labelledby="cash-box-pending-payments-title">
-            <div class="panel-header cash-box-pending-heading">
-              <div>
-                <h2 id="cash-box-pending-payments-title">Pagos sin contrapartida ICBC</h2>
-                <span id="cash-box-pending-payments-summary">0 pendientes</span>
-              </div>
-              <label>
-                <span class="visually-hidden">Filtrar pagos por fecha, contraparte o referencia</span>
-                <input id="cash-box-payments-filter" type="search" placeholder="Filtrar pagos...">
-              </label>
-            </div>
-            <div class="table-wrap">
-              <table class="cash-box-pending-table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Contraparte</th>
-                    <th>Referencia</th>
-                    <th>Método / instrumento</th>
-                    <th class="num">Importe</th>
-                    <th>Estado / motivo</th>
-                  </tr>
-                </thead>
-                <tbody id="cash-box-pending-payments-body">
-                  <tr><td class="empty" colspan="6">Cargando pagos pendientes...</td></tr>
-                </tbody>
-              </table>
-            </div>
+          <section class="panel treasury-operation-panel" aria-labelledby="treasury-payments-title">
+            <div class="treasury-operation-heading"><div><span>Salidas</span><h2 id="treasury-payments-title">Pagos</h2></div><strong id="treasury-payments-count">0</strong></div>
+            <p>Transferencia, efectivo, cheque/eCheq propio y endoso mediante el flujo vigente.</p>
+            <div class="treasury-operation-meta"><span id="treasury-payments-total">$ 0,00 registrados</span><span id="treasury-payments-latest">Sin pagos</span></div>
+            <div class="treasury-actions"><button type="button" data-treasury-view="payments-entry">Registrar o consultar pagos</button><button type="button" class="secondary" data-treasury-view="issued-check-entry">Gestionar cheques entregados</button></div>
           </section>
         </div>
+
+        <div class="treasury-secondary-actions">
+          <button type="button" class="secondary" data-treasury-detail="other" aria-haspopup="dialog">Otros movimientos financieros</button>
+          <span>Aportes, retiros y transferencias internas existentes, sin reinterpretar su tratamiento contable.</span>
+        </div>
+
+        <div class="treasury-dialog" id="treasury-detail-dialog" role="dialog" aria-modal="true" aria-labelledby="treasury-detail-title" hidden>
+          <div class="treasury-dialog-backdrop" data-treasury-close></div>
+          <section class="treasury-dialog-card" tabindex="-1">
+            <div class="treasury-dialog-header"><div><span id="treasury-detail-eyebrow">Tesorería</span><h2 id="treasury-detail-title">Detalle</h2></div><button type="button" class="treasury-dialog-close" data-treasury-close aria-label="Cerrar detalle">&times;</button></div>
+            <div class="treasury-dialog-body" id="treasury-detail-body"><p class="empty">Cargando detalle...</p></div>
+          </section>
+        </div>
+
       </section>
 
       <section class="view" id="view-expense-entry">
@@ -2927,6 +2841,48 @@
         </section>
       </section>
 
+      <section class="view" id="view-activity-log" aria-labelledby="activity-log-title" data-owner-only>
+        <div class="data-entry-page-heading">
+          <div><h2 id="activity-log-title">Registro de actividad</h2><p>Historial persistente y de solo lectura de operaciones atribuidas.</p></div>
+          <button type="button" class="secondary" id="activity-refresh">Actualizar</button>
+        </div>
+        <form class="activity-filters" id="activity-filters">
+          <label>Desde<input type="date" id="activity-from"></label>
+          <label>Hasta<input type="date" id="activity-to"></label>
+          <label>Usuario<input type="search" id="activity-user" placeholder="Usuario o nombre"></label>
+          <label>Módulo o entidad<input type="search" id="activity-entity" placeholder="ventas, pagos..."></label>
+          <label>Acción<input type="search" id="activity-action" placeholder="crear, actualizar..."></label>
+          <button type="submit" class="primary-button">Aplicar filtros</button>
+        </form>
+        <p class="form-status" id="activity-status" role="status" aria-live="polite"></p>
+        <div class="table-wrap activity-table-wrap">
+          <table class="activity-table">
+            <thead><tr><th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Módulo / entidad</th><th>Registro</th><th>Origen</th><th>Resumen</th></tr></thead>
+            <tbody id="activity-body"><tr><td class="empty" colspan="7">Abrí la vista para consultar el historial.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="view-user-management" aria-labelledby="user-management-title" data-owner-only>
+        <div class="data-entry-page-heading"><div><h2 id="user-management-title">Usuarios</h2><p>Alta de identidades personales. Las contraseñas no se muestran ni se guardan en el navegador.</p></div></div>
+        <div class="user-management-grid">
+          <form class="panel user-create-form" id="user-create-form">
+            <h3>Crear usuario</h3>
+            <label>Usuario<input id="user-create-username" autocomplete="off" required pattern="[a-zA-Z0-9._-]{3,48}"></label>
+            <label>Nombre visible<input id="user-create-display-name" autocomplete="off" required maxlength="80"></label>
+            <label>Rol<select id="user-create-role" required><option value="employee_admin">Empleado administrativo</option><option value="owner">Propietario</option></select></label>
+            <label>Contraseña inicial<input id="user-create-password" type="password" autocomplete="new-password" minlength="12" required></label>
+            <label>Repetir contraseña<input id="user-create-password-confirm" type="password" autocomplete="new-password" minlength="12" required></label>
+            <button type="submit" class="primary-button">Crear usuario</button>
+            <p class="form-status" id="user-create-status" role="status" aria-live="polite"></p>
+          </form>
+          <section class="panel" aria-labelledby="user-list-title">
+            <div class="panel-header"><div><h3 id="user-list-title">Identidades habilitadas</h3><span>El rol se valida siempre en el servidor.</span></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th></tr></thead><tbody id="user-list-body"><tr><td class="empty" colspan="4">Cargando usuarios...</td></tr></tbody></table></div>
+          </section>
+        </div>
+      </section>
+
       <section class="view" id="view-data-map">
         <section class="panel data-map-panel">
           <div class="panel-header">
@@ -3178,16 +3134,18 @@
 
 <script src="shared/money.js?v=20260724-money-contract"></script>
 <script src="shared/money-columns.js?v=20260724-money-contract"></script>
+<script src="shared/access-policy.js?v=20260803-employee-permissions"></script>
 <script src="assets/js/dom-utils.js?v=20260720-creditor-entry"></script>
 <script src="assets/js/config/payroll-calendars.js?v=20260723-rrhh-safety"></script>
-<script src="assets/js/modules/payment-plans.js?v=20260723-payment-plans"></script>
+<script src="assets/js/modules/payment-plans.js?v=20260802-treasury-management"></script>
   <script src="assets/js/modules/salary-entry.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/core/formatters.js?v=20260722-architecture-final"></script>
   <script src="assets/js/modules/data-editor.js?v=20260725-continuous-grid"></script>
-  <script src="assets/js/app.js?v=20260729-contextual-period-filter"></script>
+  <script src="assets/js/modules/access.js?v=20260803-multiuser-audit"></script>
+  <script src="assets/js/app.js?v=20260802-treasury-management"></script>
 <script src="assets/js/core/api.js?v=20260729-structured-errors"></script>
 <script src="assets/js/core/files.js?v=20260722-architecture-stage3"></script>
-<script src="assets/js/modules/cash-boxes.js?v=20260728-icbc-control"></script>
+<script src="assets/js/modules/cash-boxes.js?v=20260803-cash-ledger"></script>
 <script src="assets/js/modules/bank-reconciliation-core.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-render.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-checks.js?v=20260722-architecture-stage2"></script>

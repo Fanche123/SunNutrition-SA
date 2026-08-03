@@ -449,12 +449,16 @@ function createBankPersistenceService(dependencies) {
     const paymentId = backendNextNumericId(paymentTable.rows, "id_pago");
     const detailId = backendNextNumericId(detailTable.rows, "id_detalle_pago");
     const timestamp = new Date().toISOString();
+    const requestedMethod = cleanBackendText(reviewRow.metodo) || bankPaymentMethodFromMovement(movement);
+    if (backendNormalizeText(requestedMethod) === "efectivo") {
+      throw new Error("Una conciliación bancaria no puede crear un pago en Efectivo.");
+    }
   
     paymentTable.rows.push({
       _rowNumber: paymentTable.rows.length + 2,
       id_pago: paymentId,
       fecha_pago: backendIsoDate(reviewRow.date) || movement.date,
-      metodo: cleanBackendText(reviewRow.metodo) || bankPaymentMethodFromMovement(movement),
+      metodo: requestedMethod,
       banco: cleanBackendText(reviewRow.banco) || bank,
       monto: signedAmount,
       _bankOperationKey: operationKey,

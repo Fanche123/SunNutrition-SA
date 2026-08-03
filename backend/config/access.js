@@ -4,7 +4,7 @@ function createAccessConfig(env = process.env) {
   const mode = String(env.ERP_DEPLOYMENT_MODE || "local").trim().toLowerCase();
   const port = parseInteger(env.PORT, 3000, 1, 65535);
   const host = String(env.ERP_HOST || "127.0.0.1").trim();
-  const authenticationReady = false;
+  const authenticationReady = true;
 
   if (!["local", "lan"].includes(mode)) {
     throw new Error(`Modo de despliegue invalido: ${mode}. Use "local".`);

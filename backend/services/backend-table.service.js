@@ -1,6 +1,8 @@
 const { fromCents } = require("../../shared/money");
 const { isMoneyColumn } = require("../../shared/money-columns");
+const { EMPLOYEE_GENERIC_TABLE_MUTATIONS } = require("./access-control.service");
 const { strictMoneyToCents } = require("../utils/money-input");
+const { reconcileCashSourceRows } = require("./cash-ledger.service");
 
 function createBackendTableService({ backendEditableColumns, backendEditablePrimaryKey, backendId, backendNextNumericId, backendTable, ensureBackendTable, expectedBackendColumns, loadCache, readJsonBody, recordAllRowsRead = () => {}, saveBackendCache, sendJson, synchronizeEconomicExpenses = (cache) => cache }) {
   function handleBackendTableRequest(request, response) {
@@ -31,9 +33,17 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
         sendJson(response, 403, { ok: false, error: "La gestión de ventas es una tabla técnica y sólo admite sus endpoints específicos." });
         return;
       }
+      if (tableName === "caja_efectivo_movimientos") {
+        sendJson(response, 403, { ok: false, code: "CASH_LEDGER_APPEND_ONLY", error: "El libro de Caja Efectivo es de solo lectura y se actualiza únicamente desde Tesorería." });
+        return;
+      }
       const body = await readJsonBody(request);
       const rows = Array.isArray(body.rows) ? body.rows : [];
       const deletedIds = Array.isArray(body.deletedIds) ? body.deletedIds.map(backendId).filter(Boolean) : [];
+      if (!canUseGenericTableMutation(request.accessIdentity, tableName, deletedIds)) {
+        sendJson(response, 403, { ok: false, code: "OWNER_REQUIRED", error: "Esta operaciĂłn genĂ©rica estĂˇ reservada al propietario." });
+        return;
+      }
       if (!rows.length && !deletedIds.length) {
         sendJson(response, 400, { ok: false, error: "No hay filas para guardar." });
         return;
@@ -55,6 +65,9 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
       const columns = backendEditableColumns(tableName, table);
       const primaryKey = backendEditablePrimaryKey(tableName, table, columns);
       const currentRows = Array.isArray(table.rows) ? table.rows : [];
+      const cashSourceRowsBefore = ["cobros", "pagos"].includes(tableName)
+        ? JSON.parse(JSON.stringify(currentRows))
+        : null;
       const byId = new Map();
       currentRows.forEach((row, index) => {
         const id = backendId(row[primaryKey]);
@@ -123,6 +136,15 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
       if ((rowsToSave.length || deletedIds.length) && ["ventas", "entregas", "otros_gastos", "egresos", "sueldos", "cuotas_planes_pagos", "pagos", "detalle_pagos"].includes(tableName)) {
         cache = synchronizeEconomicExpenses(cache, tableName);
       }
+      if (cashSourceRowsBefore && cache.tables?.caja_efectivo_movimientos) {
+        reconcileCashSourceRows(
+          cache,
+          tableName === "cobros" ? "cobro" : "pago",
+          cashSourceRowsBefore,
+          cache.tables[tableName].rows,
+          { operationId: request.auditRequestId, actor: request.accessIdentity?.user }
+        );
+      }
       saveBackendCache(cache);
   
       sendJson(response, 200, {
@@ -140,4 +162,12 @@ function createBackendTableService({ backendEditableColumns, backendEditablePrim
   return { handleBackendTableRequest, handleBackendTableSave };
 }
 
-module.exports = { createBackendTableService };
+function canUseGenericTableMutation(identity, tableName, deletedIds = []) {
+  const role = identity?.user?.role;
+  if (!role || role === "owner") return true;
+  return role === "employee_admin"
+    && EMPLOYEE_GENERIC_TABLE_MUTATIONS.has(String(tableName || ""))
+    && deletedIds.length === 0;
+}
+
+module.exports = { canUseGenericTableMutation, createBackendTableService };

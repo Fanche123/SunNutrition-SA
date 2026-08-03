@@ -79,7 +79,8 @@ function handleProductionReport(request, response) {
     const url = new URL(request.url, `http://${request.headers.host}`);
     const report = buildProductionReport(
       String(url.searchParams.get("start") || ""),
-      String(url.searchParams.get("end") || "")
+      String(url.searchParams.get("end") || ""),
+      String(url.searchParams.get("itemId") || "")
     );
     sendJson(response, 200, { ok: true, report });
   } catch (error) {
@@ -109,7 +110,14 @@ async function handleAppStateSave(request, response) {
     return;
   }
 
-  writeAppState(APP_STATE_FILE, state);
+  const stateToWrite = { ...state };
+  request.auditSummary = {
+    action: "update",
+    module: "application",
+    entity: "app-state",
+    fields: Object.keys(stateToWrite)
+  };
+  writeAppState(APP_STATE_FILE, stateToWrite);
   sendJson(response, 200, { ok: true });
 }
 

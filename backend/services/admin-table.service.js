@@ -1,6 +1,7 @@
 const { adminRelationsForTable } = require("../config/admin-table-relations");
 const { applyDeliveryDeletion, previewDeliveryDeletion } = require("./delivery-deletion.service");
 const { applyExpenseDeletion, previewExpenseDeletion } = require("./expense-deletion.service");
+const { reconcileCashSourceRows } = require("./cash-ledger.service");
 
 const RELATION_OPTION_LIMIT = 500;
 
@@ -171,6 +172,7 @@ function createAdminTableService(dependencies) {
       const cacheToSave = tableName === "egresos"
         ? synchronizeEconomicExpenses(cache, tableName)
         : cache;
+      reconcileCashMutationIfRequired(original, cacheToSave, tableName, request);
       saveBackendCache(cacheToSave);
       appendAdminAudit([{
         table: tableName,
@@ -376,6 +378,7 @@ function createAdminTableService(dependencies) {
       const cacheToSave = tableName === "egresos" && !deletedIds.length
         ? synchronizeEconomicExpenses(cache, tableName)
         : cache;
+      reconcileCashMutationIfRequired(original, cacheToSave, tableName, request);
       saveBackendCache(cacheToSave);
       appendAdminAudit(operations);
 
@@ -436,6 +439,19 @@ function createAdminTableService(dependencies) {
     handleAdminTableSave,
     handleAdminTablesOverview
   };
+}
+
+function reconcileCashMutationIfRequired(original, cache, tableName, request) {
+  if (!cache.tables?.caja_efectivo_movimientos) return;
+  const sourceTable = tableName === "egresos" ? "pagos" : tableName;
+  if (!["cobros", "pagos"].includes(sourceTable)) return;
+  reconcileCashSourceRows(
+    cache,
+    sourceTable === "cobros" ? "cobro" : "pago",
+    original.tables?.[sourceTable]?.rows || [],
+    cache.tables?.[sourceTable]?.rows || [],
+    { operationId: request.auditRequestId, actor: request.accessIdentity?.user }
+  );
 }
 
 function requestTable(request) {

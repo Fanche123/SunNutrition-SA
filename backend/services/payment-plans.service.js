@@ -198,14 +198,70 @@ function createPaymentPlansService({
     saveBackendCache(cache);
   }
 
-  function handlePaymentPlansList(_request, response) {
+  function handlePaymentPlansList(request, response) {
     try {
       const cache = loadCache();
+      const url = new URL(request.url || "/api/treasury/payment-plans", "http://127.0.0.1");
+      if (url.searchParams.get("view") === "obligations") {
+        return sendJson(response, 200, { ok: true, ...treasuryObligations(cache) });
+      }
       const plans = planRows(cache).map((plan) => completePlan(cache, plan, false));
       return sendJson(response, 200, { ok: true, plans, expenses: selectableExpenses(cache) });
     } catch (error) {
       return failure(response, error, "No se pudieron cargar los planes de pago.");
     }
+  }
+
+  function treasuryObligations(cache, limit = 8) {
+    const plansById = new Map(planRows(cache).map((plan) => [backendId(plan.id_plan_pago), plan]));
+    const obligations = quotaRows(cache)
+      .map((quota) => {
+        const planId = backendId(quota.id_plan_pago);
+        const plan = plansById.get(planId);
+        const publicRow = publicQuota(cache, quota);
+        const usesSecondDue = publicRow.estado === "Segundo vencimiento" || publicRow.estado === "Vencida";
+        const dueTotal = usesSecondDue ? publicRow.total_segundo_vencimiento : publicRow.total_primer_vencimiento;
+        const pendingCents = Math.max(0, Math.abs(toCents(dueTotal)) - Math.abs(toCents(publicRow.monto_pagado)));
+        return {
+          id_cuota_plan_pago: publicRow.id_cuota_plan_pago,
+          id_plan_pago: planId,
+          plan: String(plan?.nombre || `Plan ${planId}`).trim(),
+          organismo: String(plan?.organismo || "").trim(),
+          nro_cuota: publicRow.nro_cuota,
+          estado: publicRow.estado,
+          fecha_primer_vencimiento: publicRow.fecha_primer_vencimiento,
+          fecha_segundo_vencimiento: publicRow.fecha_segundo_vencimiento,
+          total_primer_vencimiento: publicRow.total_primer_vencimiento,
+          total_segundo_vencimiento: publicRow.total_segundo_vencimiento,
+          monto_pagado: publicRow.monto_pagado,
+          saldo_pendiente_centavos: pendingCents,
+          fecha_vencimiento_vigente: usesSecondDue
+            ? publicRow.fecha_segundo_vencimiento
+            : publicRow.fecha_primer_vencimiento,
+          vencimiento_expirado: publicRow.estado === "Vencida",
+          id_egreso: publicRow.id_egreso
+        };
+      })
+      .filter((quota) => quota.estado !== "Pagada")
+      .sort((left, right) => (
+        obligationPriority(left.estado) - obligationPriority(right.estado)
+        || String(left.fecha_primer_vencimiento || "").localeCompare(String(right.fecha_primer_vencimiento || ""))
+        || Number(left.nro_cuota || 0) - Number(right.nro_cuota || 0)
+      ));
+    return {
+      total: obligations.length,
+      obligations: obligations.slice(0, limit),
+      limited: obligations.length > limit
+    };
+  }
+
+  function obligationPriority(state) {
+    return {
+      Vencida: 0,
+      "Segundo vencimiento": 1,
+      "Próxima": 2,
+      Pendiente: 3
+    }[state] ?? 4;
   }
 
   function handlePaymentPlanGet(request, response) {

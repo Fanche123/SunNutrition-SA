@@ -11,6 +11,11 @@ function createRequestHandler(dependencies) {
   } = dependencies;
 
   const exactRoutes = [
+    ["POST", "/api/auth/login", handlers.handleAuthLogin],
+    ["GET", "/api/auth/session", handlers.handleAuthSession],
+    ["POST", "/api/auth/logout", handlers.handleAuthLogout],
+    ["GET", "/api/auth/users", handlers.handleAuthUsersList],
+    ["POST", "/api/auth/users", handlers.handleAuthUserCreate],
     ["POST", "/api/bank-reconciliation/analyze", handlers.handleBankReconciliationAnalyze],
     ["POST", "/api/bank-reconciliation/apply", handlers.handleBankReconciliationApply],
     ["POST", "/api/bank-reconciliation/deposit-checks", handlers.handleBankReconciliationDepositChecks],
@@ -81,6 +86,9 @@ function createRequestHandler(dependencies) {
       if (request.url === "/api/health/ocr" && request.method === "GET") {
         return handlers.handleInvoiceProviderHealth(request, response);
       }
+      if (request.url.startsWith("/api/audit/events") && request.method === "GET") {
+        return handlers.handleAuditEventsList(request, response);
+      }
       if (request.url === "/api/backend/schema" && request.method === "GET") {
         return sendJson(response, 200, { ok: true, schema: backendSchema() });
       }
@@ -136,6 +144,9 @@ function createRequestHandler(dependencies) {
       }
       if (bankReconciliationPath === "/api/treasury/cash-boxes" && request.method === "GET") {
         return await handlers.handleCashBoxesGet(request, response);
+      }
+      if (bankReconciliationPath === "/api/treasury/payment-plans" && request.method === "GET") {
+        return handlers.handlePaymentPlansList(request, response);
       }
       const paymentPlanRoute = new URL(request.url, `http://${request.headers.host || "127.0.0.1"}`).pathname
         .match(/^\/api\/treasury\/payment-plans\/[^/]+(?:\/quotas(?:\/[^/]+(?:\/delete)?)?)?$/);

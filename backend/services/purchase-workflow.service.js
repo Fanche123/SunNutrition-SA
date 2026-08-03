@@ -163,11 +163,16 @@ function createPurchaseWorkflowService(dependencies) {
       if (model.receptionState !== "complete" || !model.invoice?.expenseId || !model.invoice?.attachmentPath) throw new Error("El cierre requiere recepción completa, egreso y adjunto reales.");
       const now = new Date().toISOString(); let row = rows(workflow).find((item) => text(item.id_compra) === purchaseId);
       if (!row) { row = { id_gestion_compra: backendNextNumericId(rows(workflow), "id_gestion_compra"), id_compra: purchaseId, creado_en: now }; workflow.rows.push(row); }
-      row.cerrado_en = now; row.cerrado_por = text(input.user) || "usuario_actual"; row.actualizado_en = now; finish(workflow); saveBackendCache(cache); sendJson(response, 200, { ok: true, closedAt: now });
+      row.cerrado_en = now; row.cerrado_por = actorFromRequest(request); row.actualizado_en = now; finish(workflow); saveBackendCache(cache); sendJson(response, 200, { ok: true, closedAt: now });
     } catch (error) { sendJson(response, 400, { ok: false, error: error.message }); }
   }
 
   return { handleList, handleReception, handleInvoice, handleClose };
+}
+
+function actorFromRequest(request) {
+  const user = request.accessIdentity?.user;
+  return String(user?.username || user?.id || request.accessIdentity?.mode || "local").trim() || "local";
 }
 
 module.exports = { createPurchaseWorkflowService };

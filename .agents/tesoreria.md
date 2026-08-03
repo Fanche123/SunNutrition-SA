@@ -15,6 +15,7 @@ Leé también `.agents/_base-development.md`. Este inventario es un mapa: para c
 - Lectura de caja para flujo financiero; planes ARCA y aportes/retiros de socios existentes.
 - Libro mayor del fondo de inversión, depósitos, rescates, rendimientos y asociaciones bancarias explícitas.
 - Control read-only de Caja con saldo calculado, último saldo bancario y pendientes en ambos sentidos.
+- Gestión de Tesorería como entrada principal read-only para posición y accesos operativos de Cobros/Pagos; Planes de pago y Conciliación bancaria permanecen exclusivamente en sus entradas laterales. Los detalles se cargan bajo demanda y reutilizan las pantallas de escritura vigentes.
 
 Ventas conserva clientes, facturas y reglas comerciales; Compras conserva las fuentes de egresos; RRHH conserva liquidaciones; Reportes conserva las agregaciones de cashflow. Coordinar cuando cambie uno de esos contratos. Fuera de alcance: fórmulas operativas ajenas, esquema/migraciones, SQL, UI global y reglas contables no confirmadas.
 
@@ -57,6 +58,8 @@ Endpoints confirmados en `backend/routes/router.js`:
 - `GET /api/bank-reconciliation/state?bank=...` → filas de `movimientos_bancarios` sin `id_pago`, `id_cobro` ni `id_movimiento_fondo`, reanalizadas, y última fecha bancaria del banco seleccionado.
 - `GET /api/bank-reconciliation/summary` → última fecha global, días calendario en Buenos Aires y detalle por banco para Dashboard.
 - `GET /api/treasury/cash-boxes?box=icbc` → regla read-only focalizada para `Saldo del ICBC`: usa `cobros.monto` y `pagos.monto` desde `2026-06-09` inclusive, último `movimientos_bancarios.saldo`, pendientes ERP → Banco y resumen Banco → ERP.
+- `GET /api/treasury/cash-boxes?box=icbc&view=management` → posición de Gestión de Tesorería sin históricos completos; `detail=bank|cash|received-checks|issued-checks|fund|other` agrega sólo el detalle solicitado. Los detalles de cheques recibidos/entregados exponen exclusivamente el conjunto canónico `Pendiente`, y sus totales/próxima fecha se calculan sobre esas mismas filas. La liquidez suma bancos + efectivo + cheques recibidos disponibles + fondo y queda no calculable si falta una fuente canónica de efectivo o fondo.
+- `GET /api/treasury/payment-plans?view=obligations` → hasta ocho cuotas no pagadas ordenadas por urgencia, sin cargar egresos seleccionables ni el historial completo de planes.
 - `POST /api/bank-reconciliation/analyze`: `{ bank, csvText }` → valida todo el archivo, inserta atómicamente solo ocurrencias nuevas en `movimientos_bancarios` y devuelve `{ ok, report }` con todos los pendientes canónicos.
 - `POST /api/bank-reconciliation/apply`: `{ bank, applyMode, movementKeys, reviewRows }` → contadores/notas en `result`; una conciliación exitosa completa `id_pago` o `id_cobro` en la misma fila bancaria.
 - `POST /api/bank-reconciliation/deposit-checks`: banco, fecha, movimiento opcional, `manualDeposit` y `checkIds` → cantidad/monto depositado.
@@ -78,6 +81,8 @@ Endpoints confirmados en `backend/routes/router.js`:
 - La idempotencia durable usa metadatos internos `_operationId`/`_operationPayload` o `_bankOperationKey`/`_bankOperationPayload` en la fila financiera propietaria. No usa memoria ni `app-state`, no altera columnas registradas y su ciclo de vida es el de la propia operación: al eliminar legítimamente la fila propietaria también desaparece su marcador. No existe un registro separado de crecimiento ilimitado.
 - `movimientos_bancarios` es la única fuente persistente para importados, pendientes e historial conciliado. Pendiente significa `id_pago`, `id_cobro` e `id_movimiento_fondo` vacíos. Una fila de fondo puede conservar simultáneamente `id_movimiento_fondo` e `id_pago` cuando el pago es su contrapartida exacta; ninguna fila de fondo usa `id_cobro`. La huella usa banco, fecha, concepto/detalle, CUIT, cheque, débito, crédito, importe y saldo, y la deduplicación compara multiplicidades. `_bankMovementKey` conserva la ocurrencia técnica sin cambiar la identidad económica. El metadato histórico `bankReconciliation.pendingMovements`, si existe, queda ignorado y no se borra automáticamente.
 - `cash-boxes.service.js` concentra la única regla del control ICBC: saldo inicial auditable de `3.801.130,05`; porción no cheque de cobros atribuible a ICBC más depósitos canónicos de `cheques_recibidos` por `id_deposito`, `fecha_deposito`, `banco` e importe real; pagos ICBC por encabezado; diferencia `saldo bancario - saldo ERP`; y orden del último movimiento por fecha/orden fuente. Efectivo, endosos, otros bancos y cheques emitidos aún no debitados quedan fuera.
+- El resumen de Gestión de Tesorería reutiliza esa regla ICBC, el libro mayor del fondo y los estados canónicos de cheques. Sólo reconoce efectivo cuando existe exactamente una fila `caja.cuenta=Efectivo` con monto válido; no reconstruye un saldo desde cobros/pagos, no presume cero y no crea persistencia.
+- Un cheque recibido endosado conserva su consulta en la gestión completa de endosos, pero no es un compromiso bancario pendiente: el modelo lo registra como pago `Endoso` y la regla ICBC excluye ese método. El popup de cheques entregados sólo incluye filas `cheques_entregados.estado=Pendiente`.
 - El fondo calcula en centavos `depósitos + rendimientos - rescates`. Depósitos y rescates crean respectivamente pagos ICBC positivos y negativos, vinculados por `fondos_inversion_movimientos.id_pago`; nunca crean cobros. Un rendimiento conserva importe positivo en Tesorería y crea en el mismo snapshot un gasto económico confirmado negativo, sin pago ni impacto bancario separado.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
 - Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
@@ -128,6 +133,10 @@ La reparación puntual `backend/migrations/20260728-last-bank-batch-reset.js`, v
 Crear, mover, renombrar o eliminar un archivo permanente del sector obliga, en la misma tarea, a actualizar este AGENT, `.agents/file-ownership.md` y arquitectura/dependencias. Una integración nueva actualiza también el AGENT consumidor. No aplica a temporales, logs, outputs, adjuntos, caches o generados. Es parte obligatoria del terminado.
 
 Entregá por defecto: **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**.
+
+## Caja Efectivo canónica (2026-08-03)
+
+`backend/services/cash-ledger.service.js` y `caja_efectivo_movimientos` son la autoridad append-only de efectivo. La apertura controlada es ARS 145.000 y conserva los cortes por ID de cobros/pagos; sólo operaciones nuevas confirmadas agregan asientos. Bajas o cambios posteriores usan compensaciones, y la tabla histórica `caja` no se reinterpreta ni se limpia.
 
 ## Trabajo directo
 

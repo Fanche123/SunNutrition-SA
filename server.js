@@ -19,7 +19,10 @@ const {
   BACKEND_CACHE_FILE,
   BACKEND_SQL_SCRIPT,
   PYTHON_EXECUTABLE,
-  ROOT_DIR
+  ROOT_DIR,
+  SECURITY_AUDIT_FILE,
+  SECURITY_AUDIT_RECOVERY_FILE,
+  SECURITY_USERS_FILE
 } = require("./backend/config/paths");
 const { MIME_TYPES } = require("./backend/http-config");
 const { createAccessConfig } = require("./backend/config/access");
@@ -27,8 +30,11 @@ const { ADMIN_TABLE_POLICY } = require("./backend/config/admin-table-policy");
 const { createQueryLimits } = require("./backend/config/query-limits");
 const { backfillHistoricalEconomicExpenses } = require("./backend/migrations/20260727-economic-expenses-history");
 const { readAppState, writeAppState } = require("./backend/repositories/app-state.repository");
+const { createSecurityStore } = require("./backend/repositories/security-store.repository");
 const { createRequestHandler } = require("./backend/routes/router");
 const { createAccessControl } = require("./backend/services/access-control.service");
+const { createAuditService } = require("./backend/services/audit.service");
+const { createAuthService } = require("./backend/services/auth.service");
 const { createAdminTableService } = require("./backend/services/admin-table.service");
 const { createPartnerContributionsService } = require("./backend/services/partner-contributions.service");
 const { createPaymentPlansService } = require("./backend/services/payment-plans.service");
@@ -121,6 +127,20 @@ const {
 loadEnvFile(ROOT_DIR);
 
 const accessConfig = createAccessConfig(process.env);
+const securityStore = createSecurityStore({ usersFile: SECURITY_USERS_FILE });
+const auditService = createAuditService({
+  auditFile: SECURITY_AUDIT_FILE,
+  recoveryFile: SECURITY_AUDIT_RECOVERY_FILE,
+  loadCache,
+  loadRegistry,
+  logError: console.error
+});
+const authService = createAuthService({
+  store: securityStore,
+  readJsonBody,
+  sendJson,
+  auditSecurityEvent: auditService.appendSecurityEvent
+});
 const runtimeSession = createRuntimeSession({
   rootDir: ROOT_DIR,
   host: accessConfig.host,
@@ -564,6 +584,8 @@ const { handleCreditorCreate } = createCreditorEntryService({
 });
 const applyRequestAccess = createAccessControl({
   accessConfig,
+  authenticateRequest: authService.authenticateRequest,
+  beginAuditRequest: auditService.beginRequest,
   sendJson,
   setCorsHeaders
 });
@@ -852,6 +874,12 @@ const server = http.createServer(createRequestHandler({
   backendSchema,
   runtimeIdentity: runtimeSession.publicIdentity,
   handlers: {
+    handleAuditEventsList: (request, response) => auditService.handleList(request, response, sendJson),
+    handleAuthLogin: authService.handleLogin,
+    handleAuthLogout: authService.handleLogout,
+    handleAuthSession: authService.handleSession,
+    handleAuthUserCreate: authService.handleUserCreate,
+    handleAuthUsersList: authService.handleUsersList,
     handleAppStateGet,
     handleAppStateSave,
     handleBackendSqlQuery,

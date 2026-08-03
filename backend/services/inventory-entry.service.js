@@ -154,6 +154,13 @@ function createInventoryEntryService(dependencies) {
     try {
       const result = updateInventoryPurchaseConfig(cache, body?.barsPerDay);
       saveBackendCache(cache);
+      request.auditSummary = {
+        action: "update",
+        module: "inventory",
+        entity: "inventoryPurchaseConfig",
+        recordId: "barsPerDay",
+        fields: ["barsPerDay"]
+      };
       return sendJson(response, 200, {
         ok: true,
         config: result.config,

@@ -28,7 +28,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 
 ## Inventario actual de archivos
 
-- Persistencia: `backend/data-store.js`, `backend/repositories/app-state.repository.js`, `backend/config/paths.js`.
+- Persistencia: `backend/data-store.js`, `backend/repositories/app-state.repository.js`, `backend/repositories/security-store.repository.js`, `backend/config/paths.js`.
 - Modelo: `backend/table-registry.json`, `backend/config/backend-columns.js`, `backend/config/backend-projections.js`.
 - Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js`, `backend/migrations/20260727-investment-fund.js`, `backend/migrations/20260727-economic-expenses-history.js`, `backend/migrations/20260728-icbc-cash-reconciliation.js` y las reparaciones puntuales `backend/migrations/20260728-icbc-duplicate-repair.js` y `backend/migrations/20260728-icbc-one-to-one-repair.js`, no automáticas y probadas sobre copias aisladas.
 - Acceso compartido: `backend/services/backend-table.service.js`, `backend-map.service.js`, `sql.service.js`, `backend/utils/runtime.js`, `backend/routes/router.js`.
@@ -43,6 +43,8 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 - `movimientos_bancarios` es la fuente canónica de todos los movimientos importados. El análisis inserta solo ocurrencias nuevas en un guardado atómico; las filas con `id_pago` e `id_cobro` vacíos son pendientes y la conciliación completa una sola asociación en la misma fila. El cache puede conservar metadato histórico `bankReconciliation`, pero ya no se consulta ni se modifica como fuente de verdad.
 - El endpoint read-only `/api/treasury/cash-boxes?box=icbc` no agrega tabla, columna ni metadato: lee `cobros`, `pagos`, sus mapas de contraparte y `movimientos_bancarios`; el punto de partida vive una sola vez en el servicio de Tesorería y no muta el cache.
 - `tmp/app-state.json` guarda preferencias/compatibilidad de UI mediante el repositorio; no reemplaza tablas operativas.
+- `tmp/security/users.json` guarda sólo hashes `scrypt` con salt y se reemplaza atómicamente después de un backup verificable; `tmp/security/activity-audit.jsonl` es append-only y encadenado por hash, mientras `activity-audit-recovery.jsonl` conserva intenciones/resultados pendientes para recuperación idempotente. Ninguno forma parte del registry ni del cache operativo.
+- Las requests HTTP mutantes se serializan dentro del proceso por `audit.service.js` para atribuir un diff persistido estable. Esto no reemplaza el lock interproceso pendiente ni autoriza LAN.
 - La consola crea SQLite en memoria desde una fotografía del cache, infiere `REAL`/`TEXT`, excluye `_rowNumber`, permite una sola consulta `SELECT`/`WITH` y limita a 5000 filas.
 - Contratos genéricos confirmados: `GET /api/backend/schema`, `GET /api/backend/tables`, `GET|POST /api/backend/tables/:tabla`, `GET /api/backend/map`, `POST /api/backend/sql`.
 - El POST genérico acepta `rows`/`deletedIds`, genera el siguiente ID numérico y persiste el cache completo. No impone claves foráneas ni reglas operativas.
@@ -124,6 +126,10 @@ Crear, mover, renombrar o eliminar un archivo permanente de datos obliga a actua
 **Cambios**, **Archivos**, **Validación**, **Riesgos o pendientes**; en alto riesgo agregar backup/rollback y consumidores.
 
 `egresos.imp_internos` es la fuente canĂłnica de impuestos internos; el materializador usa `egresos.id_egreso`, `fecha_factura` y la etiqueta maestra resuelta por nombre, sin agregar columnas ni hardcodear IDs.
+
+## Caja Efectivo canónica (2026-08-03)
+
+`caja_efectivo_movimientos(id_movimiento_caja)` conserva apertura, corte, fuente, importe firmado, operación idempotente y actor. La migración `20260803-cash-ledger` es aditiva, exige backup verificable y no importa cobros/pagos previos.
 
 ## Trabajo directo
 

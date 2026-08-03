@@ -34,6 +34,7 @@
     { "name": "retenciones_ganancias", "label": "Retenciones ganancias", "module": "ventas", "workbook": "Backend", "sheet": "retenciones_ganancias", "primaryKey": "Id_Retencion_Ganancias", "synthetic": true },
     { "name": "retenciones_iibb", "label": "Retenciones IIBB", "module": "ventas", "workbook": "Backend", "sheet": "retenciones_iibb", "primaryKey": "Id_Retencion_IIBB", "synthetic": true },
     { "name": "caja", "label": "Caja", "module": "tesoreria", "workbook": "Backend", "sheet": "caja", "primaryKey": "cuenta" },
+    { "name": "caja_efectivo_movimientos", "label": "Movimientos de Caja Efectivo", "module": "tesoreria", "workbook": "Backend", "sheet": "caja_efectivo_movimientos", "primaryKey": "id_movimiento_caja", "synthetic": true },
     { "name": "cheques_entregados", "label": "Cheques entregados", "module": "tesoreria", "workbook": "Backend", "sheet": "cheques_entregados", "primaryKey": "id_cheque_entregado" },
     { "name": "planes_pagos", "label": "Planes de pago", "module": "tesoreria", "workbook": "Backend", "sheet": "planes_pagos", "primaryKey": "id_plan_pago" },
     { "name": "cuotas_planes_pagos", "label": "Cuotas de planes de pago", "module": "tesoreria", "workbook": "Backend", "sheet": "cuotas_planes_pagos", "primaryKey": "id_cuota_plan_pago" },

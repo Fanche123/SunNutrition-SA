@@ -15,6 +15,7 @@ const { createBankParserService } = require("../backend/services/bank-parser.ser
 const { createBankPersistenceService } = require("../backend/services/bank-persistence.service");
 const { createBankReferenceService } = require("../backend/services/bank-reference.service");
 const { createCashflowService } = require("../backend/services/cashflow.service");
+const { migrateCashLedger } = require("../backend/migrations/20260803-cash-ledger");
 const { createIncomeCalculationService } = require("../backend/services/income-calculation.service");
 const { backendGroupRowsById, backendRowsById } = require("../backend/utils/ids");
 const {
@@ -85,7 +86,7 @@ function diskStore(filePath, seed) {
 }
 
 function baseTables() {
-  return {
+  return migrateCashLedger({
     generatedAt: "",
     tables: {
       ventas: { headers: ["id_venta", "total"], rows: [{ id_venta: 10, total: 100.25 }], rowCount: 1 },
@@ -96,7 +97,7 @@ function baseTables() {
         rowCount: 1
       }
     }
-  };
+  }, { registeredAt: "2026-08-03T12:00:00.000Z" }).cache;
 }
 
 function bankTestTables() {
@@ -239,6 +240,7 @@ function bankDependencies(store, overrides = {}) {
     cleanBackendText,
     createBankEgressForSource: () => null,
     createBankPaymentForExpense: () => null,
+    _createBankPaymentForExpense: persistence.createBankPaymentForExpense,
     createBankSourceExpense: () => null,
     ensureBackendTable,
     importBankMovements: persistence.importBankMovements,
@@ -317,6 +319,25 @@ function testBankReferenceNormalizerInjection() {
   assert.strictEqual(seedDefaultBankDetails(cache), 0);
   assert.strictEqual(cache.tables.datos_bancarios.rows.length, 1);
   assert.strictEqual(cache.tables.datos_bancarios.rows[0].detalle, "COMISI\u00d3N BANCARIA");
+}
+
+function testBankPaymentRejectsCashMethod() {
+  const store = memoryStore(bankTestTables());
+  const dependencies = bankDependencies(store);
+  const cache = store.value();
+  cache.tables.detalle_pagos = { headers: [], rows: [], rowCount: 0 };
+  const before = JSON.stringify(cache);
+  assert.throws(() => dependencies._createBankPaymentForExpense(
+    cache.tables,
+    { date: "2026-08-03", detail: "Débito bancario" },
+    "ICBC",
+    20,
+    10,
+    { metodo: "Efectivo" },
+    "bank-payment-cash",
+    "payload"
+  ), /no puede crear un pago en Efectivo/i);
+  assert.equal(JSON.stringify(cache), before);
 }
 
 async function testIcBcAnalyzeFixtures() {
@@ -1611,6 +1632,7 @@ async function main() {
   await testPaymentAtomicityAndIdempotency();
   await testContributionAtomicityAndSigns();
   testBankReferenceNormalizerInjection();
+  testBankPaymentRejectsCashMethod();
   await testIcBcAnalyzeFixtures();
   await testPersistentPendingBankMovements();
   await testBankReconciliationActionSequenceRefreshesCanonicalState();
