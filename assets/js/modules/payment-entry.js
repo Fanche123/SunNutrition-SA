@@ -26,6 +26,7 @@ async function loadExpenseDebtTables() {
     "compras",
     "entregas",
     "sueldos",
+    "comisiones",
     "proveedores",
     "empleados",
     "fletes",
@@ -81,6 +82,7 @@ function expenseDebtLookups(tables) {
   const receptions = rows("recepciones");
   const deliveries = rows("entregas");
   const payroll = rows("sueldos");
+  const commissions = rows("comisiones");
 
   return {
     creditors: rowsByKey(rows("acreedores"), "id_acreedor"),
@@ -93,6 +95,7 @@ function expenseDebtLookups(tables) {
     deliveriesByExpenseId: rowsByKey(deliveries, "id_egreso"),
     payroll: rowsByKey(payroll, "id_sueldo"),
     payrollByExpenseId: groupRowsByComparableKey(payroll, "id_egreso"),
+    commissionsByExpenseId: groupRowsByComparableKey(commissions, "id_egreso"),
     creditorTags: rows("acreedores_etiquetas"),
     creditorTagsById: rowsByKey(rows("acreedores_etiquetas"), "id_acreedor_etiqueta"),
     providers: rowsByKey(rows("proveedores"), "id_proveedor"),

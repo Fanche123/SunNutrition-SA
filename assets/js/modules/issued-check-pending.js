@@ -162,6 +162,20 @@ function resolveExpenseCreditorId(expense, lookups) {
       const employeeCreditorId = creditorIdFromOrigin("empleado", linkedSalaries[0].id_empleado, lookups);
       if (employeeCreditorId) return employeeCreditorId;
     }
+
+    const linkedCommissions = lookups.commissionsByExpenseId?.get(comparableLookupId(expenseId)) || [];
+    if (linkedCommissions.length) {
+      const commissionCreditorIds = linkedCommissions.map((commission) => {
+        const creditorTag = lookups.creditorTagsById
+          ?.get(comparableLookupId(commission.id_acreedor_etiqueta));
+        const creditorId = comparableLookupId(creditorTag?.id_acreedor);
+        return creditorId && lookups.creditors.has(creditorId) ? creditorId : "";
+      });
+      const uniqueCreditorIds = new Set(commissionCreditorIds);
+      if (!commissionCreditorIds.includes("") && uniqueCreditorIds.size === 1) {
+        return commissionCreditorIds[0];
+      }
+    }
   }
 
   const originType = normalizeSearchText(expense.origen_tipo);

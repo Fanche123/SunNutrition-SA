@@ -1415,6 +1415,81 @@ function testCashflowDebtAndDashboardConsumers() {
   assert.strictEqual(context.isDashboardPendingCheck({ status: "Debitado", amount: 100.25 }), false);
 }
 
+async function testCommissionExpenseResolvesCanonicalCreditorInPayments() {
+  const requestedTables = [];
+  const comparableId = (value) => {
+    const text = backendId(value);
+    return /^-?\d+(?:\.0+)?$/.test(text) ? String(Number(text)) : text;
+  };
+  const context = {
+    backendTableRowsForEntry: async (tableName) => {
+      requestedTables.push(tableName);
+      return [];
+    },
+    centsToMoney: money.fromCents,
+    comparableLookupId: comparableId,
+    displayNameLabel: (value) => cleanBackendText(value).replaceAll("_", " "),
+    isFinancialInvoiceTypeVisible: () => true,
+    moneyToCents: money.toCents,
+    normalizeCategory: (value) => cleanBackendText(value).toLowerCase(),
+    normalizeEmployeeContractType: (value) => value,
+    normalizeMoney: (value) => money.fromCents(money.toCents(value)),
+    normalizeSearchText: (value) => cleanBackendText(value).toLowerCase(),
+    parseDate: (value) => cleanBackendText(value),
+    rowsByKey: (rows, key) => (rows || []).reduce((map, row) => {
+      const rawId = backendId(row[key]);
+      if (!rawId) return map;
+      map.set(rawId, row);
+      map.set(comparableId(rawId), row);
+      return map;
+    }, new Map()),
+    groupRowsByComparableKey: (rows, key) => (rows || []).reduce((groups, row) => {
+      const id = comparableId(row[key]);
+      if (!groups.has(id)) groups.set(id, []);
+      groups.get(id).push(row);
+      return groups;
+    }, new Map())
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "..", "assets/js/modules/issued-check-pending.js"), "utf8"),
+    context
+  );
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "..", "assets/js/modules/payment-entry.js"), "utf8"),
+    context
+  );
+
+  await context.loadExpenseDebtTables();
+  assert(requestedTables.includes("comisiones"));
+
+  const tables = {
+    egresos: { rows: [{ id_egreso: "9001", tipo_factura: "Factura_C", total: 1250.5 }] },
+    detalle_pagos: { rows: [] },
+    etiquetas: { rows: [{ id_etiqueta: "7", etiqueta: "Comisiones" }] },
+    acreedores: { rows: [{ id_acreedor: "13", origen_tipo_acreedor: "Canal", origen_id_acreedor: "1" }] },
+    acreedores_etiquetas: { rows: [{ id_acreedor_etiqueta: 21, id_acreedor: "13", id_etiqueta: "7" }] },
+    comisiones: { rows: [
+      { id_comision: "1", id_egreso: "9001", id_canal: "1", id_acreedor_etiqueta: "21.0" },
+      { id_comision: "2", id_egreso: "9001", id_canal: "1", id_acreedor_etiqueta: 21 }
+    ] },
+    canales: { rows: [{ id_canal: "1", nombre: "Canal fixture" }] }
+  };
+  const rows = context.buildExpenseDebtRows(tables);
+
+  assert.strictEqual(rows.length, 1);
+  assert.strictEqual(rows[0].creditorId, "13");
+  assert.strictEqual(rows[0].creditor, "Canal fixture");
+
+  tables.acreedores.rows.push({ id_acreedor: "14", origen_tipo_acreedor: "Canal", origen_id_acreedor: "2" });
+  tables.acreedores_etiquetas.rows.push({ id_acreedor_etiqueta: "22", id_acreedor: "14", id_etiqueta: "7" });
+  tables.comisiones.rows[1].id_acreedor_etiqueta = "22";
+  assert.strictEqual(context.buildExpenseDebtRows(tables)[0].creditor, "Sin acreedor");
+
+  tables.comisiones.rows[1].id_acreedor_etiqueta = "999";
+  assert.strictEqual(context.buildExpenseDebtRows(tables)[0].creditor, "Sin acreedor");
+}
+
 async function testDurableIdempotencyAcrossRestarts() {
   const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "erp-treasury-idempotency-"));
   try {
@@ -1627,6 +1702,7 @@ async function main() {
   assert.doesNotMatch(serverSource, /ensureBankDetailsSchema\s*\(/);
   testStartupTwiceWithoutFinancialWrites();
   testCashflowDebtAndDashboardConsumers();
+  await testCommissionExpenseResolvesCanonicalCreditorInPayments();
   await testDurableIdempotencyAcrossRestarts();
   await testCollectionAtomicityAndIdempotency();
   await testPaymentAtomicityAndIdempotency();
