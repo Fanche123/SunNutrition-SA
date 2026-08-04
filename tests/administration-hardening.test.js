@@ -72,6 +72,11 @@ function fixtureStore() {
         rows: [{ id_canal: 1, nombre: "Directo", comision: 0 }],
         rowCount: 1
       },
+      insumos_proveedores: {
+        headers: EXPECTED_BACKEND_COLUMNS.insumos_proveedores,
+        rows: [{ id_insumos_proveedores: 1, id_insumo: 1, id_proveedor: 1, ud_proveedor: "unidad", cantidad_proveedor: 1, precio: 3140000, iva: 21 }],
+        rowCount: 1
+      },
       clientes: {
         headers: EXPECTED_BACKEND_COLUMNS.clientes,
         rows: [{ id_cliente: 1, nombre_cliente: "Cliente fixture", id_canal: 1 }],
@@ -117,6 +122,7 @@ const registry = {
     { name: "etiquetas", label: "Etiquetas", module: "maestros", primaryKey: "Id_Etiqueta" },
     { name: "otros_acreedores", label: "Otros acreedores", module: "maestros", primaryKey: "Id_Otro_Acreedor" },
     { name: "canales", label: "Canales", module: "maestros", primaryKey: "Id_Canal" },
+    { name: "insumos_proveedores", label: "Insumos proveedores", module: "inventario", primaryKey: "Id_Insumos_Proveedores" },
     { name: "clientes", label: "Clientes", module: "maestros", primaryKey: "Id_Cliente" },
     { name: "cobros", label: "Cobros", module: "ventas", primaryKey: "Id_Cobro" },
     { name: "pagos", label: "Pagos", module: "compras", primaryKey: "Id_Pago" },
@@ -323,6 +329,10 @@ async function testAdminEditor() {
     booleanFixture.payload.table.schema.columns.find((column) => column.name === "nombre_otro_acreedor").type,
     "boolean"
   );
+  const supplierInputs = await invoke(service.handleAdminTableRequest, "/api/admin/tables/insumos_proveedores?limit=20");
+  assert.strictEqual(supplierInputs.status, 200);
+  assert.strictEqual(supplierInputs.payload.table.schema.columns.find((column) => column.name === "precio").type, "money");
+  assert.strictEqual(supplierInputs.payload.table.schema.columns.find((column) => column.name === "iva").type, "percentage");
 
   const cellStore = fixtureStore();
   const cellService = adminService(cellStore);
@@ -435,6 +445,32 @@ async function testAdminEditor() {
   assert.strictEqual(invalidLocalizedMoney.status, 400);
   assert.strictEqual(invalidLocalizedMoney.payload.code, "ADMIN_INVALID_MONEY");
   assert.deepStrictEqual(cellStore.value(), beforeInvalidLocalizedMoney);
+
+  const percentageTable = await invoke(
+    cellService.handleAdminTableRequest,
+    "/api/admin/tables/insumos_proveedores?all=true"
+  );
+  const validPercentage = await invoke(cellService.handleAdminTableCellUpdate, "/api/admin/tables/insumos_proveedores/cell", {
+    primaryKey: "1",
+    column: "iva",
+    value: "10,50%",
+    originalValue: 21,
+    tableVersion: percentageTable.payload.table.version
+  });
+  assert.strictEqual(validPercentage.status, 200);
+  assert.strictEqual(validPercentage.payload.row.iva, 10.5);
+  const beforeInvalidPercentage = cellStore.value();
+  const invalidPercentage = await invoke(cellService.handleAdminTableCellUpdate, "/api/admin/tables/insumos_proveedores/cell", {
+    primaryKey: "1",
+    column: "iva",
+    value: "10.555%",
+    originalValue: 10.5,
+    tableVersion: validPercentage.payload.tableVersion
+  });
+  assert.strictEqual(invalidPercentage.status, 400);
+  assert.strictEqual(invalidPercentage.payload.code, "ADMIN_INVALID_PERCENTAGE");
+  assert.match(invalidPercentage.payload.error, /porcentaje/i);
+  assert.deepStrictEqual(cellStore.value(), beforeInvalidPercentage);
 
   let result = await invoke(service.handleAdminTableSave, "/api/admin/tables/etiquetas", {
     rows: [{ id_etiqueta: 1, etiqueta: "Mercaderia actualizada", categoria_pnl: "Costo" }]
@@ -672,6 +708,9 @@ async function testOperationalEndpointCompatibility() {
   assert.match(editorSource, /all:\s*true/);
   assert.match(editorSource, /ErpMoneyColumns\?\.isMoneyColumn/);
   assert.match(editorSource, /parseMoneyInput\(rawValue, \{ allowEmpty: true \}\)/);
+  assert.match(editorSource, /meta\.type === "percentage"/);
+  assert.match(editorSource, /parsePercentageInput\(rawValue, \{ allowEmpty: true \}\)/);
+  assert.match(editorSource, /Ingresá un porcentaje válido con hasta dos decimales\./);
   assert.match(editorSource, /parsed\.ok && !parsed\.empty/);
   assert.match(editorSource, /: String\(rawValue \?\? ""\)/);
   assert.match(editorSource, /setupDataEditorGrid/);

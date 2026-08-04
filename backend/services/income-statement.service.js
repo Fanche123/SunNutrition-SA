@@ -42,13 +42,13 @@ const INCOME_STATEMENT_DETAIL_CONCEPTS = Object.freeze({
 });
 
 function createIncomeStatementService(dependencies) {
-  const { backendExpenseCounterpartyInfo, backendExpenseCounterpartyMaps, backendGroupRowsById, backendId, backendIsoDate, backendIsSchoolClient, backendLastInventorySummary, backendMonthEndIso, backendMonthStartIso, backendNormalizeText, backendNumber, backendOffsetIsoDate, backendPayrollSummary, backendRowsById, backendStatementExpenseRows, backendUncategorizedExpenseRows, loadCache } = dependencies;
+  const { backendExpenseCounterpartyInfo, backendExpenseCounterpartyMaps, backendGroupRowsById, backendId, backendIsoDate, backendIsSchoolClient, backendLastInventoryRow, backendLastInventorySummary, backendMonthEndIso, backendMonthStartIso, backendNormalizeText, backendNumber, backendOffsetIsoDate, backendPayrollSummary, backendRowsById, backendStatementExpenseRows, backendUncategorizedExpenseRows, loadCache, valueBackendInventories } = dependencies;
 
   function buildBackendIncomeStatementReport(year, month) {
     const cache = loadCache();
-    const tables = cache.tables || {};
     const startIso = backendMonthStartIso(year, month);
     const endIso = backendMonthEndIso(year, month);
+    const tables = valuedIncomeStatementTables(cache.tables || {}, startIso, endIso);
     const dayBeforeStartIso = backendOffsetIsoDate(startIso, -1);
   
     const clientsById = backendRowsById(tables.clientes?.rows, "id_cliente");
@@ -253,9 +253,12 @@ function createIncomeStatementService(dependencies) {
     const requestedLimit = normalizedPaginationInteger(pagination.limit, INCOME_STATEMENT_DETAIL_LIMIT);
     const limit = Math.min(requestedLimit || INCOME_STATEMENT_DETAIL_LIMIT, INCOME_STATEMENT_DETAIL_LIMIT);
     const cache = loadCache();
-    const tables = cache.tables || {};
     const startIso = backendMonthStartIso(year, month);
     const endIso = backendMonthEndIso(year, month);
+    const sourceTables = cache.tables || {};
+    const tables = concept.composition === "merchandise"
+      ? valuedIncomeStatementTables(sourceTables, startIso, endIso)
+      : sourceTables;
     const detailRows = concept.composition === "merchandise"
       ? buildMerchandiseDetailRows(tables, startIso, endIso, concept)
       : concept.categories
@@ -390,6 +393,40 @@ function createIncomeStatementService(dependencies) {
         };
       });
   }
+
+  function valuedIncomeStatementTables(sourceTables, startIso, endIso) {
+    if (
+      typeof valueBackendInventories !== "function"
+      || typeof backendLastInventoryRow !== "function"
+      || !(sourceTables.detalle_compras?.rows || []).length
+    ) return sourceTables;
+
+    const inventoryIds = [
+      backendLastInventoryRow(sourceTables, "", backendOffsetIsoDate(startIso, -1)),
+      backendLastInventoryRow(sourceTables, startIso, endIso)
+    ].map((inventory) => backendId(inventory?.id_inventario)).filter(Boolean);
+    if (!inventoryIds.length) return sourceTables;
+    const targetIds = new Set(inventoryIds);
+
+    const valuationCache = {
+      tables: {
+        ...sourceTables,
+        inventarios: cloneTable(sourceTables.inventarios, (row) => targetIds.has(backendId(row.id_inventario))),
+        detalle_inventarios: cloneTable(sourceTables.detalle_inventarios, (row) => targetIds.has(backendId(row.id_inventario)))
+      }
+    };
+    valueBackendInventories(valuationCache, [...new Set(inventoryIds)]);
+    return valuationCache.tables;
+  }
+}
+
+function cloneTable(table, predicate = () => true) {
+  if (!table) return { rows: [] };
+  return {
+    ...table,
+    headers: Array.isArray(table.headers) ? table.headers.slice() : table.headers,
+    rows: (table.rows || []).filter(predicate).map((row) => ({ ...row }))
+  };
 }
 
 function sumMoney(values) {

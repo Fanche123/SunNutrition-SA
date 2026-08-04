@@ -29,7 +29,7 @@ function updateTheoreticalInventoryStock() {
       missing: missingRows,
       selectedShift: theoreticalShifts[0] || ""
     });
-    updateInventoryPurchaseAlerts();
+    scheduleInventoryPurchaseDraftEvaluation();
     return;
   }
 
@@ -42,7 +42,7 @@ function updateTheoreticalInventoryStock() {
       if (Number.isFinite(row.theoreticalStock)) {
         cell.textContent = formatRoundedNumber(row.theoreticalStock);
         cell.classList.remove("missing-theoretical-stock", "stock-diff-yellow", "stock-diff-orange", "stock-diff-red");
-        cell.title = `Inicial: ${formatNullableNumber(row.previousStock)} | Produccion: ${formatNullableNumber(row.producedStock)} | Ventas: ${formatNullableNumber(row.sales)} | Consumo recetas: ${formatNullableNumber(row.consumedStock)}`;
+        cell.title = `Inicial: ${formatNullableNumber(row.previousStock)} | Entradas: ${formatNullableNumber(row.receivedStock)} | Produccion: ${formatNullableNumber(row.producedStock)} | Ventas: ${formatNullableNumber(row.sales)} | Consumo recetas: ${formatNullableNumber(row.consumedStock)}`;
         renderTheoreticalStockDifference(diffCell, row, model.selectedShift);
         return;
       }
@@ -50,7 +50,7 @@ function updateTheoreticalInventoryStock() {
     });
   });
   renderTheoreticalStockBreakdown(models[0]);
-  updateInventoryPurchaseAlerts();
+  scheduleInventoryPurchaseDraftEvaluation();
 }
 
 function renderTheoreticalStockDifference(cell, row, shift) {
@@ -105,7 +105,7 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
     if (isNeutralTheoreticalStockItem(row.itemName)) return;
     if (!recipeProductKeys.has(itemKey) && !isBarraPopName(row.itemName)) return;
 
-    const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName);
+    const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName, selectedShift, row.itemId);
     const previousStock = initialDetailStockForShift(row.element, selectedShift);
     const currentStock = currentDetailStockForShift(row.element, selectedShift);
     let produced = NaN;
@@ -136,7 +136,7 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
       if (!Number.isFinite(previousStock) || !Number.isFinite(currentStock)) return;
 
       const factor = theoreticalRecipeUnitFactor(row.itemName);
-      const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName);
+      const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName, selectedShift, row.itemId);
       const consumedByParents = (consumptionByComponent.get(itemKey) || 0) / factor;
       productionByProduct.set(itemKey, currentStock - previousStock + sales + consumedByParents);
     });
@@ -148,7 +148,8 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
     const itemKey = normalizeCategory(row.itemName);
     const previousStock = initialDetailStockForShift(row.element, selectedShift);
     const currentStock = currentDetailStockForShift(row.element, selectedShift);
-    const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName);
+    const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName, selectedShift, row.itemId);
+    const receivedStock = receivedInventoryQuantityForDateAndItem(selectedDate, selectedShift, row.itemId);
     const factor = theoreticalRecipeUnitFactor(row.itemName);
     const producedRaw = productionByProduct.get(itemKey);
     const consumedRaw = consumptionByComponent.get(itemKey) || 0;
@@ -162,10 +163,13 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
         ...row,
         selectedShift,
         previousStock: specialStock.previousStock,
+        receivedStock,
         producedStock: specialStock.producedStock,
         consumedStock: specialStock.consumedStock,
         sales: specialStock.sales,
-        theoreticalStock: specialStock.theoreticalStock,
+        theoreticalStock: Number.isFinite(specialStock.theoreticalStock)
+          ? specialStock.theoreticalStock + receivedStock
+          : specialStock.theoreticalStock,
         missing: specialStock.missing
       };
     }
@@ -175,6 +179,7 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
         ...row,
         selectedShift,
         previousStock,
+        receivedStock,
         producedStock: 0,
         consumedStock: 0,
         sales,
@@ -190,13 +195,14 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
     }
     const theoreticalStock = Number.isFinite(previousStock)
       && !(needsCounterDrivenConsumption && !Number.isFinite(counterUnits))
-      ? previousStock + producedStock - sales - consumedStock
+      ? previousStock + receivedStock + producedStock - sales - consumedStock
       : NaN;
 
     return {
       ...row,
       selectedShift,
       previousStock,
+      receivedStock,
       producedStock,
       consumedStock,
       sales,
@@ -211,9 +217,28 @@ function buildTheoreticalInventoryModel(selectedDate, selectedShift) {
     recipesApplied: recipes.length,
     rows,
     highlightedRows: rows
-      .filter((row) => Number.isFinite(row.theoreticalStock) && (row.consumedStock || row.producedStock || row.sales))
+      .filter((row) => Number.isFinite(row.theoreticalStock) && (row.receivedStock || row.consumedStock || row.producedStock || row.sales))
       .slice(0, 12)
   };
+}
+
+function receivedInventoryQuantityForDateAndItem(dateIso, selectedShift, itemId) {
+  const targetItemId = String(itemId || "").trim();
+  const previousShift = previousWorkedInventoryShift(selectedShift);
+  const previousOrder = inventoryShiftOrder(previousShift);
+  const selectedOrder = inventoryShiftOrder(selectedShift);
+  const receptionOrder = inventoryShiftOrder("morning");
+  if (!targetItemId || receptionOrder <= previousOrder || receptionOrder > selectedOrder) return 0;
+  return (inventoryDetailTemplate?.receptionEntries || [])
+    .filter((entry) => (
+      entry.date === dateIso
+      && entry.shift === "morning"
+      && String(entry.itemId || "").trim() === targetItemId
+    ))
+    .reduce((total, entry) => {
+      const quantity = Number(entry.quantity);
+      return Number.isFinite(quantity) && quantity > 0 ? total + quantity : total;
+    }, 0);
 }
 
 function requiresCounterDrivenConsumption(itemName, recipes) {
@@ -279,7 +304,7 @@ function specialTheoreticalStockForRow(row, detailRows, selectedDate, counterUni
   const previousStock = initialDetailStockForShift(row.element, selectedShift);
   const previousBagStock = bagRow ? initialDetailStockForShift(bagRow.element, selectedShift) : NaN;
   const currentBagStock = bagRow ? currentDetailStockForShift(bagRow.element, selectedShift) : NaN;
-  const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName);
+  const sales = orderDetailsUnitsForDateAndProduct(selectedDate, row.itemName, selectedShift, row.itemId);
   const missing = [];
 
   if (!Number.isFinite(previousStock)) missing.push("stock anterior Barra_Pop_140Ud");
@@ -310,7 +335,6 @@ function specialGranelIngredientTheoreticalStock(row, detailRows, counterUnits, 
   const currentGranelStock = granelRow ? currentDetailStockForShift(granelRow.element, selectedShift) : NaN;
   const missing = [];
 
-  if (!inventoryPhotoApplied) missing.push("foto de inventario aplicada");
   if (!Number.isFinite(previousStock)) missing.push(`stock anterior ${row.itemName}`);
   if (!Number.isFinite(counterUnits)) missing.push("Contador alipack actual");
   if (!Number.isFinite(previousGranelStock)) missing.push("stock anterior Granel Dulce");
@@ -375,7 +399,12 @@ function specialBarraPopTheoreticalStock(row, detailRows, selectedDate, counterU
   const previousStock = initialDetailStockForShift(row.element, selectedShift);
   const previousTargetStock = targetRow ? initialDetailStockForShift(targetRow.element, selectedShift) : NaN;
   const currentTargetStock = targetRow ? currentDetailStockForShift(targetRow.element, selectedShift) : NaN;
-  const targetSales = orderDetailsUnitsForDateAndProduct(selectedDate, "Barra_Pop_140Ud");
+  const targetSales = orderDetailsUnitsForDateAndProduct(
+    selectedDate,
+    "Barra_Pop_140Ud",
+    selectedShift,
+    targetRow?.itemId
+  );
   const missing = [];
 
   if (!Number.isFinite(previousStock)) missing.push("stock anterior Barra_Pop");
@@ -404,9 +433,13 @@ function barraPop140ProducedBoxes(detailRows, selectedDate, selectedShift) {
 
   const previousTargetStock = initialDetailStockForShift(targetRow.element, selectedShift);
   const currentTargetStock = currentDetailStockForShift(targetRow.element, selectedShift);
-  const targetSales = orderDetailsUnitsForDateAndProduct(selectedDate, "Barra_Pop_140Ud");
+  const targetSales = orderDetailsUnitsForDateAndProduct(
+    selectedDate,
+    "Barra_Pop_140Ud",
+    selectedShift,
+    targetRow.itemId
+  );
   return Number.isFinite(previousTargetStock) && Number.isFinite(currentTargetStock)
     ? currentTargetStock - previousTargetStock + targetSales
     : NaN;
 }
-

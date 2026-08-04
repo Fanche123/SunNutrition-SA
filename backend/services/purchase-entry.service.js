@@ -5,7 +5,7 @@ async function handlePurchaseFullEntry(request, response) {
   try {
     const body = await readJsonBody(request);
     const purchase = normalizePurchasePayload(body);
-    const quantity = Number(purchase.quantity);
+    const quantity = parsePurchaseQuantity(purchase.quantity);
 
     if (!purchase.supplier) {
       sendJson(response, 400, { ok: false, error: "Falta el proveedor." });
@@ -21,8 +21,8 @@ async function handlePurchaseFullEntry(request, response) {
       sendJson(response, 400, { ok: false, error: "Falta el insumo." });
       return;
     }
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      sendJson(response, 400, { ok: false, error: "La cantidad de la compra debe ser mayor a cero." });
+    if (!Number.isFinite(quantity)) {
+      sendJson(response, 400, { ok: false, error: "La cantidad debe ser positiva y tener como máximo dos decimales." });
       return;
     }
 
@@ -43,6 +43,7 @@ async function handlePurchaseFullEntry(request, response) {
 
     const purchaseId = backendNextNumericId(cache.tables.compras.rows, "id_compra");
     const detailId = backendNextNumericId(cache.tables.detalle_compras.rows, "id_detalle_compra");
+    const supplierItem = (cache.tables.insumos_proveedores?.rows || []).find((row) => backendId(row.id_insumos_proveedores) === supplierItemId) || {};
     cache.tables.compras.rows.push({
       id_compra: purchaseId,
       id_proveedor: providerId,
@@ -53,7 +54,10 @@ async function handlePurchaseFullEntry(request, response) {
       id_detalle_compra: detailId,
       id_compra: purchaseId,
       id_insumos_proveedores: supplierItemId,
-      cantidad: quantity
+      id_insumo: backendId(supplierItem.id_insumo),
+      cantidad: quantity,
+      cantidad_proveedor: cleanBackendInput(supplierItem.cantidad_proveedor),
+      ud_proveedor: cleanBackendInput(supplierItem.ud_proveedor)
     });
     finalizeBackendTable(cache.tables.compras);
     finalizeBackendTable(cache.tables.detalle_compras);
@@ -119,6 +123,16 @@ function normalizePurchasePayload(body) {
     iva: cleanBackendInput(body.iva),
     total: cleanBackendInput(body.total)
   };
+}
+
+function parsePurchaseQuantity(value) {
+  const compact = String(value ?? "").trim().replace(/\s+/g, "");
+  let normalized = "";
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(compact)) normalized = compact.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(compact)) normalized = compact.replace(/,/g, "");
+  else if (/^\d+(?:[.,]\d{1,2})?$/.test(compact)) normalized = compact.replace(",", ".");
+  const quantity = Number(normalized);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : NaN;
 }
 
   return { handlePurchaseFullEntry };

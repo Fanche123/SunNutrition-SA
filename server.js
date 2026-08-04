@@ -27,6 +27,7 @@ const {
 const { MIME_TYPES } = require("./backend/http-config");
 const { createAccessConfig } = require("./backend/config/access");
 const { ADMIN_TABLE_POLICY } = require("./backend/config/admin-table-policy");
+const { ADMIN_TABLE_RELATIONS } = require("./backend/config/admin-table-relations");
 const { createQueryLimits } = require("./backend/config/query-limits");
 const { backfillHistoricalEconomicExpenses } = require("./backend/migrations/20260727-economic-expenses-history");
 const { readAppState, writeAppState } = require("./backend/repositories/app-state.repository");
@@ -79,7 +80,7 @@ const { createIncomeCalculationService } = require("./backend/services/income-ca
 const { createIncomeStatementService } = require("./backend/services/income-statement.service");
 const { createProductionReportService } = require("./backend/services/production-report.service");
 const { createInventoryValuationService } = require("./backend/services/inventory-valuation.service");
-const { createSqlService } = require("./backend/services/sql.service");
+const { createSqlGenerationService, createSqlService, createSqlSyntaxValidator } = require("./backend/services/sql.service");
 const { createCreditorEntryService } = require("./backend/services/creditor-entry.service");
 const { createPurchaseEntryService } = require("./backend/services/purchase-entry.service");
 const { createEconomicExpensesService } = require("./backend/services/economic-expenses.service");
@@ -148,6 +149,20 @@ const runtimeSession = createRuntimeSession({
 });
 const queryLimits = createQueryLimits(process.env);
 const recordAllRowsRead = createTableReadMetrics({ config: queryLimits.allRows });
+const inventoryEntryErrorFile = path.join(ROOT_DIR, "tmp", "inventory-entry-errors.jsonl");
+function logInventoryEntryFailure(error) {
+  const message = String(error?.stack || error || "inventory-entry-failed");
+  console.error(message);
+  try {
+    fs.mkdirSync(path.dirname(inventoryEntryErrorFile), { recursive: true });
+    fs.appendFileSync(inventoryEntryErrorFile, `${JSON.stringify({
+      occurredAtUtc: new Date().toISOString(),
+      message
+    })}\n`, "utf8");
+  } catch (logError) {
+    console.error(logError);
+  }
+}
 const runBackendSqlQuery = createSqlService({
   cacheFile: BACKEND_CACHE_FILE,
   limits: queryLimits.sql,
@@ -157,6 +172,17 @@ const runBackendSqlQuery = createSqlService({
 });
 
 const { EXPECTED_BACKEND_COLUMNS } = require('./backend/config/backend-columns');
+const validateGeneratedSqlSyntax = createSqlSyntaxValidator({
+  pythonExecutable: PYTHON_EXECUTABLE,
+  rootDir: ROOT_DIR,
+  scriptFile: BACKEND_SQL_SCRIPT
+});
+const generateBackendSql = createSqlGenerationService({
+  expectedBackendColumns: EXPECTED_BACKEND_COLUMNS,
+  loadRegistry,
+  relations: ADMIN_TABLE_RELATIONS,
+  validateSyntax: validateGeneratedSqlSyntax
+});
 
 const incomeCalculations = createIncomeCalculationService({
   backendGroupRowsById,
@@ -170,6 +196,7 @@ const {
   backendIsGrossRevenueTaxInvoice,
   backendIsoDate,
   backendIsSchoolClient,
+  backendLastInventoryRow,
   backendLastInventorySummary,
   backendLatestSupplyCostMap,
   backendMonthEndIso,
@@ -260,6 +287,7 @@ const buildBackendIncomeStatementReport = createIncomeStatementService({
   backendId,
   backendIsoDate,
   backendIsSchoolClient,
+  backendLastInventoryRow,
   backendLastInventorySummary,
   backendMonthEndIso,
   backendMonthStartIso,
@@ -271,7 +299,8 @@ const buildBackendIncomeStatementReport = createIncomeStatementService({
   backendRowsById,
   backendStatementExpenseRows,
   backendUncategorizedExpenseRows,
-  loadCache
+  loadCache,
+  valueBackendInventories
 });
 const buildBackendIncomeStatementDetail = buildBackendIncomeStatementReport.buildDetail;
 const { buildProductionReport } = createProductionReportService({ loadCache });
@@ -306,6 +335,7 @@ const buildBackendCashflowReport = createCashflowService({
 const {
   handleAppStateGet,
   handleAppStateSave,
+  handleBackendSqlGenerate,
   handleBackendSqlQuery,
   handleCashflowReport,
   handleIncomeStatementDetail,
@@ -318,6 +348,7 @@ const {
   buildBackendIncomeStatementDetail,
   buildBackendIncomeStatementReport,
   buildProductionReport,
+  generateBackendSql,
   readAppState,
   readJsonBody,
   runBackendSqlQuery,
@@ -488,6 +519,7 @@ const {
 const {
   buildInventoryPurchaseSnapshot,
   clearInventoryPurchaseSnapshot,
+  evaluateInventoryPurchaseSnapshot,
   readInventoryPurchaseSnapshot,
   storeInventoryPurchaseSnapshot,
   updateInventoryPurchaseConfig
@@ -503,6 +535,7 @@ const {
   handleInventoryDetailTemplate,
   handleInventoryFullEntry,
   handleInventoryLatestDate,
+  handleInventoryPurchaseDraft,
   handleInventoryPurchaseProductionRate,
   handleInventoryPurchaseSnapshot
 } = createInventoryEntryService({
@@ -514,10 +547,12 @@ const {
   inventoryItemNameMap,
   isIsoDate,
   loadCache,
+  logError: logInventoryEntryFailure,
   nextBusinessDayIso,
   normalizeInventoryDetailRows,
   normalizeSelectedInventoryShifts,
   readJsonBody,
+  evaluateInventoryPurchaseSnapshot,
   readInventoryPurchaseSnapshot,
   resolveInventoryEmployeeId,
   saveBackendCache,
@@ -882,6 +917,7 @@ const server = http.createServer(createRequestHandler({
     handleAuthUsersList: authService.handleUsersList,
     handleAppStateGet,
     handleAppStateSave,
+    handleBackendSqlGenerate,
     handleBackendSqlQuery,
     handleAdminTableCellUpdate,
     handleAdminTableDeletePreview,
@@ -928,6 +964,7 @@ const server = http.createServer(createRequestHandler({
     handleInventoryFullEntry,
     handleInventoryLatestDate,
     handleInventoryPurchaseProductionRate,
+    handleInventoryPurchaseDraft,
     handleInventoryPurchaseSnapshot,
     handleOtherExpenseFullEntry,
     handlePayrollScaleRead,

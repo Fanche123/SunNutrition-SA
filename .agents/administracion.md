@@ -27,6 +27,7 @@ Fuera de alcance: definir columnas, claves o migraciones (Base de datos); cambia
 - Frontend: `assets/js/modules/data-editor.js`, `data-map.js`, `sql-console.js`; `assets/js/modules/access.js` aporta las vistas propietarias Usuarios y Registro de actividad como integración transversal con Arquitectura. Editor, Mapa y SQL read-only están habilitados para `employee_admin`.
 - El Editor usa una única grilla compacta y virtualizada. Solicita todas las filas filtradas, mantiene un único scroll continuo y solo materializa en el DOM la ventana visible. No expone posiciones internas, rangos, páginas ni tamaños de bloque; la selección para borrado ocupa una columna mínima.
 - Backend: `backend/services/backend-map.service.js`, `backend-table.service.js`, `admin-table.service.js`, `expense-deletion.service.js`, `delivery-deletion.service.js`, `sql.service.js`.
+- Prueba focalizada de generación SQL: `tests/sql-generation.test.js`.
 - Compartidos relevantes: `index.html`, `assets/css/styles.css`, `assets/js/app.js`, `assets/js/core/formatters.js`, `backend/services/core-handlers.service.js`, `backend/data-store.js`, `backend/config/backend-columns.js`, `backend/table-registry.json`, `backend/routes/router.js`, `tools/backend-sqlite-query.py`.
 
 ## Tablas y contratos confirmados
@@ -103,6 +104,7 @@ Crear, mover, renombrar o eliminar un archivo permanente de Administración obli
 - Una fila vacía permanente queda fuera de búsqueda, filtros y conteos. Al empezar a completarla aparece otra debajo; solo se persiste cuando cumple los campos obligatorios, y después se reubica según el orden vigente.
 - `backend/config/query-limits.js` centraliza timeout/presupuesto SQL y umbrales de `all=true`.
 - `backend/services/sql.service.js` ejecuta Python asíncronamente; `tools/backend-sqlite-query.py` aplica presupuesto con `set_progress_handler`.
+- `backend/services/sql.service.js` también genera propuestas SQLite mediante Responses API con esquema sanitizado, validación read-only compartida y sin ejecución automática; la API key nunca sale del backend.
 - `backend/services/table-read-metrics.service.js` registra solo tabla, conteo, duración y bytes aproximados.
 - El POST genérico permanece para compatibilidad de flujos operativos locales y debe migrarse antes de LAN.
 

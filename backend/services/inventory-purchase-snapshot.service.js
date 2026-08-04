@@ -45,9 +45,14 @@ function createInventoryPurchaseSnapshotService(dependencies) {
         supplyId: ""
       };
       const previousStock = previousStocks.get(itemId);
-      const stock = currentOrPreviousStock(row, selectedShifts, previousStock);
+      const allowPreviousStockFallback = options.allowPreviousStockFallback !== false;
+      const stock = currentOrPreviousStock(
+        row,
+        selectedShifts,
+        allowPreviousStockFallback ? previousStock : Number.NaN
+      );
       const hasResolvableInventoryDetail = selectedShifts.some((shift) => hasInventoryQuantity(row[shift]))
-        || hasInventoryQuantity(previousStock);
+        || (allowPreviousStockFallback && hasInventoryQuantity(previousStock));
       const provider = providerContext.get(item.supplyId) || {};
       let businessDays = Number.NaN;
       let calendarUnavailable = false;
@@ -398,6 +403,7 @@ function createInventoryPurchaseSnapshotService(dependencies) {
   return {
     buildInventoryPurchaseSnapshot,
     clearInventoryPurchaseSnapshot,
+    evaluateInventoryPurchaseSnapshot,
     latestInventoryBatch,
     readInventoryPurchaseConfig,
     readInventoryPurchaseSnapshot,

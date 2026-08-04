@@ -32,6 +32,9 @@ def main():
         emit_error(error.code, str(error))
         return 2
 
+    if request.get("validateOnly") is True:
+        return validate_schema_only(sql, request.get("schema") or {})
+
     try:
         with open(cache_file, "r", encoding="utf-8-sig") as handle:
             cache = json.load(handle)
@@ -83,6 +86,36 @@ def validate_readonly_sql(sql):
         raise QueryError("SQL_FORBIDDEN", "La consola SQL es solo de lectura.")
     if has_multiple_statements(sql):
         raise QueryError("SQL_INVALID", "Ejecuta una sola consulta por vez.")
+
+
+def validate_schema_only(sql, schema):
+    connection = sqlite3.connect(":memory:")
+    try:
+        for table in schema.get("tables") or []:
+            table_name = str(table.get("name") or "").strip()
+            columns = table.get("columns") or []
+            if not table_name or not columns:
+                continue
+            definitions = []
+            for column in columns:
+                column_name = str(column.get("name") or "").strip()
+                if not column_name:
+                    continue
+                declared_type = str(column.get("type") or "text").lower()
+                sqlite_type = "REAL" if declared_type == "number" else "INTEGER" if declared_type in ("integer", "boolean") else "TEXT"
+                definitions.append(f"{quote_identifier(column_name)} {sqlite_type}")
+            if definitions:
+                connection.execute(
+                    f"CREATE TABLE {quote_identifier(table_name)} ({', '.join(definitions)})"
+                )
+        connection.execute(f"EXPLAIN QUERY PLAN {sql}").fetchall()
+        print(json.dumps({"ok": True}, ensure_ascii=False))
+        return 0
+    except sqlite3.Error:
+        emit_error("SQL_INVALID", "La propuesta no es una consulta SQLite válida para el esquema disponible.")
+        return 2
+    finally:
+        connection.close()
 
 
 class QueryError(Exception):

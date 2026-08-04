@@ -146,7 +146,12 @@ function theoreticalCounterUnitsForShift(shift) {
     return NaN;
   }
 
-  const sales = orderDetailsUnitsForDateAndProduct(els["inventory-date-input"]?.value || "", "Barra_Pop_140Ud");
+  const sales = orderDetailsIndividualUnitsForDateAndProduct(
+    els["inventory-date-input"]?.value || "",
+    "Barra_Pop_140Ud",
+    shift,
+    targetRow.dataset.itemId
+  );
   return sales
     + ((currentTargetStock - previousTargetStock) * 140)
     + ((currentBagStock - previousBagStock) * 2000);
@@ -228,11 +233,40 @@ function firstFiniteQuantity(values) {
   return NaN;
 }
 
-function orderDetailsUnitsForDateAndProduct(dateIso, productName) {
+function orderDetailsUnitsForDateAndProduct(dateIso, productName, selectedShift, itemId = "") {
+  return orderDetailsForDateAndProduct(dateIso, productName, selectedShift, itemId)
+    .reduce((total, exit) => total + (Number(exit.quantity) || 0), 0);
+}
+
+function orderDetailsIndividualUnitsForDateAndProduct(dateIso, productName, selectedShift, itemId = "") {
+  const exits = orderDetailsForDateAndProduct(dateIso, productName, selectedShift, itemId);
+  if (exits.some((exit) => (
+    exit.individualQuantity === null
+    || exit.individualQuantity === ""
+    || !Number.isFinite(Number(exit.individualQuantity))
+  ))) return NaN;
+  return exits.reduce((total, exit) => total + Number(exit.individualQuantity), 0);
+}
+
+function orderDetailsForDateAndProduct(dateIso, productName, selectedShift, itemId = "") {
   const targetProduct = normalizeCategory(productName);
-  return state.orderDetails
-    .filter((detail) => detail.date === dateIso && normalizeCategory(detail.product) === targetProduct)
-    .reduce((total, detail) => total + detail.individualQuantity, 0);
+  const targetItemId = String(itemId || "").trim();
+  const previousShift = previousWorkedInventoryShift(selectedShift);
+  const previousOrder = inventoryShiftOrder(previousShift);
+  const selectedOrder = inventoryShiftOrder(selectedShift);
+  return (inventoryDetailTemplate?.salesExits || [])
+    .filter((exit) => {
+      const exitOrder = inventoryShiftOrder(exit.shift);
+      const matchesItem = targetItemId && String(exit.itemId || "").trim() === targetItemId;
+      return exit.date === dateIso
+        && (matchesItem || normalizeCategory(exit.productName) === targetProduct)
+        && exitOrder > previousOrder
+        && exitOrder <= selectedOrder;
+    });
+}
+
+function inventoryShiftOrder(shift) {
+  return { dawn: 0, morning: 1, afternoon: 2 }[shift] ?? -1;
 }
 
 function counterFromLastPhotoTranscription(shift = firstSelectedInventoryShift()) {
@@ -284,6 +318,7 @@ function renderTheoreticalStockBreakdown(data) {
             <tr>
               <th>Item</th>
               <th class="num">Anterior</th>
+              <th class="num">Entradas</th>
               <th class="num">Produccion</th>
               <th class="num">Ventas</th>
               <th class="num">Consumo recetas</th>
@@ -295,6 +330,7 @@ function renderTheoreticalStockBreakdown(data) {
               <tr>
                 <td>${escapeHtml(row.itemName)}</td>
                 <td class="num">${formatNullableNumber(row.previousStock)}</td>
+                <td class="num">${formatNullableNumber(row.receivedStock)}</td>
                 <td class="num">${formatNullableNumber(row.producedStock)}</td>
                 <td class="num">${formatNullableNumber(row.sales)}</td>
                 <td class="num">${formatNullableNumber(row.consumedStock)}</td>
@@ -320,4 +356,3 @@ function inventoryShiftLabel(field) {
 function formatNullableNumber(value) {
   return Number.isFinite(value) ? formatNumber(value) : "-";
 }
-

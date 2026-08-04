@@ -40,6 +40,7 @@ function renderInventoryDetailTemplate(template) {
 
   if (!template?.rows?.length) {
     els["inventory-detail-body"].innerHTML = emptyRow(12, "Todavia no hay detalle preparado.");
+    resetInventoryPurchaseDraft();
     return;
   }
 
@@ -54,13 +55,13 @@ function renderInventoryDetailTemplate(template) {
           <button type="button" data-purchase-item="${escapeHtml(row.itemName)}" data-purchase-item-id="${escapeHtml(row.itemId)}">Comprar</button>
         </span>
       </td>
-      <td class="num dawn-stock-cell"><input class="detail-quantity-input" data-detail-field="dawn" type="number" step="any"></td>
+      <td class="num dawn-stock-cell"><input class="detail-quantity-input" data-detail-field="dawn" type="number" step="any" aria-label="${escapeHtml(`${row.itemName}, cantidad Madrugada`)}"></td>
       <td class="num theoretical-stock-cell dawn-theoretical-stock-cell" data-theoretical-shift="dawn">-</td>
       <td class="num theoretical-diff-cell dawn-theoretical-diff-cell" data-theoretical-shift="dawn">-</td>
-      <td class="num morning-stock-cell"><input class="detail-quantity-input" data-detail-field="morning" type="number" step="any"></td>
+      <td class="num morning-stock-cell"><input class="detail-quantity-input" data-detail-field="morning" type="number" step="any" aria-label="${escapeHtml(`${row.itemName}, cantidad Mañana`)}"></td>
       <td class="num theoretical-stock-cell morning-theoretical-stock-cell" data-theoretical-shift="morning">-</td>
       <td class="num theoretical-diff-cell morning-theoretical-diff-cell" data-theoretical-shift="morning">-</td>
-      <td class="num afternoon-stock-cell"><input class="detail-quantity-input" data-detail-field="afternoon" type="number" step="any"></td>
+      <td class="num afternoon-stock-cell"><input class="detail-quantity-input" data-detail-field="afternoon" type="number" step="any" aria-label="${escapeHtml(`${row.itemName}, cantidad Tarde`)}"></td>
       <td class="num theoretical-stock-cell afternoon-theoretical-stock-cell" data-theoretical-shift="afternoon">-</td>
       <td class="num theoretical-diff-cell afternoon-theoretical-diff-cell" data-theoretical-shift="afternoon">-</td>
     </tr>
@@ -114,21 +115,20 @@ function renderCounterAlipackRow() {
         <strong>Contador Alipack</strong>
       </td>
       <td class="num dawn-stock-cell">
-        <input id="inventory-counter-manual-dawn" type="number" step="any" placeholder="-">
+        <input id="inventory-counter-manual-dawn" type="number" step="any" placeholder="-" aria-label="Contador Alipack, cantidad Madrugada">
       </td>
       <td class="num theoretical-stock-cell" id="inventory-counter-theoretical-dawn">-</td>
       <td class="num theoretical-diff-cell" id="inventory-counter-diff-dawn">-</td>
       <td class="num morning-stock-cell">
-        <input id="inventory-counter-manual-morning" type="number" step="any" placeholder="-">
+        <input id="inventory-counter-manual-morning" type="number" step="any" placeholder="-" aria-label="Contador Alipack, cantidad Mañana">
       </td>
       <td class="num theoretical-stock-cell" id="inventory-counter-theoretical-morning">-</td>
       <td class="num theoretical-diff-cell" id="inventory-counter-diff-morning">-</td>
       <td class="num afternoon-stock-cell">
-        <input id="inventory-counter-manual-afternoon" type="number" step="any" placeholder="-">
+        <input id="inventory-counter-manual-afternoon" type="number" step="any" placeholder="-" aria-label="Contador Alipack, cantidad Tarde">
       </td>
       <td class="num theoretical-stock-cell" id="inventory-counter-theoretical-afternoon">-</td>
       <td class="num theoretical-diff-cell" id="inventory-counter-diff-afternoon">-</td>
     </tr>
   `;
 }
-

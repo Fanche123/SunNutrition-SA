@@ -1,5 +1,5 @@
 function createCoreHandlers(dependencies) {
-  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementDetail, buildBackendIncomeStatementReport, buildProductionReport, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
+  const { APP_STATE_FILE, backendComparisonPeriod, buildBackendCashflowReport, buildBackendIncomeStatementDetail, buildBackendIncomeStatementReport, buildProductionReport, generateBackendSql, readAppState, readJsonBody, runBackendSqlQuery, sendJson, writeAppState } = dependencies;
 
 function handleIncomeStatementReport(request, response) {
   try {
@@ -74,6 +74,38 @@ async function handleBackendSqlQuery(request, response) {
   }
 }
 
+async function handleBackendSqlGenerate(request, response) {
+  const body = await readJsonBody(request);
+  try {
+    const result = await generateBackendSql(body.request || "", request.accessIdentity);
+    sendJson(response, 200, { ok: true, ...result });
+  } catch (error) {
+    const safeCodes = new Set([
+      "SQL_FORBIDDEN", "SQL_INVALID", "SQL_TIMEOUT", "SQL_EXECUTION_ERROR",
+      "SQL_GENERATION_AUTHENTICATION", "SQL_GENERATION_BUSY", "SQL_GENERATION_FORBIDDEN",
+      "SQL_GENERATION_INVALID", "SQL_GENERATION_NOT_CONFIGURED", "SQL_GENERATION_QUOTA",
+      "SQL_GENERATION_NETWORK", "SQL_GENERATION_PROVIDER_REQUEST", "SQL_GENERATION_PROVIDER_UNAVAILABLE",
+      "SQL_GENERATION_RATE_LIMIT", "SQL_GENERATION_REJECTED", "SQL_GENERATION_REQUEST_INVALID",
+      "SQL_GENERATION_REQUEST_REJECTED", "SQL_GENERATION_TIMEOUT"
+    ]);
+    const code = safeCodes.has(error.code) ? error.code : "SQL_GENERATION_ERROR";
+    const status = code === "SQL_GENERATION_ERROR" ? 500
+      : ["SQL_GENERATION_BUSY", "SQL_GENERATION_RATE_LIMIT", "SQL_GENERATION_QUOTA"].includes(code) ? 429
+        : code === "SQL_GENERATION_NOT_CONFIGURED" ? 503
+          : ["SQL_GENERATION_TIMEOUT", "SQL_TIMEOUT"].includes(code) ? 504
+            : ["SQL_GENERATION_NETWORK", "SQL_GENERATION_PROVIDER_REQUEST", "SQL_GENERATION_PROVIDER_UNAVAILABLE", "SQL_GENERATION_AUTHENTICATION"].includes(code) ? 502
+              : ["SQL_GENERATION_INVALID", "SQL_GENERATION_FORBIDDEN", "SQL_GENERATION_REJECTED", "SQL_FORBIDDEN", "SQL_INVALID"].includes(code) ? 422
+                : 400;
+    sendJson(response, status, {
+      ok: false,
+      code,
+      error: code === "SQL_GENERATION_ERROR" ? "No se pudo generar la consulta SQL." : error.message,
+      ...(Number.isInteger(error.providerStatus) ? { providerStatus: error.providerStatus } : {}),
+      ...(["dns", "tls", "network"].includes(error.transport) ? { transport: error.transport } : {})
+    });
+  }
+}
+
 function handleProductionReport(request, response) {
   try {
     const url = new URL(request.url, `http://${request.headers.host}`);
@@ -121,7 +153,7 @@ async function handleAppStateSave(request, response) {
   sendJson(response, 200, { ok: true });
 }
 
-  return { handleAppStateGet, handleAppStateSave, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementDetail, handleIncomeStatementReport, handleProductionReport };
+  return { handleAppStateGet, handleAppStateSave, handleBackendSqlGenerate, handleBackendSqlQuery, handleCashflowReport, handleIncomeStatementDetail, handleIncomeStatementReport, handleProductionReport };
 }
 
 module.exports = { createCoreHandlers };

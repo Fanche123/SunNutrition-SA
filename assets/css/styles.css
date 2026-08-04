@@ -2357,6 +2357,9 @@ body.purchase-workflow-popup-open { overflow: hidden; }
 .purchase-workflow-dialog footer { border-top: 1px solid var(--line); border-bottom: 0; }
 .purchase-workflow-dialog-body { overflow: auto; display: grid; gap: 14px; padding: 18px; }
 .purchase-workflow-dialog-body label { display: grid; gap: 6px; }
+.purchase-workflow-quantity { display: flex; align-items: center; gap: 8px; }
+.purchase-workflow-quantity input { min-width: 0; }
+.purchase-workflow-unit { color: var(--muted); font-size: .9em; white-space: nowrap; }
 .purchase-workflow-invoice-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
 @media (max-width: 700px) { .purchase-workflow-toolbar { align-items: stretch; flex-direction: column; } .purchase-workflow-popup { inset: 0; border-radius: 0; } .purchase-workflow-dialog { width: 100vw; max-height: 100vh; } .purchase-workflow-invoice-grid { grid-template-columns: 1fr; } }
 
@@ -3200,7 +3203,7 @@ body.purchase-workflow-popup-open { overflow: hidden; }
 
 .sql-console {
   display: grid;
-  grid-template-rows: auto minmax(190px, auto) auto auto minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(190px, auto) auto minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   padding: 16px;
@@ -3220,24 +3223,55 @@ body.purchase-workflow-popup-open { overflow: hidden; }
   line-height: 1.5;
 }
 
-.sql-help {
+.sql-generator {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 4px;
+  padding: 14px;
+  border: 1px solid #cfe1e4;
+  border-radius: 9px;
+  background: linear-gradient(135deg, #f5fbfb, #ffffff);
+}
+
+.sql-generator-copy {
+  display: grid;
+  gap: 3px;
+}
+
+.sql-generator-copy span,
+.sql-generate-status {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+#sql-request {
+  min-height: 84px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.sql-generator-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
-.sql-help button {
-  min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid #cbd5e1;
-  background: #ffffff;
-  color: #0f4450;
-  box-shadow: none;
+.sql-generator-actions button {
+  min-width: 124px;
 }
 
-.sql-help button:hover {
-  border-color: var(--accent);
-  background: #eefafa;
+.sql-generate-status[data-status="ok"] {
+  color: #047857;
+}
+
+.sql-generate-status[data-status="warn"] {
+  color: #9a3412;
+}
+
+.sql-generate-status[data-status="loading"] {
+  color: #1d4ed8;
 }
 
 .sql-status {
@@ -8626,6 +8660,10 @@ button.treasury-position-card:focus-visible {
   .treasury-position-grid,
   .treasury-operations-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sql-console {
+    padding: 14px;
   }
 
   .treasury-position-card {

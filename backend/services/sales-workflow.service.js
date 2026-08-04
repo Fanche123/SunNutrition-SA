@@ -7,6 +7,7 @@ const {
 } = require("./remito-x-pdf.service");
 
 const WORKFLOW_TABLE = "gestion_ventas";
+const ACTIVE_WORKFLOW_START_DATE = "2026-04-01";
 
 function createSalesWorkflowService({
   backendId,
@@ -20,7 +21,6 @@ function createSalesWorkflowService({
   fs,
   path,
   rootDir,
-  currentDate = buenosAiresIsoDate,
   enqueueSalesWrite = (operation) => operation()
 }) {
   const attachmentStorage = { crypto, fs, path, rootDir };
@@ -29,7 +29,7 @@ function createSalesWorkflowService({
     const url = new URL(request.url, `http://${request.headers?.host || "127.0.0.1"}`);
     const managed = url.searchParams.get("managed") === "1";
     const rows = workflowRows(loadCache(), backendId, attachmentStorage)
-      .filter((row) => managed ? row.managed : !row.managed && isEligibleForActiveWorkflow(row, currentDate()));
+      .filter((row) => managed ? row.managed : !row.completion.sale && isEligibleForActiveWorkflow(row));
     return sendJson(response, 200, { ok: true, rows, total: rows.length, managed });
   }
 
@@ -119,7 +119,7 @@ function createSalesWorkflowService({
       const completion = completionForOrder(cache, orderId, workflow, backendId, attachmentStorage);
       const missing = Object.entries(completion)
         .filter(([, complete]) => !complete)
-        .map(([key]) => ({ arca: "Factura ARCA", delivery: "Entrega", sale: "Venta con adjunto" }[key]));
+        .map(([key]) => ({ arca: "Factura ARCA", delivery: "Entrega", sale: "Venta" }[key]));
       if (missing.length) throw httpError(409, `No se puede cerrar: falta ${missing.join(", ")}.`);
       const timestamp = new Date().toISOString();
       workflow.cerrado_en = timestamp;
@@ -155,7 +155,7 @@ function workflowRows(cache, backendId, attachmentStorage) {
     const delivery = deliveries.get(orderId) || null;
     const sale = salesByOrder.get(orderId) || null;
     const historicalResolved = !workflow && Boolean(delivery && sale);
-    const managed = Boolean(workflow?.cerrado_en || historicalResolved);
+    const managed = Boolean((workflow?.cerrado_en && sale) || historicalResolved);
     const details = (detailsByOrder.get(orderId) || []).map((detail) => {
       const product = productsById.get(backendId(detail.id_producto)) || {};
       return {
@@ -185,6 +185,9 @@ function workflowRows(cache, backendId, attachmentStorage) {
       detalle_resumido: details.map((detail) => `${detail.producto || `Producto ${detail.id_producto}`} (${detail.cantidad_cajas || 0})`).join(", "),
       comparacion_factura: safeExpectedOrderSubtotal(details),
       completion,
+      invoiceEvidence: workflow?.factura_arca_confirmada_en
+        ? "arca_confirmation"
+        : verifiedSalesAttachment(workflow, attachmentStorage) ? "sale_attachment" : "",
       canClose: completion.arca && completion.delivery && completion.sale && !managed,
       managed,
       historicalResolved,
@@ -213,10 +216,13 @@ function workflowRows(cache, backendId, attachmentStorage) {
 function completionForOrder(cache, orderId, workflow, backendId, attachmentStorage) {
   const delivery = validDeliveryByOrder(cache, backendId).has(orderId);
   const sale = (cache.tables?.ventas?.rows || []).some((row) => backendId(row.id_pedido) === orderId);
+  // El adjunto se guarda exclusivamente en la fila técnica del mismo pedido y se
+  // revalida por ruta interna y SHA-256; por eso es evidencia fiscal canónica.
+  const attachedInvoice = verifiedSalesAttachment(workflow, attachmentStorage);
   return {
-    arca: Boolean(workflow?.factura_arca_confirmada_en),
+    arca: Boolean(workflow?.factura_arca_confirmada_en) || attachedInvoice,
     delivery,
-    sale: Boolean(sale && verifiedSalesAttachment(workflow, attachmentStorage))
+    sale
   };
 }
 
@@ -297,25 +303,24 @@ function actorFromRequest(request) {
 
 function compareWorkflowRows(left, right) {
   if (left.managed !== right.managed) return left.managed ? 1 : -1;
-  const leftDate = /^\d{4}-\d{2}-\d{2}$/.test(left.fecha_entrega_prevista) ? left.fecha_entrega_prevista : "9999-12-31";
-  const rightDate = /^\d{4}-\d{2}-\d{2}$/.test(right.fecha_entrega_prevista) ? right.fecha_entrega_prevista : "9999-12-31";
+  const leftDate = isValidIsoCalendarDate(left.fecha_entrega_prevista) ? left.fecha_entrega_prevista : "9999-12-31";
+  const rightDate = isValidIsoCalendarDate(right.fecha_entrega_prevista) ? right.fecha_entrega_prevista : "9999-12-31";
   return leftDate.localeCompare(rightDate) || String(left.id_pedido).localeCompare(String(right.id_pedido), undefined, { numeric: true });
 }
 
-function isEligibleForActiveWorkflow(row, today) {
+function isEligibleForActiveWorkflow(row) {
   const deliveryDate = String(row.fecha_entrega_prevista || "");
-  return !/^\d{4}-\d{2}-\d{2}$/.test(deliveryDate) || deliveryDate >= today;
+  return !isValidIsoCalendarDate(deliveryDate) || deliveryDate >= ACTIVE_WORKFLOW_START_DATE;
 }
 
-function buenosAiresIsoDate() {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Argentina/Buenos_Aires",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
+function isValidIsoCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
 }
 
 function groupBy(rows, key, backendId) {

@@ -117,14 +117,102 @@ test("backfill lógico mantiene incompletos abiertos y no inunda con históricos
   }
 });
 
-test("la bandeja abierta excluye entregas previstas vencidas y conserva fechas de hoy, futuras e inválidas", () => {
+test("un adjunto fiscal canónico de la venta también completa Factura sin confirmación ARCA", () => {
   const source = cacheFixture();
-  source.tables.pedidos.rows[0].fecha_entrega = "2026-07-30";
-  source.tables.pedidos.rows[1].fecha_entrega = "2026-07-30";
-  source.tables.pedidos.rows[2].fecha_entrega = "2026-07-31";
+  source.tables.gestion_ventas.rows = [{
+    id_gestion_venta: 2,
+    id_pedido: 2,
+    origen: "historico_incompleto",
+    factura_arca_confirmada_en: "",
+    factura_arca_confirmada_por: "",
+    archivo_factura: "",
+    archivo_factura_nombre: "comprobante.pdf",
+    archivo_factura_hash: "",
+    cerrado_en: "",
+    cerrado_por: ""
+  }];
+  const storage = addRealAttachment(source);
+  try {
+    const completion = workflowRows(source, backendId, storage)
+      .find((row) => row.id_pedido === "2");
+    assert.deepEqual(completion.completion, { arca: true, delivery: true, sale: true });
+    assert.equal(completion.invoiceEvidence, "sale_attachment");
+  } finally {
+    storage.cleanup();
+  }
+});
+
+test("un adjunto fiscal canónico completa Factura pero no Venta si todavía no existe la venta", () => {
+  const source = cacheFixture();
+  source.tables.gestion_ventas.rows = [{
+    id_gestion_venta: 2,
+    id_pedido: 1,
+    origen: "historico_incompleto",
+    factura_arca_confirmada_en: "",
+    factura_arca_confirmada_por: "",
+    archivo_factura: "",
+    archivo_factura_nombre: "adjunto-generico.pdf",
+    archivo_factura_hash: "",
+    cerrado_en: "",
+    cerrado_por: ""
+  }];
+  const storage = addRealAttachment(source);
+  try {
+    const completion = workflowRows(source, backendId, storage).find((row) => row.id_pedido === "1").completion;
+    assert.deepEqual(completion, { arca: true, delivery: false, sale: false });
+  } finally {
+    storage.cleanup();
+  }
+});
+
+test("un adjunto fuera del almacenamiento canónico no completa Factura aunque exista venta", () => {
+  const source = cacheFixture();
+  source.tables.gestion_ventas.rows = [{
+    id_gestion_venta: 2,
+    id_pedido: 2,
+    origen: "historico_incompleto",
+    factura_arca_confirmada_en: "",
+    factura_arca_confirmada_por: "",
+    archivo_factura: "",
+    archivo_factura_nombre: "adjunto-generico.pdf",
+    archivo_factura_hash: "",
+    cerrado_en: "",
+    cerrado_por: ""
+  }];
+  const storage = addRealAttachment(source);
+  try {
+    source.tables.gestion_ventas.rows[0].archivo_factura = "backend/attachments/otro/ajeno.pdf";
+    const completion = workflowRows(source, backendId, storage)
+      .find((row) => row.id_pedido === "2").completion;
+    assert.deepEqual(completion, { arca: false, delivery: true, sale: true });
+  } finally {
+    storage.cleanup();
+  }
+});
+
+test("la bandeja abierta incluye pedidos sin venta desde abril aunque tengan entrega y excluye pedidos vendidos", () => {
+  const source = cacheFixture();
+  source.tables.ventas.rows = source.tables.ventas.rows.filter((row) => row.id_pedido !== 2);
+  source.tables.gestion_ventas.rows.push({
+    id_gestion_venta: 2,
+    id_pedido: 2,
+    origen: "historico_incompleto",
+    factura_arca_confirmada_en: "2026-07-20T12:00:00.000Z",
+    factura_arca_confirmada_por: "local",
+    archivo_factura: "",
+    archivo_factura_nombre: "",
+    archivo_factura_hash: "",
+    cerrado_en: "",
+    cerrado_por: ""
+  });
+  source.tables.pedidos.rows[0].fecha_entrega = "2026-03-31";
+  source.tables.pedidos.rows[1].fecha_entrega = "2026-04-01";
+  source.tables.pedidos.rows[2].fecha_entrega = "2026-07-15";
   source.tables.pedidos.rows.push(
-    { id_pedido: 4, id_cliente: 1, fecha_pedido: "2026-07-04", fecha_entrega: "2026-08-02" },
-    { id_pedido: 5, id_cliente: 1, fecha_pedido: "2026-07-05", fecha_entrega: "fecha-invalida" }
+    { id_pedido: 4, id_cliente: 1, fecha_pedido: "2026-07-04", fecha_entrega: "2026-07-01" },
+    { id_pedido: 5, id_cliente: 1, fecha_pedido: "2026-07-05", fecha_entrega: "" },
+    { id_pedido: 6, id_cliente: 1, fecha_pedido: "2026-07-06", fecha_entrega: "fecha-invalida" },
+    { id_pedido: 7, id_cliente: 1, fecha_pedido: "2026-07-07", fecha_entrega: "2026-02-30" }
   );
   const responses = [];
   const service = createSalesWorkflowService({
@@ -132,17 +220,22 @@ test("la bandeja abierta excluye entregas previstas vencidas y conserva fechas d
     backendNextNumericId: nextId,
     ensureBackendTable: () => {},
     loadCache: () => source,
-    sendJson: (_response, status, payload) => { responses.push({ status, payload }); return payload; },
-    currentDate: () => "2026-07-31"
+    sendJson: (_response, status, payload) => { responses.push({ status, payload }); return payload; }
   });
 
   service.handleList({ url: "/api/sales/workflow?managed=0", headers: { host: "127.0.0.1" } }, {});
   assert.equal(responses.at(-1).status, 200);
-  assert.deepEqual(responses.at(-1).payload.rows.map((row) => row.id_pedido), ["3", "4", "5"]);
-  assert.equal(responses.at(-1).payload.total, 3);
+  assert.deepEqual(responses.at(-1).payload.rows.map((row) => row.id_pedido), ["2", "4", "5", "6", "7"]);
+  assert.deepEqual(responses.at(-1).payload.rows.find((row) => row.id_pedido === "2").completion, {
+    arca: true,
+    delivery: true,
+    sale: false
+  });
+  assert.equal(responses.at(-1).payload.rows.find((row) => row.id_pedido === "2").canClose, false);
+  assert.equal(responses.at(-1).payload.total, 5);
 
   service.handleList({ url: "/api/sales/workflow?managed=1", headers: { host: "127.0.0.1" } }, {});
-  assert.deepEqual(responses.at(-1).payload.rows.map((row) => row.id_pedido), ["2"]);
+  assert.deepEqual(responses.at(-1).payload.rows.map((row) => row.id_pedido), []);
 });
 
 test("Tick revalida las tres condiciones y el cierre es idempotente", async () => {
@@ -162,7 +255,7 @@ test("Tick revalida las tres condiciones y el cierre es idempotente", async () =
   try {
     await service.handleClose({ body: { orderId: 1 }, accessIdentity: { mode: "local" } }, {});
     assert.equal(responses.at(-1).status, 409);
-    assert.match(responses.at(-1).payload.error, /Factura ARCA, Entrega, Venta con adjunto/);
+    assert.match(responses.at(-1).payload.error, /Factura ARCA, Entrega, Venta/);
 
     await service.handleClose({ body: { orderId: 3 }, accessIdentity: { mode: "local" } }, {});
     assert.equal(responses.at(-1).status, 200);
@@ -180,6 +273,7 @@ test("Tick revalida las tres condiciones y el cierre es idempotente", async () =
 
 test("Tick rechaza adjunto ausente o alterado aunque existan sus metadatos", async () => {
   let source = cacheFixture();
+  source.tables.gestion_ventas.rows[0].factura_arca_confirmada_en = "";
   const storage = addRealAttachment(source);
   const responses = [];
   const service = createSalesWorkflowService({
@@ -318,4 +412,5 @@ test("Crear factura reutiliza sólo la revisión del pedido elegido", () => {
   assert.match(source, /arca-invoicing-layout > \.arca-review-panel/);
   assert.doesNotMatch(source, /openMovedDialog\("Crear factura", document\.querySelector\("#view-arca-invoicing > \.arca-invoicing-layout"\)/);
   assert.match(source, /body: JSON\.stringify\(\{ orderId: row\.id_pedido \}\)/);
+  assert.match(source, /row\.invoiceEvidence === "sale_attachment"/);
 });

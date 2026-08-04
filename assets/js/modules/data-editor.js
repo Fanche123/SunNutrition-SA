@@ -438,6 +438,13 @@ function dataEditorDisplayValue(column, rawValue) {
       return escapeHtml(rawValue);
     }
   }
+  if (meta.type === "percentage") {
+    try {
+      return `<span class="data-editor-percentage-value">${escapeHtml(ErpMoneyColumns.formatPercentage(rawValue))}</span>`;
+    } catch (_error) {
+      return escapeHtml(rawValue);
+    }
+  }
   if (meta.type === "boolean") {
     return `<span class="data-editor-boolean-value">${dataEditorBooleanValue(rawValue) ? "Sí" : "No"}</span>`;
   }
@@ -490,7 +497,9 @@ function dataEditorColumnMeta(column) {
   return (table?.schema?.columns || []).find((item) => (item.name || item.key) === column)
     || {
       name: column,
-      type: isDataEditorMoneyColumn(table?.name || "", column) ? "money" : "text",
+      type: ErpMoneyColumns?.isPercentageColumn?.(table?.name || "", column)
+        ? "percentage"
+        : isDataEditorMoneyColumn(table?.name || "", column) ? "money" : "text",
       primaryKey: column === table?.schema?.primaryKey,
       required: false
     };
@@ -806,6 +815,12 @@ function createDataEditorCellControl(meta, relation, rawValue, column) {
     input.value = parsed.ok && !parsed.empty
       ? formatMoneyInput(parsed.amount)
       : String(rawValue ?? "");
+  } else if (meta.type === "percentage") {
+    input.inputMode = "decimal";
+    const parsed = ErpMoneyColumns.parsePercentageInput(rawValue, { allowEmpty: true });
+    input.value = parsed.ok && !parsed.empty
+      ? String(parsed.value)
+      : String(rawValue ?? "");
   } else {
     input.value = rawValue === null || rawValue === undefined ? "" : String(rawValue);
   }
@@ -935,6 +950,12 @@ function normalizeDataEditorCellValue(meta, rawValue) {
       ? { ok: true, value: parsed.empty ? "" : Number(parsed.amount).toFixed(2) }
       : { ok: false, error: "Ingresá un importe válido con hasta dos decimales." };
   }
+  if (meta.type === "percentage") {
+    const parsed = ErpMoneyColumns.parsePercentageInput(rawValue, { allowEmpty: true });
+    return parsed.ok
+      ? { ok: true, value: parsed.empty ? "" : parsed.value.toFixed(2) }
+      : { ok: false, error: "Ingresá un porcentaje válido con hasta dos decimales." };
+  }
   if (meta.type === "number") {
     return Number.isFinite(Number(text))
       ? { ok: true, value: Number(text) }
@@ -953,7 +974,7 @@ function dataEditorValuesEquivalent(meta, left, right) {
   const rightEmpty = right === null || right === undefined || right === "";
   if (leftEmpty || rightEmpty) return leftEmpty && rightEmpty;
   if (meta.type === "boolean") return dataEditorBooleanValue(left) === dataEditorBooleanValue(right);
-  if (meta.type === "number" || meta.type === "money") {
+  if (meta.type === "number" || meta.type === "money" || meta.type === "percentage") {
     const leftNumber = Number(left);
     const rightNumber = Number(right);
     return Number.isFinite(leftNumber) && Number.isFinite(rightNumber) && leftNumber === rightNumber;

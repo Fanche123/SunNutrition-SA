@@ -5,8 +5,10 @@ const path = require("path");
 const SENSITIVE_FIELD = /password|contrase(?:n|ñ)a|secret|token|cookie|authorization|api[_-]?key|private[_-]?key|archivo|file|content|base64/i;
 const READ_ONLY_POSTS = new Set([
   "/api/backend/sql",
+  "/api/backend/sql/generate",
   "/api/reception-invoice/read",
   "/api/payroll-scale/read",
+  "/api/inventory/purchase-snapshot/preview",
   "/api/sales/invoice/read",
   "/api/sales/arca/prepare"
 ]);

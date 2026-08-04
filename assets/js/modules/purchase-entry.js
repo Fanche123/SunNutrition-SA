@@ -1,14 +1,24 @@
+let inventoryPurchaseDraftSnapshot = {
+  inventoryDate: "",
+  state: "no_detail",
+  source: "draft",
+  items: [],
+  unavailableItems: []
+};
+let inventoryPurchaseDraftTimer = 0;
+let inventoryPurchaseDraftRequestVersion = 0;
+
 function updateInventoryPurchaseAlerts() {
   const rows = els["inventory-detail-body"]?.querySelectorAll("tr[data-item-id]") || [];
-  const snapshotItems = Array.isArray(inventoryPurchaseSnapshot?.items)
-    ? inventoryPurchaseSnapshot.items
+  const snapshotItems = Array.isArray(inventoryPurchaseDraftSnapshot?.items)
+    ? inventoryPurchaseDraftSnapshot.items
     : [];
   rows.forEach((row) => {
     const itemName = row.dataset.itemName || "";
     const alert = row.querySelector("[data-purchase-alert]");
     if (!alert) return;
 
-    const data = inventoryPurchaseSnapshotItem(itemName, row.dataset.itemId);
+    const data = inventoryPurchaseSnapshotItem(itemName, row.dataset.itemId, inventoryPurchaseDraftSnapshot);
     alert.hidden = !data;
     alert.classList.toggle("is-visible", Boolean(data));
     if (data) {
@@ -20,24 +30,22 @@ function updateInventoryPurchaseAlerts() {
       }
     }
   });
-  renderPurchaseThresholdTable(snapshotItems);
+  renderPurchaseThresholdTable(snapshotItems, inventoryPurchaseDraftSnapshot);
 }
 
-function inventoryPurchaseSnapshotItem(itemName, itemId = "") {
+function inventoryPurchaseSnapshotItem(itemName, itemId = "", snapshot = inventoryPurchaseSnapshot) {
   const normalizedId = String(itemId || "").trim();
   const normalizedName = normalizeCategory(itemName);
-  return (inventoryPurchaseSnapshot?.items || []).find((item) => (
+  return (snapshot?.items || []).find((item) => (
     (normalizedId && String(item.itemId || "").trim() === normalizedId)
     || normalizeCategory(item.itemName) === normalizedName
   )) || null;
 }
 
-function renderPurchaseThresholdTable(infos) {
+function renderPurchaseThresholdTable(infos, snapshot = inventoryPurchaseDraftSnapshot) {
   if (!els["purchase-threshold-body"]) return;
   if (els["purchase-threshold-snapshot-date"]) {
-    els["purchase-threshold-snapshot-date"].textContent = inventoryPurchaseSnapshotStatusMessage(
-      inventoryPurchaseSnapshot
-    );
+    els["purchase-threshold-snapshot-date"].textContent = inventoryPurchaseDraftStatusMessage(snapshot);
   }
 
   els["purchase-threshold-body"].innerHTML = infos.length
@@ -53,7 +61,115 @@ function renderPurchaseThresholdTable(infos) {
         <td><span class="purchase-threshold-state is-low">Comprar</span></td>
       </tr>
     `).join("")
-    : emptyRow(8, inventoryPurchaseSnapshotEmptyMessage(inventoryPurchaseSnapshot));
+    : emptyRow(8, inventoryPurchaseDraftEmptyMessage(snapshot));
+}
+
+function resetInventoryPurchaseDraft() {
+  window.clearTimeout(inventoryPurchaseDraftTimer);
+  inventoryPurchaseDraftRequestVersion += 1;
+  inventoryPurchaseDraftSnapshot = {
+    inventoryDate: "",
+    state: "no_detail",
+    source: "draft",
+    items: [],
+    unavailableItems: []
+  };
+  updateInventoryPurchaseAlerts();
+}
+
+function scheduleInventoryPurchaseDraftEvaluation() {
+  window.clearTimeout(inventoryPurchaseDraftTimer);
+  const hasDetail = Boolean(els["inventory-detail-body"]?.querySelector("tr[data-item-id]"));
+  const date = els["inventory-date-input"]?.value || "";
+  const selectedShifts = selectedInventoryShifts();
+  if (!hasDetail) {
+    resetInventoryPurchaseDraft();
+    return;
+  }
+  if (!date || !selectedShifts.length) {
+    inventoryPurchaseDraftRequestVersion += 1;
+    inventoryPurchaseDraftSnapshot = {
+      inventoryDate: date,
+      state: "incomplete_setup",
+      source: "draft",
+      items: [],
+      unavailableItems: []
+    };
+    updateInventoryPurchaseAlerts();
+    return;
+  }
+
+  const requestVersion = ++inventoryPurchaseDraftRequestVersion;
+  inventoryPurchaseDraftSnapshot = {
+    inventoryDate: date,
+    state: "loading",
+    source: "draft",
+    items: [],
+    unavailableItems: []
+  };
+  updateInventoryPurchaseAlerts();
+  inventoryPurchaseDraftTimer = window.setTimeout(() => {
+    loadInventoryPurchaseDraft(requestVersion, date, selectedShifts);
+  }, 250);
+}
+
+async function loadInventoryPurchaseDraft(requestVersion, date, selectedShifts) {
+  try {
+    const payload = await requestBackendApi("/api/inventory/purchase-snapshot/preview", {
+      method: "POST",
+      body: JSON.stringify({
+        date,
+        selectedShifts,
+        rows: collectEditableInventoryDetailRows()
+      })
+    });
+    if (requestVersion !== inventoryPurchaseDraftRequestVersion) return;
+    inventoryPurchaseDraftSnapshot = payload.snapshot;
+  } catch (error) {
+    if (requestVersion !== inventoryPurchaseDraftRequestVersion) return;
+    inventoryPurchaseDraftSnapshot = {
+      inventoryDate: date,
+      state: "error",
+      source: "draft",
+      items: [],
+      unavailableItems: [],
+      error: error.message || "error desconocido"
+    };
+  }
+  updateInventoryPurchaseAlerts();
+}
+
+function inventoryPurchaseDraftStatusMessage(snapshot) {
+  const state = snapshot?.state || "no_detail";
+  const dateLabel = snapshot?.inventoryDate ? formatDate(snapshot.inventoryDate) : "";
+  const bars = Number(snapshot?.barsPerDay);
+  const productionLabel = Number.isInteger(bars) ? ` con ${formatNumber(bars)} barritas por dia` : "";
+  if (state === "no_detail") return "Todavia no hay un detalle preparado para evaluar.";
+  if (state === "incomplete_setup") return "Elegí una fecha y al menos un turno para evaluar el borrador.";
+  if (state === "loading") return "Evaluando las cantidades visibles del borrador...";
+  if (state === "error") return `No se pudo evaluar el borrador: ${snapshot.error}.`;
+  if (state === "insufficient_dependencies") return `El borrador del ${dateLabel} necesita datos para completar la evaluacion${productionLabel}.`;
+  if (state === "valid_with_alerts") return `Borrador del ${dateLabel} evaluado${productionLabel}: hay insumos a comprar.`;
+  return `Borrador del ${dateLabel} evaluado${productionLabel}: no hay insumos a comprar.`;
+}
+
+function inventoryPurchaseDraftEmptyMessage(snapshot) {
+  const state = snapshot?.state || "no_detail";
+  if (state === "no_detail") return "Prepará el detalle para evaluar las cantidades manuales.";
+  if (state === "incomplete_setup") return "Elegí una fecha y al menos un turno.";
+  if (state === "loading") return "Recalculando sugerencias sin guardar el inventario...";
+  if (state === "error") return "No se pudieron recalcular las sugerencias.";
+  if (state === "insufficient_dependencies") {
+    const unavailable = snapshot?.unavailableItems || [];
+    const missingStock = unavailable.filter((item) => (
+      item.missingDependencies?.includes("stock")
+      || item.missingDependencies?.includes("inventory_details")
+    ));
+    if (missingStock.length) return "Completá las cantidades del último turno seleccionado para evaluar los insumos.";
+    return "Faltan datos de proveedor, plazo o calendario para completar la evaluacion.";
+  }
+  if (state === "valid_with_alerts") return "Hay sugerencias de compra disponibles.";
+  return "Las cantidades actuales no requieren comprar insumos.";
 }
 
 function formatLeadAndConsumptionDays(info) {
@@ -386,7 +502,7 @@ function purchaseBackendSupplierInfo() {
   };
 }
 
-async function openPurchaseEntryForItem(itemName, itemId = "") {
+async function openPurchaseEntryForItem(itemName, itemId = "", snapshot = inventoryPurchaseSnapshot) {
   switchView("purchase-entry");
   const initialized = await initializeViewOnce("purchase-entry", loadPurchaseBackendOptions);
   if (!initialized) return;
@@ -396,7 +512,7 @@ async function openPurchaseEntryForItem(itemName, itemId = "") {
   }
   syncSelectedPurchaseSupply();
   updatePurchaseProviderOptions();
-  const snapshotItem = inventoryPurchaseSnapshotItem(supply?.nombre || itemName, itemId);
+  const snapshotItem = inventoryPurchaseSnapshotItem(supply?.nombre || itemName, itemId, snapshot);
   const preferredProvider = snapshotItem?.provider || lastPurchaseProviderForItem(supply?.nombre || itemName);
   selectPreferredPurchaseSupplier(preferredProvider);
   const today = toIsoDate(new Date());
@@ -409,11 +525,11 @@ async function openPurchaseEntryForItem(itemName, itemId = "") {
   const missingStock = snapshotItem ? Math.max(0, snapshotItem.required - snapshotItem.stock) : NaN;
   const roundedOrder = roundedPurchaseOrder(currentItemName, missingStock, stockUnit, supplierUnit, rawInputValue(els["purchase-provider"]));
   const recipeQuantity = recipeUnitsFromCountUnits(currentItemName, Number(roundedOrder.stockQuantity));
-  els["purchase-quantity"].value = integerPurchaseDisplay(roundedOrder.stockQuantity);
-  if (els["purchase-recipe-quantity"]) els["purchase-recipe-quantity"].value = integerPurchaseDisplay(recipeQuantity);
-  if (els["purchase-recipe-quantity"]) els["purchase-recipe-quantity"].dataset.requiredValue = integerPurchaseDisplay(recipeQuantity);
+  els["purchase-quantity"].value = decimalPurchaseDisplay(roundedOrder.stockQuantity);
+  if (els["purchase-recipe-quantity"]) els["purchase-recipe-quantity"].value = decimalPurchaseDisplay(recipeQuantity);
+  if (els["purchase-recipe-quantity"]) els["purchase-recipe-quantity"].dataset.requiredValue = decimalPurchaseDisplay(recipeQuantity);
   setPurchaseUnitLabel(els["purchase-recipe-unit"], supplierInfo?.recipeUnit || stockUnit);
-  if (els["purchase-supplier-quantity"]) els["purchase-supplier-quantity"].value = integerPurchaseDisplay(roundedOrder.supplierQuantity);
+  if (els["purchase-supplier-quantity"]) els["purchase-supplier-quantity"].value = decimalPurchaseDisplay(roundedOrder.supplierQuantity);
   setPurchaseUnitLabel(els["purchase-unit"], supplierUnit);
   if (els["purchase-invoice-type"]) els["purchase-invoice-type"].value = "Factura_A";
   updatePurchasePricing("quantity");
@@ -471,6 +587,14 @@ function updatePurchaseUnitsFromField(source) {
   const count = parseOptionalPurchaseNumber(countInput?.value);
   const recipe = parseOptionalPurchaseNumber(recipeInput?.value);
   const supplier = parseOptionalPurchaseNumber(supplierInput?.value);
+  const sourceInput = source === "supplier" ? supplierInput : source === "count" ? countInput : recipeInput;
+  const sourceQuantity = source === "supplier" ? supplier : source === "count" ? count : recipe;
+  if (String(sourceInput?.value || "").trim() && !Number.isFinite(sourceQuantity)) {
+    sourceInput.setAttribute("aria-invalid", "true");
+    setPurchaseStatus("La cantidad debe ser positiva y tener como máximo dos decimales.", "error");
+    return;
+  }
+  sourceInput?.setAttribute("aria-invalid", "false");
   const normalized = normalizedPurchaseQuantities(source, { count, recipe, supplier }, conversion);
   if (!normalized) {
     updatePurchasePricing("quantity");
@@ -478,10 +602,10 @@ function updatePurchaseUnitsFromField(source) {
     return;
   }
 
-  recipeInput.value = integerPurchaseDisplay(normalized.recipe);
-  recipeInput.dataset.requiredValue = integerPurchaseDisplay(normalized.recipe);
-  countInput.value = integerPurchaseDisplay(normalized.count);
-  supplierInput.value = integerPurchaseDisplay(normalized.supplier);
+  recipeInput.value = decimalPurchaseDisplay(normalized.recipe);
+  recipeInput.dataset.requiredValue = decimalPurchaseDisplay(normalized.recipe);
+  countInput.value = decimalPurchaseDisplay(normalized.count);
+  supplierInput.value = decimalPurchaseDisplay(normalized.supplier);
   updatePurchasePricing("quantity");
   updatePurchaseSummary();
 }
@@ -517,13 +641,8 @@ function normalizedPurchaseQuantities(source, quantities, conversion) {
     return { recipe: 0, count: 0, supplier: 0 };
   }
 
-  /*
-    La compra real solo puede hacerse por unidades completas de proveedor.
-    Por eso una necesidad menor a un tanque, bolsa o caja se eleva a 1 unidad
-    y se recalculan la unidad de receta y la unidad de conteo.
-  */
   const supplierUnits = Math.max(
-    Math.ceil(desiredRecipeQuantity / recipePerSupplierUnit),
+    desiredRecipeQuantity / recipePerSupplierUnit,
     conversion.minimumSupplierUnits
   );
   const recipe = supplierUnits * recipePerSupplierUnit;
@@ -859,9 +978,17 @@ function formatRateLabel(rate) {
 }
 
 function parseOptionalPurchaseNumber(value) {
-  const text = String(value ?? "").trim();
-  if (!text) return NaN;
-  return parseQuantity(text);
+  return parsePurchaseQuantity(value);
+}
+
+function parsePurchaseQuantity(value) {
+  const compact = String(value ?? "").trim().replace(/\s+/g, "");
+  let normalized = "";
+  if (/^\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?$/.test(compact)) normalized = compact.replace(/\./g, "").replace(",", ".");
+  else if (/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(compact)) normalized = compact.replace(/,/g, "");
+  else if (/^\d+(?:[.,]\d{1,2})?$/.test(compact)) normalized = compact.replace(",", ".");
+  const quantity = Number(normalized);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : NaN;
 }
 
 function setPurchaseUnitLabel(element, rawUnit) {
@@ -916,28 +1043,26 @@ function roundForInput(value) {
   return String(Math.ceil(value * 100) / 100);
 }
 
-function integerPurchaseDisplay(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "";
-  return String(Math.ceil(number));
-}
-
 function decimalPurchaseDisplay(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "";
-  return formatMoneyInput(number);
+  return String(Math.round((number + Number.EPSILON) * 100) / 100);
 }
 
 async function submitPurchase(event) {
   event.preventDefault();
   const supplierLink = selectedPurchaseSupplierLink();
   const supply = selectedPurchaseSupply();
-  const supplierQuantity = parseOptionalPurchaseNumber(els["purchase-supplier-quantity"]?.value);
+  const supplierQuantity = parsePurchaseQuantity(els["purchase-supplier-quantity"]?.value);
   const orderDate = els["purchase-order-date"]?.value || "";
   const expectedDeliveryDate = els["purchase-expected-date"]?.value || "";
 
-  if (!supply || !supplierLink || !orderDate || !expectedDeliveryDate || !Number.isFinite(supplierQuantity) || supplierQuantity <= 0) {
-    setPurchaseStatus("Completa insumo, proveedor, fechas y cantidad proveedor.", "error");
+  if (!supply || !supplierLink || !orderDate || !expectedDeliveryDate) {
+    setPurchaseStatus("Completa insumo, proveedor y fechas.", "error");
+    return;
+  }
+  if (!Number.isFinite(supplierQuantity)) {
+    setPurchaseStatus("La cantidad del proveedor debe ser positiva y tener como máximo dos decimales.", "error");
     return;
   }
 
@@ -1151,7 +1276,7 @@ async function submitInventoryProductionRate(event) {
     inventoryPurchaseSnapshot = payload.snapshot;
     dashboardWidgetData.inventoryPurchaseSnapshot = payload.snapshot;
     renderPurchaseInventorySuggestions(payload.snapshot);
-    updateInventoryPurchaseAlerts();
+    scheduleInventoryPurchaseDraftEvaluation();
     renderDashboardInventoryPurchasesWidget();
     input.value = formatNumber(payload.snapshot.barsPerDay);
     status.dataset.status = "success";

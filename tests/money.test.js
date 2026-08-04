@@ -224,6 +224,14 @@ function testSemanticMoneyColumns() {
   assert.strictEqual(moneyColumns.isMoneyColumn("productos", "cantidad_individual"), false);
   assert.strictEqual(moneyColumns.isMoneyColumn("canales", "comision"), false);
   assert.strictEqual(moneyColumns.isMoneyColumn("detalle_pedidos", "bonificacion"), false);
+  assert.strictEqual(moneyColumns.isPercentageColumn("insumos_proveedores", "iva"), true);
+  assert.strictEqual(moneyColumns.isPercentageColumn("ventas", "iva"), false);
+  ["21", "21.00", "21,00", "21%", "21.00%", "21,00%", "10.5%", "0%"].forEach((value) => {
+    assert.strictEqual(moneyColumns.parsePercentageInput(value).ok, true, value);
+  });
+  assert.strictEqual(moneyColumns.parsePercentageInput("21.000").ok, false);
+  assert.strictEqual(moneyColumns.parsePercentageInput("iva").ok, false);
+  assert.strictEqual(moneyColumns.formatPercentage(21), "21.00%");
 }
 
 function main() {

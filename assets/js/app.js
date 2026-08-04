@@ -468,6 +468,9 @@ function cacheElements() {
     "creditor-entry-submit",
     "sql-table-count",
     "sql-table-list",
+    "sql-request",
+    "sql-generate",
+    "sql-generate-status",
     "sql-query",
     "sql-run",
     "sql-status",
@@ -1141,18 +1144,19 @@ function bindEvents() {
   });
   els["creditor-entry-form"]?.addEventListener("submit", submitCreditorEntry);
   setupDataEditorGrid();
+  els["sql-generate"]?.addEventListener("click", () => generateSqlProposal());
+  els["sql-request"]?.addEventListener("keydown", (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+      event.preventDefault();
+      generateSqlProposal();
+    }
+  });
   els["sql-run"]?.addEventListener("click", () => runSqlQuery());
   els["sql-query"]?.addEventListener("keydown", (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
       event.preventDefault();
       runSqlQuery();
     }
-  });
-  document.querySelectorAll("[data-sql-example]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (els["sql-query"]) els["sql-query"].value = button.dataset.sqlExample;
-      runSqlQuery();
-    });
   });
   setupBankReconciliationFileDropZone();
   els["bank-reconciliation-file"]?.addEventListener("change", () => {
@@ -1317,7 +1321,7 @@ function bindEvents() {
   els["inventory-detail-body"]?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-purchase-item]");
     if (!button) return;
-    openPurchaseEntryForItem(button.dataset.purchaseItem, button.dataset.purchaseItemId);
+    openPurchaseEntryForItem(button.dataset.purchaseItem, button.dataset.purchaseItemId, inventoryPurchaseDraftSnapshot);
   });
   els["inventory-detail-form"].addEventListener("submit", submitInventoryDetail);
   els["inventory-production-rate-form"]?.addEventListener("submit", submitInventoryProductionRate);

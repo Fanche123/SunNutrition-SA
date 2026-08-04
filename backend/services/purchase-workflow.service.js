@@ -1,24 +1,20 @@
 const crypto = require("node:crypto");
 const { normalize: normalizeMoney, toCents: moneyToCents } = require("../../shared/money");
 
+// El flujo operativo vigente comienza con la compra 199; las anteriores quedan solo como histórico.
+const FIRST_OPERATIONAL_PURCHASE_ID = 199;
+
 function createPurchaseWorkflowService(dependencies) {
-  const { backendId, backendNextNumericId, ensureBackendTable, enqueueWrite = (operation) => operation(), fs, isIsoDate, loadCache, now = () => new Date(), path, readJsonBody, rootDir, saveBackendCache, sendJson, synchronizeEconomicExpenses = (cache) => cache } = dependencies;
+  const { backendId, backendNextNumericId, ensureBackendTable, enqueueWrite = (operation) => operation(), fs, isIsoDate, loadCache, path, readJsonBody, rootDir, saveBackendCache, sendJson, synchronizeEconomicExpenses = (cache) => cache } = dependencies;
 
   function rows(table) { return Array.isArray(table?.rows) ? table.rows : []; }
   function text(value) { return String(value ?? "").trim(); }
   function byId(values, key) { return new Map(values.map((row) => [text(row[key]), row]).filter(([id]) => id)); }
+  function isActiveEmployee(employee) { return Boolean(backendId(employee?.id_empleado)) && !text(employee?.fecha_baja); }
   function finish(table) { table.rowCount = table.rows.length; table.updatedAt = new Date().toISOString(); }
   function ensureWorkflow(tables) {
     if (!tables.gestion_compras) tables.gestion_compras = { headers: ["id_gestion_compra", "id_compra", "cerrado_en", "cerrado_por", "claves_recepcion", "clave_factura", "creado_en", "actualizado_en"], rows: [], rowCount: 0 };
     return tables.gestion_compras;
-  }
-
-  function buenosAiresDate() {
-    const parts = new Intl.DateTimeFormat("en-US", {
-      timeZone: "America/Argentina/Buenos_Aires", year: "numeric", month: "2-digit", day: "2-digit"
-    }).formatToParts(now());
-    const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-    return `${values.year}-${values.month}-${values.day}`;
   }
 
   function purchaseModels(cache) {
@@ -35,14 +31,13 @@ function createPurchaseWorkflowService(dependencies) {
       const id = text(detail.id_compra);
       if (!detailsByPurchase.has(id)) detailsByPurchase.set(id, []);
       const supplierItem = supplierItems.get(text(detail.id_insumos_proveedores)) || {};
-      const supply = supplies.get(text(supplierItem.id_insumo)) || {};
+      const supplyId = text(detail.id_insumo) || text(supplierItem.id_insumo);
+      const supply = supplies.get(supplyId) || {};
       const supplierQuantity = Number(detail.cantidad) || 0;
-      const recipePerSupplierUnit = Number(supplierItem.cantidad_proveedor) || 1;
-      const recipePerCountUnit = Number(supply.cantidad_receta) || 1;
       const item = {
-        detailId: text(detail.id_detalle_compra), supplyId: text(supplierItem.id_insumo),
-        name: text(supply.nombre) || "Insumo sin nombre", ordered: supplierQuantity * recipePerSupplierUnit / recipePerCountUnit,
-        supplierUnit: text(countItems.get(text(supplierItem.id_insumo))?.ud_conteo) || text(supply.ud_receta)
+        detailId: text(detail.id_detalle_compra), supplyId,
+        name: text(supply.nombre) || "Insumo sin nombre", ordered: supplierQuantity,
+        supplierUnit: text(detail.ud_proveedor) || text(supplierItem.ud_proveedor) || text(countItems.get(supplyId)?.ud_conteo) || text(supply.ud_receta)
       };
       const existing = detailsByPurchase.get(id).find((current) => current.supplyId === item.supplyId);
       if (existing) existing.ordered += item.ordered;
@@ -79,14 +74,17 @@ function createPurchaseWorkflowService(dependencies) {
         closedAt: text(workflow.cerrado_en) || derivedHistoricalClose,
         closedBy: text(workflow.cerrado_por), historicalResolved: Boolean(derivedHistoricalClose)
       };
-    }).sort((a, b) => (a.expectedDeliveryDate || "9999-12-31").localeCompare(b.expectedDeliveryDate || "9999-12-31") || Number(a.purchaseId) - Number(b.purchaseId));
+    }).sort((a, b) => {
+      const dateA = isIsoDate(a.expectedDeliveryDate) ? a.expectedDeliveryDate : "9999-12-31";
+      const dateB = isIsoDate(b.expectedDeliveryDate) ? b.expectedDeliveryDate : "9999-12-31";
+      return dateA.localeCompare(dateB) || Number(a.purchaseId) - Number(b.purchaseId);
+    });
   }
 
   function handleList(_request, response) {
     const purchases = purchaseModels(loadCache());
-    const today = buenosAiresDate();
-    const isOperationalPending = (row) => !row.closedAt && (!isIsoDate(row.expectedDeliveryDate) || row.expectedDeliveryDate >= today);
-    sendJson(response, 200, { ok: true, pending: purchases.filter(isOperationalPending), managed: purchases.filter((row) => row.closedAt) });
+    const isOperationalPending = (row) => Number(row.purchaseId) >= FIRST_OPERATIONAL_PURCHASE_ID && !row.closedAt;
+    sendJson(response, 200, { ok: true, pending: purchases.filter(isOperationalPending), managed: purchases.filter((row) => Number(row.purchaseId) >= FIRST_OPERATIONAL_PURCHASE_ID && row.closedAt) });
   }
 
   async function handleReception(request, response) { return enqueueWrite(() => persistReception(request, response)); }
@@ -100,7 +98,7 @@ function createPurchaseWorkflowService(dependencies) {
       if (!entries.length || entries.some((entry) => !backendId(entry.supplyId) || !(Number(entry.quantity) > 0))) throw new Error("Las cantidades recibidas deben ser mayores a cero.");
       if (new Set(entries.map((entry) => backendId(entry.supplyId))).size !== entries.length) throw new Error("Cada insumo debe aparecer una sola vez en la recepción.");
       let cache = loadCache(); const tables = cache.tables || (cache.tables = {}); const workflow = ensureWorkflow(tables);
-      if (!rows(tables.empleados).some((row) => backendId(row.id_empleado) === backendId(input.employeeId))) throw new Error("El empleado seleccionado no existe.");
+      if (!rows(tables.empleados).some((row) => backendId(row.id_empleado) === backendId(input.employeeId) && isActiveEmployee(row))) throw new Error("El empleado seleccionado no existe o no está activo.");
       let workflowRow = rows(workflow).find((row) => text(row.id_compra) === purchaseId);
       if ((text(workflowRow?.claves_recepcion).split(",")).includes(requestKey)) return sendJson(response, 200, { ok: true, duplicate: true });
       const model = purchaseModels(cache).find((row) => row.purchaseId === purchaseId);

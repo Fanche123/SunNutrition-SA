@@ -226,6 +226,14 @@ Aplicar la verificación mínima suficiente para cada tarea.
 - en Worktrees usar un puerto aislado, timeout y cleanup garantizado;
 - un `404` de una ruta recién implementada obliga a corregir el runtime o la ruta y no permite cerrar la tarea como aprobada.
 
+### Navegador para validaciones visuales e interacción web
+
+- Para revisar una pantalla web o interactuar normalmente con el ERP, preferir `browser:control-in-app-browser`, el navegador integrado de Codex.
+- No abrir ni controlar Chrome para validaciones rutinarias del ERP local. `chrome:control-chrome` solo se usa si hace falta una sesión ya autenticada exclusiva del perfil Chrome, una extensión instalada allí —incluido un flujo ARCA que dependa explícitamente de esa extensión— o si el usuario pidió Chrome expresamente.
+- Antes de usar Chrome, declarar brevemente cuál de esas dependencias concretas lo exige; la comodidad no es una justificación suficiente.
+- Si no se necesita UI, preferir pruebas focalizadas, HTTP/API o inspección DOM. Si el navegador integrado no está disponible, intentar primero una alternativa segura y aislada de ese tipo; Chrome solo procede cuando la comprobación es imprescindible y cumple una excepción anterior.
+- No abrir ambos navegadores para la misma comprobación ni repetir una validación visual. Las validaciones visuales conservan los límites de seguridad, datos reales y puertos de Local/Worktree, y no realizan mutaciones financieras, confirmaciones, emisiones, pagos ni conciliaciones.
+
 No ejecutar automáticamente toda la suite, builds completos o auditorías generales para cambios pequeños.
 
 ### Gate operativo obligatorio de cierre

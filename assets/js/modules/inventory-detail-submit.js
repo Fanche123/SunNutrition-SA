@@ -43,7 +43,12 @@ async function submitInventoryDetail(event) {
       })
     });
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    if (!response.ok) {
+      const reference = payload.requestId && payload.requestId !== "untracked"
+        ? ` Referencia: ${payload.requestId}.`
+        : "";
+      throw new Error(`${payload.error || `HTTP ${response.status}`}${reference}`);
+    }
 
     loadPurchaseInventorySuggestions();
     renderInventoryDetailTemplate(null);

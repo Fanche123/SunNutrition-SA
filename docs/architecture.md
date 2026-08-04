@@ -76,6 +76,8 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `inventory-photo.service.js`: lectura OCR, revision y preparacion de rangos de inventario.
 - `inventory-photo-mapping.service.js`: normalizacion y mapeo puro de transcripciones.
 - `inventory-valuation.service.js`: valuacion de inventarios y mapa de costos por item.
+- `backend/migrations/20260804-inventory-values.js`: reparación manual y auditable de la valuación persistida; reutiliza el motor canónico por fecha/turno, corrige detalles antes de derivar cada cabecera, omite inventarios ambiguos completos, preserva todos los datos no derivados y exige backup/segundo dry-run.
+- La valuación distingue unidad de conteo y unidad de receta. Los costos persistidos de inventario siempre corresponden a `items.ud_conteo`; los factores compuestos —actualmente Barra_Pop, 2.000 unidades por bolsón— se aplican una sola vez en esa frontera y las recetas operan con costo por unidad consumida. La receta canónica de Barra_Pop consume `0,0165 Kg` de Granel Dulce por unidad individual.
 - `income-calculation.service.js`: fechas, numeros y calculos reutilizados por inventario y resultados.
 - `income-statement.service.js`: composicion del Estado de Resultados backend.
 - `sales-invoice-entry.service.js`: consulta de pedidos sin factura y alta atómica de ventas vinculadas a pedido/cliente/entrega.

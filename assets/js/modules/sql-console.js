@@ -122,9 +122,82 @@ function formatSqlCell(value, column = "", tableName = "") {
   return value;
 }
 
+let sqlGenerationInFlight = false;
+let sqlGenerationSequence = 0;
+
+async function generateSqlProposal() {
+  if (sqlGenerationInFlight) return;
+  const requestValue = els["sql-request"]?.value || "";
+  const request = requestValue.trim();
+  if (!request) {
+    setSqlGenerationStatus("Describí la consulta que querés generar.", "warn");
+    els["sql-request"]?.focus();
+    return;
+  }
+
+  sqlGenerationInFlight = true;
+  const generationId = ++sqlGenerationSequence;
+  const initialSql = els["sql-query"]?.value || "";
+  const originalText = els["sql-generate"]?.textContent;
+  if (els["sql-generate"]) {
+    els["sql-generate"].disabled = true;
+    els["sql-generate"].textContent = "Generando...";
+    els["sql-generate"].setAttribute("aria-busy", "true");
+  }
+  setSqlGenerationStatus("Generando una propuesta segura...", "loading");
+
+  try {
+    let response;
+    try {
+      response = await fetch(`${API_BASE_URL}/api/backend/sql/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ request })
+      });
+    } catch {
+      throw new Error("No se pudo contactar al servidor del ERP. Verificá que esté iniciado e intentá nuevamente.");
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok || typeof payload.sql !== "string") {
+      const errorMessage = payload.error || `El servidor del ERP respondió HTTP ${response.status}.`;
+      const providerStatus = Number.isInteger(payload.providerStatus)
+        && !errorMessage.includes(`HTTP ${payload.providerStatus}`)
+        ? ` OpenAI respondió HTTP ${payload.providerStatus}.`
+        : "";
+      throw new Error(`${errorMessage}${providerStatus}`);
+    }
+    if (generationId !== sqlGenerationSequence
+      || (els["sql-request"]?.value || "") !== requestValue
+      || (els["sql-query"]?.value || "") !== initialSql) {
+      setSqlGenerationStatus("La propuesta quedó desactualizada y no reemplazó tus cambios.", "warn");
+      return;
+    }
+    if (els["sql-query"]) {
+      els["sql-query"].value = payload.sql;
+      els["sql-query"].focus();
+    }
+    setSqlGenerationStatus("Propuesta lista para revisar. Todavía no fue ejecutada.", "ok");
+  } catch (error) {
+    setSqlGenerationStatus(error.message || "No se pudo generar la consulta. Podés escribir SQL manualmente.", "warn");
+  } finally {
+    sqlGenerationInFlight = false;
+    if (els["sql-generate"]) {
+      els["sql-generate"].disabled = false;
+      els["sql-generate"].textContent = originalText;
+      els["sql-generate"].removeAttribute("aria-busy");
+    }
+  }
+}
+
 function setSqlStatus(message, status) {
   if (!els["sql-status"]) return;
   els["sql-status"].textContent = message;
   els["sql-status"].dataset.status = status;
+}
+
+function setSqlGenerationStatus(message, status) {
+  if (!els["sql-generate-status"]) return;
+  els["sql-generate-status"].textContent = message;
+  els["sql-generate-status"].dataset.status = status;
 }
 

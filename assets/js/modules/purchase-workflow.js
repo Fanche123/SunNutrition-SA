@@ -5,6 +5,7 @@
   let submitting = false;
   let receptionRequestKey = "";
   let invoiceRequestKey = "";
+  const DEFAULT_RECEPTION_EMPLOYEE = "Alcarez_Pablo_Nicolas";
   const $ = (selector, root = document) => root.querySelector(selector);
   const escape = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
   const api = async (url, options) => {
@@ -47,12 +48,54 @@
     $("#purchase-item-name", popup)?.focus();
   }
   function closePurchase() { const popup = $("#purchase-workflow-purchase-popup"); if (popup?.open) popup.close(); document.body.classList.remove("purchase-workflow-popup-open"); load(); }
-  function openReception(purchase) {
+  function activeReceptionEmployees(rows) {
+    return rows
+      .filter((employee) => String(employee.id_empleado ?? "").trim() && !String(employee.fecha_baja ?? "").trim())
+      .map((employee) => ({ id: String(employee.id_empleado).trim(), name: String(employee.nombre_empleado || employee.nombre || "").trim() }))
+      .filter((employee) => employee.name)
+      .sort((left, right) => left.name.localeCompare(right.name, "es"));
+  }
+  function plannedReceptionDate(purchase) {
+    const value = String(purchase?.expectedDeliveryDate || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return "";
+    const [year, month, day] = value.split("-").map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day ? value : "";
+  }
+  async function openReception(purchase) {
     selectedPurchase = purchase; const dialog = $("#purchase-workflow-reception-dialog");
     $("[data-purchase-number]", dialog).textContent = `#${purchase.purchaseId}`;
     $("[data-reception-history]", dialog).textContent = purchase.receptions.length ? `Historial: ${purchase.receptions.map((row) => `${row.date} (${row.items.map((item) => item.quantity).join(", ")})`).join(" · ")}` : "Sin recepciones previas.";
     $("[data-reception-items]", dialog).innerHTML = purchase.items.map((item) => `<label>${escape(item.name)} — pedido ${item.ordered}, acumulado ${item.received}, pendiente ${item.pending}<input type="number" min="0" max="${item.pending}" step="any" name="supply-${escape(item.supplyId)}" ${item.pending ? "" : "disabled"}></label>`).join("");
-    dialog.querySelector("[name=receptionDate]").value = new Date().toISOString().slice(0, 10); receptionRequestKey = requestKey();
+    purchase.items.forEach((item) => {
+      const input = dialog.querySelector(`[name="supply-${item.supplyId}"]`);
+      if (!input) return;
+      input.value = item.pending;
+      const unit = document.createElement("span");
+      unit.className = "purchase-workflow-unit";
+      unit.textContent = item.supplierUnit || "Sin unidad";
+      const quantity = document.createElement("span");
+      quantity.className = "purchase-workflow-quantity";
+      input.parentElement.insertBefore(quantity, input);
+      quantity.appendChild(input);
+      input.insertAdjacentElement("afterend", unit);
+    });
+    const employeeSelect = $("[name=employeeId]", dialog);
+    const submitButton = $("button[type=submit]", dialog);
+    try {
+      const employees = activeReceptionEmployees(await backendTableRowsForEntry("empleados"));
+      const defaultEmployee = employees.find((employee) => employee.name === DEFAULT_RECEPTION_EMPLOYEE);
+      employeeSelect.innerHTML = `<option value="">Elegir empleado</option>${employees.map((employee) => `<option value="${escape(employee.id)}">${escape(employee.name)}</option>`).join("")}`;
+      employeeSelect.value = defaultEmployee?.id || "";
+      $("[data-dialog-status]", dialog).textContent = defaultEmployee ? "" : `No se encontró un empleado activo llamado ${DEFAULT_RECEPTION_EMPLOYEE}. Seleccioná un empleado válido.`;
+      submitButton.disabled = !employees.length || showingManaged;
+    } catch (error) {
+      employeeSelect.innerHTML = `<option value="">No se pudieron cargar los empleados</option>`;
+      employeeSelect.value = "";
+      $("[data-dialog-status]", dialog).textContent = `No se pudieron cargar los empleados: ${error.message}`;
+      submitButton.disabled = true;
+    }
+    dialog.querySelector("[name=receptionDate]").value = plannedReceptionDate(purchase); receptionRequestKey = requestKey();
     dialog.querySelector("[name=receptionDate]").disabled = showingManaged; dialog.querySelector("[name=employeeId]").disabled = showingManaged;
     if (showingManaged) [...dialog.querySelectorAll("[data-reception-items] input")].forEach((input) => { input.disabled = true; });
     $("button[type=submit]", dialog).hidden = showingManaged; dialog.showModal();

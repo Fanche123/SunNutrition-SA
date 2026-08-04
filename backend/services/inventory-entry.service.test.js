@@ -1,14 +1,24 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 const { payrollCalendarForYear } = require("../../assets/js/config/payroll-calendars");
 const InventoryPurchaseEvaluation = require("../../shared/inventory-purchase-evaluation");
-const { createInventoryEntryService } = require("./inventory-entry.service");
+const {
+  createInventoryEntryService,
+  deliveredIndividualUnits,
+  inventoryDeliveryExits,
+  inventoryReceptionEntries
+} = require("./inventory-entry.service");
 const {
   SNAPSHOT_STATES,
   SNAPSHOT_VERSION,
   createInventoryPurchaseSnapshotService
 } = require("./inventory-purchase-snapshot.service");
+const { createInventoryPhotoService } = require("./inventory-photo.service");
+const { normalizeInventoryToken } = require("./inventory-photo-mapping.service");
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
@@ -103,6 +113,7 @@ function historicalCache() {
 function createHarness(initialCache = baseCache()) {
   let persisted = clone(initialCache);
   const responses = [];
+  const errors = [];
   let saveCount = 0;
   const snapshotService = createInventoryPurchaseSnapshotService({
     backendId,
@@ -119,7 +130,7 @@ function createHarness(initialCache = baseCache()) {
     inventoryItemNameMap: () => new Map(),
     isIsoDate: (value) => Boolean(backendIsoDate(value)),
     loadCache: () => clone(persisted),
-    logError: () => {},
+    logError: (error) => errors.push(String(error?.stack || error)),
     nextBusinessDayIso: (value) => value,
     normalizeInventoryDetailRows: (rows) => rows.map((row) => ({
       itemId: backendId(row.itemId),
@@ -143,6 +154,7 @@ function createHarness(initialCache = baseCache()) {
   return {
     cache: () => clone(persisted),
     dependencies,
+    errors,
     responses,
     saveCount: () => saveCount
   };
@@ -204,6 +216,462 @@ test("la regla compartida conserva umbral, decimales, cero e invalidos", () => {
     leadDays: 5,
     businessDays: 4
   }), null);
+});
+
+test("las salidas teoricas usan la entrega real, deduplican su vinculo y aplican el corte de Mañana", async () => {
+  const cache = historicalCache();
+  cache.tables.productos = {
+    rows: [{ id_producto: 67, id_item: 118, nombre_producto: "Barra_Pop_140Ud", cantidad_individual: 140 }]
+  };
+  cache.tables.detalle_pedidos = {
+    rows: [{ id_detalle_pedido: 1031, id_pedido: 1000, id_producto: 67, cantidad_cajas: 100 }]
+  };
+  cache.tables.entregas = {
+    rows: [{ id_entrega: 570, fecha: "2026-07-06" }]
+  };
+  cache.tables.entregas_detalle = {
+    rows: [
+      { id_entregas_detalle: 1001, id_entrega: 570, id_pedido: 1000 },
+      { id_entregas_detalle: 1002, id_entrega: 570, id_pedido: 1000 }
+    ]
+  };
+  cache.tables.ventas = {
+    rows: [
+      { id_venta: 1020, id_entrega: 570, id_pedido: 1000, fecha_factura: "2026-07-10" },
+      { id_venta: 1021, id_entrega: 570, id_pedido: 1000, fecha_factura: "2026-07-11" }
+    ]
+  };
+
+  const exits = inventoryDeliveryExits(cache);
+  assert.deepEqual(exits, [{
+    deliveryId: "570",
+    orderId: "1000",
+    orderDetailId: "1031",
+    date: "2026-07-06",
+    shift: "morning",
+    itemId: "118",
+    productName: "Barra_Pop_140Ud",
+    quantity: 100,
+    unitsPerBox: 140,
+    individualQuantity: 14000
+  }]);
+
+  const context = {
+    inventoryDetailTemplate: { salesExits: exits },
+    normalizeCategory: (value) => String(value || "").replaceAll("_", " ").toLowerCase(),
+    selectedInventoryShifts: () => ["morning", "afternoon"]
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "../../assets/js/modules/inventory-counter-review.js"), "utf8"),
+    context
+  );
+  const morningSales = context.orderDetailsUnitsForDateAndProduct("2026-07-06", "Barra_Pop_140Ud", "morning", "118");
+  const morningIndividualUnits = context.orderDetailsIndividualUnitsForDateAndProduct(
+    "2026-07-06",
+    "Barra_Pop_140Ud",
+    "morning",
+    "118"
+  );
+  const afternoonSales = context.orderDetailsUnitsForDateAndProduct("2026-07-06", "Barra_Pop_140Ud", "afternoon", "118");
+  assert.equal(morningSales, 100);
+  assert.equal(morningIndividualUnits, 14000);
+  assert.equal(afternoonSales, 0);
+  assert.equal(133 - morningSales, 33);
+  assert.equal(morningIndividualUnits + ((26 - 97) * 140) + ((6.5 - 2.5) * 2000), 12060);
+  assert.equal(Math.round((((12100 - 12060) / 12060) * 100) * 100) / 100, 0.33);
+  assert.equal(0 + ((81 - 26) * 140) + ((7 - 6.5) * 2000), 8700);
+
+  context.selectedInventoryShifts = () => ["afternoon"];
+  assert.equal(
+    context.orderDetailsUnitsForDateAndProduct("2026-07-06", "Barra_Pop_140Ud", "afternoon", "118"),
+    100
+  );
+});
+
+test("las entradas teoricas usan recepciones reales, detalle recibido, unidad de conteo y un unico corte de Mañana", () => {
+  const cache = baseCache();
+  cache.tables.items.rows.push({ id_item: 103, origen_tipo: "insumo", id_origen: 12, ud_conteo: "" });
+  cache.tables.insumos.rows.push({ id_insumo: 12, nombre: "Sin unidad", ud_receta: "Bolsa" });
+  cache.tables.recepciones = { rows: [
+    { id_recepcion: 195, fecha_recepcion: "2026-07-06", id_compra: 195 },
+    { id_recepcion: 196, fecha_recepcion: "2026-07-06", id_compra: 195 },
+    { id_recepcion: 197, fecha_recepcion: "2026-07-06", id_compra: 197 },
+    { id_recepcion: 198, fecha_recepcion: "2026-07-06", id_compra: 198 }
+  ] };
+  cache.tables.detalle_recepciones = { rows: [
+    { id_detalle_recepcion: 210, id_recepcion: 195, id_insumo: 10, cantidad_recibida: 1000 },
+    { id_detalle_recepcion: 210, id_recepcion: 195, id_insumo: 10, cantidad_recibida: 1000 },
+    { id_detalle_recepcion: 211, id_recepcion: 196, id_insumo: 10, cantidad_recibida: 250 },
+    { id_detalle_recepcion: 212, id_recepcion: 197, id_insumo: 11, cantidad_recibida: 30 },
+    { id_detalle_recepcion: 213, id_recepcion: 198, id_insumo: 12, cantidad_recibida: 5 },
+    { id_detalle_recepcion: 214, id_recepcion: 999, id_insumo: 10, cantidad_recibida: 500 }
+  ] };
+
+  const entries = inventoryReceptionEntries(cache);
+  assert.deepEqual(entries, [
+    {
+      receptionId: "195",
+      receptionDetailId: "210",
+      date: "2026-07-06",
+      shift: "morning",
+      itemId: "101",
+      quantity: 1000,
+      unit: "Kg"
+    },
+    {
+      receptionId: "196",
+      receptionDetailId: "211",
+      date: "2026-07-06",
+      shift: "morning",
+      itemId: "101",
+      quantity: 250,
+      unit: "Kg"
+    },
+    {
+      receptionId: "197",
+      receptionDetailId: "212",
+      date: "2026-07-06",
+      shift: "morning",
+      itemId: "102",
+      quantity: 30,
+      unit: "Lt"
+    }
+  ]);
+  assert.equal(entries.filter((entry) => entry.itemId === "101").reduce((sum, entry) => sum + entry.quantity, 0), 1250);
+
+  const theoreticalContext = {
+    inventoryDetailTemplate: { receptionEntries: entries.slice(0, 1) },
+    inventoryPhotoApplied: true,
+    normalizeCategory: (value) => String(value || "").replaceAll("_", " ").toLowerCase(),
+    inventoryDetailTableRows: () => [
+      { itemId: "101", itemName: "Maiz_Pisingallo", element: { key: "maiz" } },
+      { itemId: "900", itemName: "Granel Dulce", element: { key: "granel" } }
+    ],
+    recipeRowsForTheoreticalStock: () => [],
+    currentCounterUnits: () => 12060,
+    isNeutralTheoreticalStockItem: (name) => name === "Granel Dulce",
+    isBarraPopName: () => false,
+    initialDetailStockForShift: (element) => element.key === "maiz" ? 1625 : 15.21568093385214,
+    currentDetailStockForShift: (element) => element.key === "maiz" ? 2400 : 10,
+    orderDetailsUnitsForDateAndProduct: () => 0,
+    theoreticalRecipeUnitFactor: () => 1,
+    granelDulceIngredientCoefficient: (name) => name === "maiz pisingallo" ? 1.285 : NaN
+  };
+  theoreticalContext.selectedInventoryShifts = () => ["morning", "afternoon"];
+  theoreticalContext.inventoryShiftOrder = (shift) => ({ dawn: 0, morning: 1, afternoon: 2 }[shift] ?? -1);
+  theoreticalContext.previousWorkedInventoryShift = (shift) => {
+    const shifts = ["dawn", "morning", "afternoon"];
+    const selected = new Set(theoreticalContext.selectedInventoryShifts());
+    for (let index = shifts.indexOf(shift) - 1; index >= 0; index -= 1) {
+      if (selected.has(shifts[index])) return shifts[index];
+    }
+    return "";
+  };
+  vm.createContext(theoreticalContext);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "../../assets/js/modules/inventory-theoretical-model.js"), "utf8"),
+    theoreticalContext
+  );
+  const morning = theoreticalContext.buildTheoreticalInventoryModel("2026-07-06", "morning")
+    .rows.find((row) => row.itemId === "101");
+  assert.ok(Math.abs(morning.theoreticalStock - 2376) < 0.000001);
+  assert.equal(morning.receivedStock, 1000);
+  assert.ok(Math.abs((((2400 - morning.theoreticalStock) / morning.theoreticalStock) * 100) - 1.0101010101) < 0.000001);
+  assert.equal(theoreticalContext.receivedInventoryQuantityForDateAndItem("2026-07-06", "afternoon", "101"), 0);
+  theoreticalContext.selectedInventoryShifts = () => ["afternoon"];
+  assert.equal(theoreticalContext.receivedInventoryQuantityForDateAndItem("2026-07-06", "afternoon", "101"), 1000);
+  assert.equal(theoreticalContext.receivedInventoryQuantityForDateAndItem("2026-07-06", "morning", "101"), 1000);
+});
+
+test("la conversion individual canonica no inventa factores ausentes", () => {
+  assert.equal(deliveredIndividualUnits(100, 140), 14000);
+  assert.equal(deliveredIndividualUnits(2, 50), 100);
+  assert.equal(deliveredIndividualUnits(3, 1), 3);
+  assert.equal(deliveredIndividualUnits(2.5, 40), 100);
+  assert.equal(deliveredIndividualUnits(10, ""), null);
+  assert.equal(deliveredIndividualUnits(10, 0), null);
+
+  const context = {
+    inventoryDetailTemplate: {
+      salesExits: [{
+        date: "2026-07-06",
+        shift: "morning",
+        itemId: "999",
+        productName: "Producto_sin_factor",
+        quantity: 10,
+        individualQuantity: null
+      }]
+    },
+    normalizeCategory: (value) => String(value || "").replaceAll("_", " ").toLowerCase(),
+    selectedInventoryShifts: () => ["morning"]
+  };
+  vm.createContext(context);
+  vm.runInContext(
+    fs.readFileSync(path.join(__dirname, "../../assets/js/modules/inventory-counter-review.js"), "utf8"),
+    context
+  );
+  assert.equal(
+    Number.isNaN(context.orderDetailsIndividualUnitsForDateAndProduct(
+      "2026-07-06",
+      "Producto_sin_factor",
+      "morning",
+      "999"
+    )),
+    true
+  );
+});
+
+test("el preview del borrador usa el parametro canonico y no persiste", async () => {
+  const cache = historicalCache();
+  cache.inventoryPurchaseConfig = { version: 1, barsPerDay: 25000 };
+  const harness = createHarness(cache);
+  const service = createInventoryEntryService(harness.dependencies);
+
+  await service.handleInventoryPurchaseDraft({ body: {
+    date: "2026-07-06",
+    selectedShifts: ["morning", "afternoon"],
+    rows: [
+      { itemId: 101, morning: 500, afternoon: 0 },
+      { itemId: 102, morning: 500, afternoon: 500 },
+      { itemId: 103, morning: 500, afternoon: 500 }
+    ]
+  } }, {});
+
+  const response = harness.responses.at(-1);
+  assert.equal(response.status, 200);
+  assert.equal(harness.saveCount(), 0);
+  assert.equal(response.payload.snapshot.source, "draft");
+  assert.equal(response.payload.snapshot.barsPerDay, 25000);
+  assert.equal(response.payload.snapshot.items.find((item) => item.itemName === "Azucar").stock, 0);
+
+  await service.handleInventoryPurchaseDraft({ body: {
+    date: "2026-07-06",
+    selectedShifts: ["afternoon"],
+    rows: [
+      { itemId: 101, afternoon: "" },
+      { itemId: 102, afternoon: 500 },
+      { itemId: 103, afternoon: 500 }
+    ]
+  } }, {});
+  const missing = harness.responses.at(-1).payload.snapshot;
+  assert.equal(missing.state, SNAPSHOT_STATES.INSUFFICIENT_DEPENDENCIES);
+  assert.ok(missing.unavailableItems.find((item) => (
+    item.itemName === "Azucar" && item.missingDependencies.includes("stock")
+  )));
+  assert.equal(harness.saveCount(), 0);
+});
+
+test("preparar sin foto queda separado del OCR y el preview es una lectura sin persistencia", () => {
+  const root = path.join(__dirname, "../..");
+  const templateSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/inventory-detail-template.js"),
+    "utf8"
+  );
+  const photoSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/inventory-detail-photo.js"),
+    "utf8"
+  );
+  const purchaseSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/purchase-entry.js"),
+    "utf8"
+  );
+  const submitSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/inventory-detail-submit.js"),
+    "utf8"
+  );
+  const { READ_ONLY_POSTS } = require("./audit.service");
+  const theoreticalSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/inventory-theoretical-model.js"),
+    "utf8"
+  );
+  const granelStart = theoreticalSource.indexOf("function specialGranelIngredientTheoreticalStock(");
+  const granelEnd = theoreticalSource.indexOf("function specialBobinaBarraPopTheoreticalStock(", granelStart);
+  const granelSource = theoreticalSource.slice(granelStart, granelEnd);
+
+  assert.match(templateSource, /\/api\/inventory-detail\/template/);
+  assert.doesNotMatch(templateSource, /\/api\/inventory-detail\/photo|imageDataUrl|imageFileToDataUrl/);
+  assert.match(photoSource, /\/api\/inventory-detail\/photo/);
+  assert.match(photoSource, /imageFileToDataUrl/);
+  assert.match(purchaseSource, /\/api\/inventory\/purchase-snapshot\/preview/);
+  assert.match(purchaseSource, /window\.setTimeout\([\s\S]*?,\s*250\)/);
+  assert.match(purchaseSource, /collectEditableInventoryDetailRows\(\)/);
+  assert.match(purchaseSource, /Todavia no hay un detalle preparado para evaluar/);
+  assert.match(purchaseSource, /Complet[^\n]+cantidades del[^\n]+ltimo turno seleccionado/);
+  assert.match(purchaseSource, /no hay insumos a comprar/);
+  assert.match(purchaseSource, /openPurchaseEntryForItem\(itemName, itemId = "", snapshot = inventoryPurchaseSnapshot\)/);
+  assert.match(purchaseSource, /inventoryPurchaseSnapshotItem\([^\n]+snapshot\)/);
+  assert.match(purchaseSource, /renderPurchaseInventorySuggestions\(payload\.snapshot\);[\s\S]*scheduleInventoryPurchaseDraftEvaluation\(\)/);
+  assert.doesNotMatch(granelSource, /inventoryPhotoApplied|foto de inventario/);
+  assert.doesNotMatch(submitSource, /receivedStock|receptionEntries/);
+  assert.match(submitSource, /if \(!response\.ok\) \{[\s\S]*?payload\.requestId[\s\S]*?throw new Error/);
+  assert.match(submitSource, /renderInventoryDetailTemplate\(null\);[\s\S]*?catch \(error\)/);
+  assert.equal(READ_ONLY_POSTS.has("/api/inventory/purchase-snapshot/preview"), true);
+});
+
+test("el envio manual exitoso persiste cabecera, detalle, snapshot e idempotencia en un unico guardado", async () => {
+  const harness = createHarness();
+  let valuationOptions;
+  harness.dependencies.valueBackendInventories = (cache, inventoryIds, options) => {
+    valuationOptions = options;
+    const targetIds = new Set(inventoryIds.map(String));
+    cache.tables.inventarios.rows
+      .filter((row) => targetIds.has(String(row.id_inventario)))
+      .forEach((row) => { row.valor_total = 123.45; });
+    return { issues: [] };
+  };
+  const service = createInventoryEntryService(harness.dependencies);
+  const before = harness.cache();
+  await submit(service, {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["morning", "afternoon"],
+    rows: [
+      { itemId: 101, morning: 2400, afternoon: 2300 },
+      { itemId: 102, morning: "", afternoon: 20 }
+    ]
+  });
+
+  const response = harness.responses.at(-1);
+  const saved = harness.cache();
+  assert.equal(response.status, 200);
+  assert.equal(response.payload.idempotent, false);
+  assert.equal(response.payload.rowsWritten, 3);
+  assert.equal(harness.saveCount(), 1);
+  assert.equal(saved.tables.inventarios.rows.length - before.tables.inventarios.rows.length, 2);
+  assert.deepEqual(saved.tables.inventarios.rows.map((row) => row.valor_total), [123.45, 123.45]);
+  assert.equal(valuationOptions.allowStoredDetailCostFallback, false);
+  assert.equal(saved.tables.detalle_inventarios.rows.length - before.tables.detalle_inventarios.rows.length, 3);
+  assert.equal(saved.inventoryPurchaseSnapshot.inventoryDate, "2026-07-06");
+  assert.equal(saved._inventoryFullEntryOperations.length, 1);
+  assert.equal(saved.tables.recepciones, undefined);
+  assert.equal(saved.tables.detalle_recepciones, undefined);
+});
+
+test("el envio manual resuelve un empleado nominal con el normalizador inyectado", async () => {
+  const initialCache = baseCache();
+  initialCache.tables.empleados = {
+    rows: [{ id_empleado: 4, nombre_empleado: "María Pérez" }]
+  };
+  const harness = createHarness(initialCache);
+  const photoService = createInventoryPhotoService({
+    cleanBackendInput: (value) => String(value ?? "").trim(),
+    loadCache: harness.dependencies.loadCache,
+    normalizeInventoryToken
+  });
+  harness.dependencies.resolveInventoryEmployeeId = photoService.resolveInventoryEmployeeId;
+  const service = createInventoryEntryService(harness.dependencies);
+
+  await submit(service, {
+    date: "2026-07-06",
+    employee: "Maria Perez",
+    selectedShifts: ["morning", "afternoon"],
+    rows: [
+      { itemId: 101, morning: "1376.5", afternoon: "2376.5" },
+      { itemId: 102, morning: "", afternoon: "20.25" }
+    ]
+  });
+
+  assert.equal(harness.responses.at(-1).status, 200);
+  assert.equal(harness.cache().tables.inventarios.rows[0].id_empleado, "4");
+  assert.equal(harness.saveCount(), 1);
+});
+
+test("un fallo intermedio devuelve error trazable y revierte cabeceras, detalles, snapshot y metadatos", async () => {
+  const harness = createHarness(historicalCache());
+  const before = harness.cache();
+  harness.dependencies.valueBackendInventories = () => {
+    const error = new Error("valuation-fixture-failure");
+    error.code = "VALUATION_FIXTURE_FAILURE";
+    throw error;
+  };
+  const service = createInventoryEntryService(harness.dependencies);
+  await service.handleInventoryFullEntry({
+    auditRequestId: "fixture-request-id",
+    body: payload("2026-07-06", [{ itemId: 101, afternoon: 2400 }])
+  }, {});
+
+  const response = harness.responses.at(-1);
+  assert.equal(response.status, 500);
+  assert.equal(response.payload.code, "INVENTORY_FULL_ENTRY_FAILED");
+  assert.equal(response.payload.requestId, "fixture-request-id");
+  assert.match(response.payload.error, /No se realizo ningun cambio/i);
+  assert.match(harness.errors.at(-1), /valuation-fixture-failure/);
+  assert.match(harness.errors.at(-1), /inventory-entry\.service\.test\.js/);
+  assert.equal(harness.saveCount(), 0);
+  assert.deepEqual(harness.cache(), before);
+});
+
+test("un costo faltante rechaza la carga manual u OCR antes del unico guardado", async () => {
+  const harness = createHarness();
+  const before = harness.cache();
+  harness.dependencies.valueBackendInventories = () => ({
+    issues: [{ code: "MISSING_COST", inventoryId: "1", detailId: "1", itemId: "101", quantity: 5 }]
+  });
+  const service = createInventoryEntryService(harness.dependencies);
+
+  await submit(service, payload("2026-07-06", [{ itemId: 101, afternoon: 5 }]));
+
+  const response = harness.responses.at(-1);
+  assert.equal(response.status, 422);
+  assert.equal(response.payload.code, "INVENTORY_COST_UNAVAILABLE");
+  assert.match(response.payload.error, /No se realizo ningun cambio/i);
+  assert.equal(harness.saveCount(), 0);
+  assert.deepEqual(harness.cache(), before);
+});
+
+test("reintentar exactamente el mismo payload devuelve los mismos ids sin duplicar", async () => {
+  const harness = createHarness();
+  const service = createInventoryEntryService(harness.dependencies);
+  const requestPayload = {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon", "morning"],
+    rows: [
+      { itemId: 102, morning: 20, afternoon: 19 },
+      { itemId: 101, morning: 2400, afternoon: 2300 }
+    ]
+  };
+  await submit(service, requestPayload);
+  const first = harness.responses.at(-1).payload;
+  const afterFirst = harness.cache();
+  await submit(service, {
+    ...requestPayload,
+    selectedShifts: ["morning", "afternoon"],
+    rows: requestPayload.rows.slice().reverse()
+  });
+  const second = harness.responses.at(-1).payload;
+
+  assert.equal(first.idempotent, false);
+  assert.equal(second.idempotent, true);
+  assert.deepEqual(second.inventoryIds, first.inventoryIds);
+  assert.equal(second.rowsWritten, first.rowsWritten);
+  assert.equal(harness.saveCount(), 1);
+  assert.deepEqual(harness.cache(), afterFirst);
+});
+
+test("un payload sin items se rechaza antes de abrir la transaccion", async () => {
+  const harness = createHarness();
+  const before = harness.cache();
+  const service = createInventoryEntryService(harness.dependencies);
+  await submit(service, payload("2026-07-06", []));
+
+  assert.equal(harness.responses.at(-1).status, 400);
+  assert.match(harness.responses.at(-1).payload.error, /No hay items/i);
+  assert.equal(harness.saveCount(), 0);
+  assert.deepEqual(harness.cache(), before);
+});
+
+test("la plantilla manual devuelve el siguiente id real sin escribir", async () => {
+  const harness = createHarness(historicalCache());
+  const service = createInventoryEntryService(harness.dependencies);
+
+  await service.handleInventoryDetailTemplate({});
+
+  assert.equal(harness.responses.at(-1).status, 200);
+  assert.equal(harness.responses.at(-1).payload.lastInventoryId, 1706);
+  assert.equal(harness.responses.at(-1).payload.inventoryId, 1707);
+  assert.equal(harness.saveCount(), 0);
 });
 
 test("la produccion diaria canonica escala cobertura y clasificacion de forma monotona", () => {
@@ -498,10 +966,9 @@ test("una carga fallida no reemplaza la ultima evaluacion valida", async () => {
   const before = harness.cache().inventoryPurchaseSnapshot;
   const savesBefore = harness.saveCount();
 
-  await assert.rejects(
-    () => submit(service, payload("2027-07-20", [{ itemId: 101, afternoon: 0 }])),
-    /Calendario laboral no configurado para 2027/
-  );
+  await submit(service, payload("2027-07-20", [{ itemId: 101, afternoon: 0 }]));
+  assert.equal(harness.responses.at(-1).status, 500);
+  assert.match(harness.errors.at(-1), /Calendario laboral no configurado para 2027/);
   assert.equal(harness.saveCount(), savesBefore);
   assert.deepEqual(harness.cache().inventoryPurchaseSnapshot, before);
 });
@@ -516,10 +983,9 @@ test("un fallo de persistencia conserva la fotografia anterior", async () => {
   };
   const failingService = createInventoryEntryService(harness.dependencies);
 
-  await assert.rejects(
-    () => submit(failingService, payload("2026-07-21", [{ itemId: 101, afternoon: 1000 }])),
-    /fallo de guardado/
-  );
+  await submit(failingService, payload("2026-07-21", [{ itemId: 101, afternoon: 1000 }]));
+  assert.equal(harness.responses.at(-1).status, 500);
+  assert.match(harness.errors.at(-1), /fallo de guardado/);
   assert.deepEqual(harness.cache(), before);
 });
 

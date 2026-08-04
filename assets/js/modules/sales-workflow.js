@@ -216,7 +216,7 @@
 
   function openDetail(row, action) {
     const content = action === "arca"
-      ? `<dl class="sales-workflow-detail-list"><dt>Pedido</dt><dd>#${escapeHtml(row.id_pedido)}</dd><dt>Documento</dt><dd>${row.tipo_comprobante_configurado === "Remito_X" ? "Remito X generado" : "Factura confirmada"}</dd><dt>Fecha</dt><dd>${escapeHtml(formatDateTime(row.workflow?.factura_arca_confirmada_en) || "Histórica, inferida por venta y entrega")}</dd><dt>Usuario</dt><dd>${escapeHtml(row.workflow?.factura_arca_confirmada_por || "Histórico")}</dd></dl>`
+      ? `<dl class="sales-workflow-detail-list"><dt>Pedido</dt><dd>#${escapeHtml(row.id_pedido)}</dd><dt>Documento</dt><dd>${row.invoiceEvidence === "sale_attachment" ? "Factura adjunta validada" : row.tipo_comprobante_configurado === "Remito_X" ? "Remito X generado" : "Factura confirmada"}</dd><dt>Fecha</dt><dd>${escapeHtml(row.invoiceEvidence === "sale_attachment" ? "Adjunto canónico asociado a la venta" : formatDateTime(row.workflow?.factura_arca_confirmada_en) || "Histórica, inferida por venta y entrega")}</dd><dt>Usuario</dt><dd>${escapeHtml(row.invoiceEvidence === "sale_attachment" ? "Verificación del ERP" : row.workflow?.factura_arca_confirmada_por || "Histórico")}</dd></dl>`
       : action === "delivery"
         ? `<dl class="sales-workflow-detail-list"><dt>Entrega</dt><dd>#${escapeHtml(row.delivery?.id_entrega || "-")}</dd><dt>Fecha</dt><dd>${escapeHtml(formatDate(row.delivery?.fecha) || "-")}</dd><dt>Flete</dt><dd>${escapeHtml(row.delivery?.id_flete || "-")}</dd></dl>`
         : action === "sale"

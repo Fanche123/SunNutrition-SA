@@ -962,7 +962,7 @@
             <div class="purchase-threshold-panel">
               <div class="purchase-threshold-header">
                 <strong>Insumos a comprar</strong>
-                <span id="purchase-threshold-snapshot-date">Cargando fotografia del ultimo inventario</span>
+                <span id="purchase-threshold-snapshot-date" role="status" aria-live="polite">Cargando fotografia del ultimo inventario</span>
               </div>
               <div class="table-wrap purchase-threshold-wrap">
                 <table class="purchase-threshold-table">
@@ -1089,7 +1089,7 @@
                     <input type="checkbox" data-purchase-order-toggle="recipeQuantity">
                   </span>
                   <span class="unit-input">
-                    <input id="purchase-recipe-quantity" type="number" step="any" min="0">
+                    <input id="purchase-recipe-quantity" type="text" inputmode="decimal">
                     <span id="purchase-recipe-unit">-</span>
                   </span>
                 </label>
@@ -1099,7 +1099,7 @@
                     <input type="checkbox" data-purchase-order-toggle="buyQuantity" checked>
                   </span>
                   <span class="unit-input">
-                    <input id="purchase-quantity" type="number" step="any" min="0">
+                    <input id="purchase-quantity" type="text" inputmode="decimal">
                     <span id="purchase-quantity-unit">-</span>
                   </span>
                 </label>
@@ -1110,7 +1110,7 @@
                   </span>
                   <span class="purchase-presentation-row">
                     <span class="unit-input">
-                      <input id="purchase-supplier-quantity" type="number" step="any" min="0" required>
+                      <input id="purchase-supplier-quantity" type="text" inputmode="decimal" required>
                       <span id="purchase-unit">-</span>
                     </span>
                   </span>
@@ -1180,7 +1180,7 @@
         <dialog id="purchase-workflow-reception-dialog" class="purchase-workflow-dialog">
           <form method="dialog" class="purchase-workflow-dialog-shell" id="purchase-workflow-reception-form">
             <header><h2>Recepci&oacute;n de compra <span data-purchase-number></span></h2><button type="button" data-dialog-close aria-label="Cerrar">&times;</button></header>
-            <div class="purchase-workflow-dialog-body"><p data-reception-history></p><div data-reception-items></div><label>Fecha de recepci&oacute;n<input type="date" name="receptionDate" required></label><label>Empleado<input name="employeeId" required></label><p class="form-status" data-dialog-status></p></div>
+            <div class="purchase-workflow-dialog-body"><p data-reception-history></p><div data-reception-items></div><label>Fecha de recepci&oacute;n<input type="date" name="receptionDate" required></label><label>Empleado<select name="employeeId" required><option value="">Cargando empleados...</option></select></label><p class="form-status" data-dialog-status></p></div>
             <footer><button type="button" data-dialog-close class="secondary">Cancelar</button><button type="submit">Guardar recepci&oacute;n</button></footer>
           </form>
         </dialog>
@@ -3050,14 +3050,19 @@
               <div id="sql-table-list" class="sql-table-list"></div>
             </aside>
             <div class="sql-console">
-              <label for="sql-query">Codigo SQL</label>
+              <section class="sql-generator" aria-labelledby="sql-request-label">
+                <div class="sql-generator-copy">
+                  <label id="sql-request-label" for="sql-request">Describí la consulta</label>
+                  <span id="sql-request-help">La propuesta usa sólo el esquema visible y no se ejecuta automáticamente.</span>
+                </div>
+                <textarea id="sql-request" rows="3" maxlength="1000" aria-describedby="sql-request-help sql-generate-status" placeholder="Ejemplo: Quiero revisar las compras de los últimos 10 días"></textarea>
+                <div class="sql-generator-actions">
+                  <button type="button" id="sql-generate" aria-keyshortcuts="Control+Enter Meta+Enter">Generar SQL</button>
+                  <span id="sql-generate-status" class="sql-generate-status" role="status" aria-live="polite">Ctrl + Enter para generar</span>
+                </div>
+              </section>
+              <label for="sql-query">Código SQL</label>
               <textarea id="sql-query" spellcheck="false">SELECT * FROM ventas LIMIT 20</textarea>
-              <div class="sql-help">
-                <button type="button" data-sql-example="SELECT * FROM ventas LIMIT 20">Ventas</button>
-                <button type="button" data-sql-example="SELECT COUNT(*) AS cantidad FROM egresos">Contar egresos</button>
-                <button type="button" data-sql-example="SELECT tipo_factura, SUM(total) AS total FROM ventas GROUP BY tipo_factura ORDER BY total DESC">Ventas por factura</button>
-                <button type="button" data-sql-example="SELECT v.id_venta, c.nombre_cliente, v.total FROM ventas v LEFT JOIN clientes c ON c.id_cliente = v.id_cliente ORDER BY v.total DESC LIMIT 20">Ventas + clientes</button>
-              </div>
               <div id="sql-status" class="sql-status">Solo lectura: SELECT y WITH. Soporta JOIN, GROUP BY, HAVING, subconsultas y funciones de SQLite.</div>
               <div id="sql-results" class="sql-results"></div>
             </div>
@@ -3142,7 +3147,7 @@
   <script src="assets/js/core/formatters.js?v=20260722-architecture-final"></script>
   <script src="assets/js/modules/data-editor.js?v=20260725-continuous-grid"></script>
   <script src="assets/js/modules/access.js?v=20260803-multiuser-audit"></script>
-  <script src="assets/js/app.js?v=20260802-treasury-management"></script>
+  <script src="assets/js/app.js?v=20260803-inventory-draft"></script>
 <script src="assets/js/core/api.js?v=20260729-structured-errors"></script>
 <script src="assets/js/core/files.js?v=20260722-architecture-stage3"></script>
 <script src="assets/js/modules/cash-boxes.js?v=20260803-cash-ledger"></script>
@@ -3151,10 +3156,10 @@
 <script src="assets/js/modules/bank-reconciliation-checks.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/bank-reconciliation-drafts.js?v=20260722-architecture-stage2"></script>
 <script src="assets/js/modules/investment-fund.js?v=20260727-investment-fund"></script>
-<script src="assets/js/modules/inventory-detail-template.js?v=20260722-architecture-stage2"></script>
+<script src="assets/js/modules/inventory-detail-template.js?v=20260803-manual-draft"></script>
 <script src="assets/js/modules/inventory-detail-photo.js?v=20260722-architecture-stage2"></script>
-<script src="assets/js/modules/inventory-theoretical-model.js?v=20260722-architecture-stage2"></script>
-<script src="assets/js/modules/inventory-counter-review.js?v=20260722-architecture-stage2"></script>
+<script src="assets/js/modules/inventory-theoretical-model.js?v=20260803-delivery-exits"></script>
+<script src="assets/js/modules/inventory-counter-review.js?v=20260803-delivery-exits"></script>
 <script src="assets/js/modules/inventory-photo-transcription.js?v=20260722-architecture-stage2"></script>
   <script src="assets/js/modules/inventory-detail-submit.js?v=20260722-architecture-stage2"></script>
   <script src="assets/js/modules/inventory-entry-coordinator.js?v=20260722-architecture-final"></script>
@@ -3169,7 +3174,7 @@
   <script src="assets/js/modules/collections-retentions.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/received-check-entry.js?v=20260726-pending-received-checks"></script>
   <script src="assets/js/modules/issued-check-entry.js?v=20260722-architecture-stage4"></script>
-  <script src="assets/js/modules/purchase-entry.js?v=20260801-purchase-workflow-ui"></script>
+  <script src="assets/js/modules/purchase-entry.js?v=20260803-manual-draft"></script>
   <script src="assets/js/modules/reception-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/purchase-workflow.js?v=20260731-erp-com-21"></script>
   <script src="assets/js/modules/logistics-entry.js?v=20260722-architecture-stage4"></script>
@@ -3177,7 +3182,7 @@
   <script src="assets/js/modules/commissions-entry.js?v=20260724-commissions-png"></script>
   <script src="assets/js/modules/partner-contributions-entry.js?v=20260722-architecture-stage4"></script>
   <script src="assets/js/modules/data-map.js?v=20260722-architecture-stage4"></script>
-  <script src="assets/js/modules/sql-console.js?v=20260722-architecture-stage4"></script>
+  <script src="assets/js/modules/sql-console.js?v=20260803-natural-language-sql"></script>
   <script src="assets/js/modules/reports-cashflow.js?v=20260722-architecture-stage3"></script>
   <script src="assets/js/modules/reports-production.js?v=20260730-production-report"></script>
   <script src="assets/js/modules/dashboard.js?v=20260727-inventory-purchase-history"></script>

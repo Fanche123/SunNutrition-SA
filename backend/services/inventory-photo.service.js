@@ -76,9 +76,9 @@ function createInventoryPhotoService(dependencies) {
     if (!text) return "";
     if (/^\d+$/.test(text)) return text;
   
-    const target = normalizeCategory(text);
+    const target = normalizeInventoryToken(text);
     const employee = (loadCache().tables?.empleados?.rows || []).find((row) =>
-      normalizeCategory(row.nombre_empleado || row.nombre || "") === target
+      normalizeInventoryToken(row.nombre_empleado || row.nombre || "") === target
     );
     return cleanBackendInput(employee?.id_empleado) || text;
   }

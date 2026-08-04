@@ -121,7 +121,7 @@ Los contratos de filas están centralizados en `backend-columns.js`/`backend-pro
 - **Tesorería:** cobros y retenciones determinan el saldo; cheques/bancos continúan el flujo financiero.
 - **Cajas:** el control ICBC de Tesorería consume `cobros.fecha_cobro`, `cobros.monto`, cliente, método y banco una sola vez por encabezado; no suma `cobros_detalle` ni modifica contratos de Ventas.
 - **Compras/Logística:** `logistics-entry.js` crea entregas y también egresos; limitar cambios a la rama comercial o coordinar propietarios.
-- **Inventario:** pedidos/detalles/productos alimentan unidades del modelo teórico.
+- **Inventario:** el modelo teórico toma la salida logística desde `entregas.fecha` y `entregas_detalle`, suma las cajas de `detalle_pedidos` una sola vez por entrega/pedido y las imputa al turno Mañana. El contador convierte cajas a unidades individuales con el contrato compartido y `productos.cantidad_individual`. No usa `ventas.fecha_factura` como corte logístico.
 - **Reportes:** ventas, pedidos y clientes alimentan Estado de Resultados/cashflow; Estado de Resultados vincula `ventas.id_entrega` con `entregas.id_entrega` y reconoce `ventas.subtotal` exclusivamente en el mes de `entregas.fecha`.
 - **Administración/Base de datos:** endpoint genérico, editor, columnas, registry y persistencia.
 - **Arquitectura/UI:** coordinador comercial, `app.js`, `index.html` y orden de scripts son compartidos.

@@ -60,8 +60,10 @@ Propios de backend:
 - `backend/services/inventory-photo.service.js`
 - `backend/services/inventory-photo-mapping.service.js`
 - `backend/services/inventory-valuation.service.js`
+- `backend/migrations/20260804-inventory-values.js`
 - `backend/utils/inventory-numbers.js`
 - `backend/services/inventory-entry.service.test.js`
+- `tests/inventory-value-backfill.test.js`
 
 Compartidos o consumidores relevantes; no son de propiedad exclusiva:
 
@@ -89,20 +91,21 @@ Endpoints específicos registrados en `backend/routes/router.js`:
 - `GET /api/inventory/latest-date` — `{ lastDate, nextDate }`.
 - `POST /api/inventory/full-entry` — `{ date, employee, employeeId?, selectedShifts, rows }`; cada fila usa `itemId`, `dawn`, `morning`, `afternoon`.
 - `GET /api/inventory/purchase-snapshot` — `{ ok, snapshot }`; expone en solo lectura la evaluación fija del último inventario integral, con `inventoryDate`, `inventoryIds` e `items`.
+- `POST /api/inventory/purchase-snapshot/preview` — evalúa en memoria `{ date, selectedShifts, rows }` con la misma regla y el mismo `inventoryPurchaseConfig.barsPerDay`; no persiste el borrador ni el snapshot.
 - `GET /api/inventory-detail/template` — último detalle por turno y próximo ID orientativo.
 - `POST /api/inventory-detail/append` — `{ inventoryId, rows }`; agrega cantidades de tarde a un encabezado existente.
 - `POST /api/inventory-detail/photo` — `{ date, imageDataUrl, selectedShifts, rows }`; devuelve `{ rows, notes, transcription }` y no persiste.
 
 La lectura/edición genérica usa `GET|POST /api/backend/tables/:tabla`; no reemplazar el flujo integral por el editor genérico sin una decisión explícita.
 
-La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida. Si el metadato falta, es antiguo o no corresponde al inventario más nuevo, la lectura reconstruye en memoria la evaluación desde el tramo final de la última fecha persistida, sin escribir el cache. El contrato distingue `no_inventory`, `insufficient_dependencies`, `valid_no_alerts` y `valid_with_alerts`.
+La carga integral calcula la recomendación mediante `shared/inventory-purchase-evaluation.js` y guarda `inventoryPurchaseSnapshot` como metadato superior del mismo cache, dentro del único `saveBackendCache()`. No agrega tabla ni columna. Cada carga válida reemplaza la fotografía completa, incluso cuando `items` queda vacío; una falla anterior al guardado conserva la fotografía persistida. Si el metadato falta, es antiguo o no corresponde al inventario más nuevo, la lectura reconstruye en memoria la evaluación desde el tramo final de la última fecha persistida, sin escribir el cache. El borrador manual usa el último turno visible y exige sus cantidades, sin completar faltantes con existencias históricas. El contrato distingue `no_inventory`, `insufficient_dependencies`, `valid_no_alerts` y `valid_with_alerts`.
 
 `inventoryPurchaseConfig.barsPerDay` conserva como metadato superior el único volumen diario usado por esa regla. El valor inicial compatible es 30100 y el rango autorizado es 1..1000000. Cambiarlo recalcula el snapshot completo y guarda ambos metadatos atómicamente, sin tocar inventarios ni compras.
 
 ## Dependencias
 
-- **Compras:** costos históricos desde compras/recepciones y navegación desde alertas.
-- **Ventas:** pedidos/detalles/productos para unidades del modelo teórico.
+- **Compras:** costos históricos desde compras/recepciones y navegación desde alertas. El stock teórico suma cada `detalle_recepciones.cantidad_recibida` persistido por su `recepciones.fecha_recepcion`, ya expresado en la unidad de conteo del item; como el esquema no registra hora/turno, usa el corte Mañana y, si ese turno no fue seleccionado, lo absorbe el primer turno posterior trabajado sin duplicarlo.
+- **Ventas:** el modelo teórico descuenta `detalle_pedidos.cantidad_cajas` por `entregas.fecha`, a partir del vínculo canónico `entregas_detalle`, una sola vez por entrega/pedido y en turno Mañana; no usa fecha de factura. Para el contador Alipack convierte esas cajas a unidades individuales mediante `shared/order-pricing.js` y `productos.cantidad_individual`, sin asumir un factor cuando falta.
 - **Reportes:** Estado de Resultados consume inventario valorizado y Dashboard lee la evaluación fija o reconstruida de insumos a comprar sin recalcularla.
 - **Compras:** la lista superior lee la misma evaluación derivada y conserva libre el selector operativo de insumos.
 - **Base de datos:** `data-store.js`, registry y proyecciones son fuente técnica de persistencia.
@@ -120,7 +123,11 @@ La carga integral calcula la recomendación mediante `shared/inventory-purchase-
 - Fecha/defaults/drop zone: `inventory-entry-coordinator.js`.
 - Persistencia/rutas: `inventory-entry.service.js`, `inventory-purchase-snapshot.service.js`, `router.js`, `data-store.js`.
 - Costos/valuación: `inventory-valuation.service.js`, `inventory-numbers.js`, `income-calculation.service.js`.
+- La frontera de unidades es explícita: el detalle persiste costo por `items.ud_conteo`; la receta consume su unidad base. `Barra_Pop` usa `Bolsones` de 2.000 unidades y su receta canónica consume `0,0165 Kg` (16,5 g) de Granel Dulce por barrita, por lo que el costo individual se multiplica una sola vez al persistir el bolsón y los productos terminados consumen nuevamente el costo individual, no el del bolsón.
+- Backfill auditable de valuación: `backend/migrations/20260804-inventory-values.js`; por cada inventario completamente demostrable corrige primero `detalle_inventarios.costo_unitario_usado` y `detalle_inventarios.valor_total`, deriva luego `inventarios.valor_total` de su suma, omite completo cualquier inventario ambiguo, exige backup verificable y confirma idempotencia con un segundo dry-run.
 - Reportes: localizar primero el consumidor en Dashboard/Estado de Resultados; no mover allí reglas operativas.
+
+- **Envio manual:** `POST /api/inventory/full-entry` arma cabeceras, detalles, valuacion, snapshot y clave de idempotencia sobre una copia del cache y ejecuta un unico guardado atomico. El mismo payload normalizado devuelve los IDs ya confirmados sin duplicarlos. El desglose `Entradas` es informativo y no forma parte del payload ni crea recepciones; ante un fallo se conserva el formulario y se registra request ID + stack en `tmp/inventory-entry-errors.jsonl`.
 
 ## Flujo de trabajo
 

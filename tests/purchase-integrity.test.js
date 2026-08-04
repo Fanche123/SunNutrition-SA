@@ -578,6 +578,8 @@ test("compra completa persiste encabezado y detalle una sola vez", async () => {
   assert.equal(harness.saveCount(), 1);
   assert.equal(harness.cache().tables.compras.rows.length, 1);
   assert.equal(harness.cache().tables.detalle_compras.rows.length, 1);
+  assert.equal(harness.cache().tables.detalle_compras.rows[0].ud_proveedor, "Bolsa");
+  assert.equal(harness.cache().tables.detalle_compras.rows[0].cantidad_proveedor, "25");
 });
 
 test("compra invalida o fallo de guardado no deja encabezado parcial", async () => {
@@ -591,6 +593,35 @@ test("compra invalida o fallo de guardado no deja encabezado parcial", async () 
   assert.equal(failing.responses[0].status, 400);
   assert.equal(failing.cache().tables.compras.rows.length, 0);
   assert.equal(failing.cache().tables.detalle_compras.rows.length, 0);
+});
+
+test("compra completa conserva cantidades decimales con punto o coma sin truncarlas", async () => {
+  for (const quantity of ["1092.03", "1092,03"]) {
+    const harness = createHarness(baseCache());
+    await invoke(createPurchaseEntryService(harness.dependencies).handlePurchaseFullEntry, { ...purchasePayload(), quantity });
+    assert.equal(harness.responses[0].status, 200);
+    assert.equal(harness.cache().tables.detalle_compras.rows[0].cantidad, 1092.03);
+  }
+});
+
+test("compra completa rechaza cantidades no positivas o con más de dos decimales", async () => {
+  for (const quantity of ["1092.034", "0", "-1", "texto"]) {
+    const harness = createHarness(baseCache());
+    await invoke(createPurchaseEntryService(harness.dependencies).handlePurchaseFullEntry, { ...purchasePayload(), quantity });
+    assert.equal(harness.responses[0].status, 400);
+    assert.match(harness.responses[0].payload.error, /cantidad debe ser positiva y tener como máximo dos decimales/);
+    assert.equal(harness.saveCount(), 0);
+  }
+});
+
+test("formulario de compra usa entrada decimal y no vuelve a redondear cantidades a enteros", () => {
+  const markup = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
+  const frontend = fs.readFileSync(path.join(__dirname, "..", "assets", "js", "modules", "purchase-entry.js"), "utf8");
+  assert.match(markup, /id="purchase-supplier-quantity" type="text" inputmode="decimal" required/);
+  assert.match(frontend, /function parsePurchaseQuantity\(value\)/);
+  assert.match(frontend, /function decimalPurchaseDisplay\(value\)/);
+  assert.match(frontend, /La cantidad debe ser positiva y tener como máximo dos decimales/);
+  assert.doesNotMatch(frontend, /Math\.ceil\(desiredRecipeQuantity \/ recipePerSupplierUnit\)/);
 });
 
 test("otros gastos persiste ambas entidades una sola vez", async () => {

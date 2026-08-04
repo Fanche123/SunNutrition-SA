@@ -48,8 +48,16 @@
   });
   Object.values(columnsByTable).forEach(Object.freeze);
 
+  const percentageColumnsByTable = Object.freeze({
+    insumos_proveedores: ["iva"]
+  });
+  Object.values(percentageColumnsByTable).forEach(Object.freeze);
+
   const normalizedSets = Object.freeze(Object.fromEntries(
     Object.entries(columnsByTable).map(([table, columns]) => [table, new Set(columns)])
+  ));
+  const normalizedPercentageSets = Object.freeze(Object.fromEntries(
+    Object.entries(percentageColumnsByTable).map(([table, columns]) => [table, new Set(columns)])
   ));
 
   function isMoneyColumn(tableName, columnName) {
@@ -58,5 +66,43 @@
     return normalizedSets[table]?.has(column) || false;
   }
 
-  return Object.freeze({ columnsByTable, isMoneyColumn });
+  function isPercentageColumn(tableName, columnName) {
+    const table = String(tableName || "").trim().toLowerCase();
+    const column = String(columnName || "").trim().toLowerCase();
+    return normalizedPercentageSets[table]?.has(column) || false;
+  }
+
+  function parsePercentageInput(rawValue, options = {}) {
+    const allowEmpty = options.allowEmpty !== false;
+    if (typeof rawValue !== "string" && typeof rawValue !== "number") {
+      return { ok: false, value: null, empty: false };
+    }
+    const text = String(rawValue).trim();
+    if (!text) return allowEmpty
+      ? { ok: true, value: null, empty: true }
+      : { ok: false, value: null, empty: false };
+    const normalized = text.replace(/\s*%\s*$/, "").trim().replace(",", ".");
+    if (!/^\d+(?:\.\d{1,2})?$/.test(normalized)) {
+      return { ok: false, value: null, empty: false };
+    }
+    const value = Number(normalized);
+    return Number.isFinite(value)
+      ? { ok: true, value: Math.round(value * 100) / 100, empty: false }
+      : { ok: false, value: null, empty: false };
+  }
+
+  function formatPercentage(rawValue) {
+    const parsed = parsePercentageInput(rawValue, { allowEmpty: false });
+    if (!parsed.ok) throw new TypeError("Invalid percentage value");
+    return `${parsed.value.toFixed(2)}%`;
+  }
+
+  return Object.freeze({
+    columnsByTable,
+    percentageColumnsByTable,
+    isMoneyColumn,
+    isPercentageColumn,
+    parsePercentageInput,
+    formatPercentage
+  });
 });

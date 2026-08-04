@@ -1,4 +1,5 @@
 const { adminRelationsForTable } = require("../config/admin-table-relations");
+const { isPercentageColumn, parsePercentageInput } = require("../../shared/money-columns");
 const { applyDeliveryDeletion, previewDeliveryDeletion } = require("./delivery-deletion.service");
 const { applyExpenseDeletion, previewExpenseDeletion } = require("./expense-deletion.service");
 const { reconcileCashSourceRows } = require("./cash-ledger.service");
@@ -554,7 +555,7 @@ function validateRow(tableName, row, policy, cache, columns, primaryKey, inserti
   }
   const sampleRows = cache.tables?.[tableName]?.rows || [];
   for (const column of columns) {
-    row[column] = normalizeTypedValue(column, row[column], sampleRows);
+    row[column] = normalizeTypedValue(tableName, column, row[column], sampleRows);
   }
   for (const reference of knownReferences(tableName, columns, cache, validation.references || [])) {
     const value = String(row[reference.column] ?? "").trim();
@@ -570,11 +571,18 @@ function validateRow(tableName, row, policy, cache, columns, primaryKey, inserti
   }
 }
 
-function normalizeTypedValue(column, rawValue, sampleRows) {
+function normalizeTypedValue(tableName, column, rawValue, sampleRows) {
   const value = String(rawValue ?? "").trim();
   if (!value) return "";
   if (isDateColumn(column) && !isValidDateValue(value, column)) {
     throw fieldError("ADMIN_INVALID_DATE", column, `El campo ${column} tiene una fecha invalida.`);
+  }
+  if (isPercentageColumn(tableName, column)) {
+    const parsed = parsePercentageInput(rawValue, { allowEmpty: true });
+    if (!parsed.ok) {
+      throw fieldError("ADMIN_INVALID_PERCENTAGE", column, `El campo ${column} debe ser un porcentaje valido con hasta dos decimales.`);
+    }
+    return parsed.empty ? "" : parsed.value;
   }
   if (isMoneyColumn(column)) {
     if (!isCanonicalMoney(value)) {
@@ -693,7 +701,7 @@ function publicSchema(tableName, table, policy, cache, relations = {}) {
       primaryKey: column === primaryKey,
       required: required.has(normalizeName(column)),
       generated: column === primaryKey && generatedPrimaryKey,
-      type: columnType(column, sourceRows),
+      type: columnType(tableName, column, sourceRows),
       ...(relations[column] ? { relation: relationMetadata(relations[column]) } : {})
     }))
   };
@@ -763,8 +771,9 @@ function isGeneratedPrimaryKey(primaryKey, rows) {
   return numericValues.every((value, index) => index === 0 || value > numericValues[index - 1]);
 }
 
-function columnType(column, sampleRows = []) {
+function columnType(tableName, column, sampleRows = []) {
   if (isDateColumn(column)) return "date";
+  if (isPercentageColumn(tableName, column)) return "percentage";
   if (isMoneyColumn(column)) return "money";
   const sample = sampleRows.map((row) => row?.[column]).find((value) => String(value ?? "").trim());
   if (typeof sample === "boolean") return "boolean";

@@ -10,6 +10,7 @@ const { createCoreHandlers } = require("../backend/services/core-handlers.servic
 const { createExpenseClassificationService } = require("../backend/services/expense-classification.service");
 const { createIncomeCalculationService } = require("../backend/services/income-calculation.service");
 const { createIncomeStatementService } = require("../backend/services/income-statement.service");
+const { createInventoryValuationService } = require("../backend/services/inventory-valuation.service");
 const { createPayrollSummaryService } = require("../backend/services/payroll-summary.service");
 
 test("Producción presenta selector, métricas, gráfico y equivalencias legibles", () => {
@@ -59,6 +60,17 @@ function reportHarness(tables) {
     backendRowsById: rowsById,
     roundBackendMoney: (value) => Math.round((value + Number.EPSILON) * 100) / 100
   });
+  const valuation = createInventoryValuationService({
+    ...calculations,
+    backendGroupRowsById: groupRowsById,
+    backendId: id,
+    backendInventoryQuantity: number,
+    backendRowsById: rowsById,
+    expectedBackendColumns: {
+      inventarios: ["id_inventario", "fecha", "turno", "id_empleado", "valor_total"],
+      detalle_inventarios: ["id_detalle_inventario", "id_inventario", "id_item", "cantidad", "costo_unitario_usado", "valor_total"]
+    }
+  });
   const classification = createExpenseClassificationService({
     backendId: id,
     backendIsoDate: calculations.backendIsoDate,
@@ -81,8 +93,77 @@ function reportHarness(tables) {
     backendId: id,
     backendPayrollSummary: payroll,
     backendRowsById: rowsById,
-    loadCache: () => ({ tables })
+    loadCache: () => ({ tables }),
+    valueBackendInventories: valuation.valueBackendInventories
   });
+}
+
+function inventoryValuationHarness(tables) {
+  const calculations = createIncomeCalculationService({
+    backendGroupRowsById: groupRowsById,
+    backendId: id,
+    backendInventoryQuantity: number,
+    backendRowsById: rowsById
+  });
+  const valuation = createInventoryValuationService({
+    ...calculations,
+    backendGroupRowsById: groupRowsById,
+    backendId: id,
+    backendInventoryQuantity: number,
+    backendRowsById: rowsById,
+    expectedBackendColumns: {
+      inventarios: ["id_inventario", "fecha", "turno", "id_empleado", "valor_total"],
+      detalle_inventarios: ["id_detalle_inventario", "id_inventario", "id_item", "cantidad", "costo_unitario_usado", "valor_total"]
+    }
+  });
+  return { calculations, valuation, cache: { tables } };
+}
+
+function bobinaValuationTables() {
+  return {
+    items: table([{ id_item: 8, origen_tipo: "insumo", id_origen: 5, ud_conteo: "Rollo" }]),
+    insumos: table([{ id_insumo: 5, nombre: "Bobina_Barra_Pop", ud_receta: "Ud", cantidad_receta: 5442 }]),
+    insumos_proveedores: table([{
+      id_insumos_proveedores: 60,
+      id_insumo: 5,
+      ud_proveedor: "Kg",
+      cantidad_proveedor: 999999,
+      precio: 1
+    }]),
+    compras: table([{ id_compra: 200, fecha_pedido: "2026-06-18", fecha_entrega_prevista: "2026-07-14" }]),
+    detalle_compras: table([{
+      id_detalle_compra: 214,
+      id_compra: 200,
+      id_insumos_proveedores: 60,
+      id_insumo: 5,
+      cantidad: 1092.03,
+      cantidad_proveedor: 714,
+      ud_proveedor: "Kg"
+    }]),
+    recepciones: table([{
+      id_recepcion: 200,
+      id_compra: 200,
+      id_egreso: 7939,
+      fecha_recepcion: "2026-07-14"
+    }]),
+    detalle_recepciones: table([{
+      id_detalle_recepcion: 215,
+      id_recepcion: 200,
+      id_insumo: 5,
+      cantidad_recibida: 143.2762624035281
+    }]),
+    egresos: table([{ id_egreso: 7939, subtotal: 13795341.98 }]),
+    recetas: table(),
+    inventarios: table([{ id_inventario: 1744, fecha: "2026-07-31", turno: "Tarde", valor_total: 78691346.96 }]),
+    detalle_inventarios: table([{
+      id_detalle_inventario: 30526,
+      id_inventario: 1744,
+      id_item: 8,
+      cantidad: 98,
+      costo_unitario_usado: 733853.7,
+      valor_total: 71917662.6
+    }])
+  };
 }
 
 function emptyReportTables() {
@@ -1407,6 +1488,7 @@ test("Compras valida, aplica y revierte la produccion diaria sin usar localStora
     state: "valid_with_alerts",
     items: [{ itemName: "Aceite", stock: 150, unit: "Kg", daysRemaining: 2.443 }]
   };
+  let draftSchedules = 0;
   const context = {
     inventoryPurchaseSnapshot: {
       barsPerDay: 30100,
@@ -1430,6 +1512,9 @@ test("Compras valida, aplica y revierte la produccion diaria sin usar localStora
       requests.push({ requestPath, options });
       return { ok: true, snapshot: snapshotAtTwentyThousand };
     },
+    scheduleInventoryPurchaseDraftEvaluation: () => {
+      draftSchedules += 1;
+    },
     renderDashboardInventoryPurchasesWidget: () => {},
     displayNameLabel: String,
     displayUnitLabel: String,
@@ -1440,6 +1525,9 @@ test("Compras valida, aplica y revierte la produccion diaria sin usar localStora
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8"), context);
+  context.scheduleInventoryPurchaseDraftEvaluation = () => {
+    draftSchedules += 1;
+  };
 
   context.document.activeElement = input;
   input.value = "40.000";
@@ -1463,6 +1551,7 @@ test("Compras valida, aplica y revierte la produccion diaria sin usar localStora
   assert.equal(context.dashboardWidgetData.inventoryPurchaseSnapshot.barsPerDay, 20000);
   assert.equal(input.value, "20.000");
   assert.equal(status.dataset.status, "success");
+  assert.equal(draftSchedules, 1);
 
   context.requestBackendApi = async () => {
     throw new Error("Fallo simulado");
@@ -1477,7 +1566,7 @@ test("Compras valida, aplica y revierte la produccion diaria sin usar localStora
   assert.doesNotMatch(purchaseSource, /localStorage/);
 });
 
-test("Inventario usa los mismos items de la fotografia sin recalcular umbrales", () => {
+test("Inventario usa el preview canonico del borrador sin recalcular umbrales", async () => {
   const classes = new Set();
   const button = { dataset: {} };
   const alert = {
@@ -1529,12 +1618,23 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
     formatNumber: (value) => String(value),
     formatNullableNumber: (value) => String(value),
     emptyRow: (_columns, message) => message,
+    collectEditableInventoryDetailRows: () => [{ itemId: "101", afternoon: 2.5 }],
+    requestBackendApi: async () => ({
+      snapshot: {
+        inventoryDate: "2026-07-20",
+        state: "valid_with_alerts",
+        barsPerDay: 25000,
+        items: context.inventoryPurchaseSnapshot.items,
+        unavailableItems: []
+      }
+    }),
     Intl
   };
   vm.createContext(context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8"), context);
-  context.updateInventoryPurchaseAlerts();
+  await context.loadInventoryPurchaseDraft(0, "2026-07-20", ["afternoon"]);
 
+  assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /evaluado/);
   assert.equal(alert.hidden, false);
   assert.equal(classes.has("is-visible"), true);
   assert.equal(button.dataset.purchaseItem, "Azucar");
@@ -1545,19 +1645,328 @@ test("Inventario usa los mismos items de la fotografia sin recalcular umbrales",
   assert.match(context.els["purchase-threshold-body"].innerHTML, /0 d\u00edas de producci\u00f3n/);
   assert.match(context.els["purchase-threshold-body"].innerHTML, /Comprar/);
 
-  context.inventoryPurchaseSnapshot = {
-    inventoryDate: "2026-07-21",
-    state: "insufficient_dependencies",
-    items: [],
-    unavailableItems: [{ itemName: "Aceite" }]
-  };
-  context.updateInventoryPurchaseAlerts();
-  assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /faltan dependencias/);
-  assert.match(context.els["purchase-threshold-body"].innerHTML, /Aceite/);
+  context.requestBackendApi = async () => ({
+    snapshot: {
+      inventoryDate: "2026-07-21",
+      state: "insufficient_dependencies",
+      barsPerDay: 25000,
+      items: [],
+      unavailableItems: [{ itemName: "Aceite", missingDependencies: ["stock"] }]
+    }
+  });
+  await context.loadInventoryPurchaseDraft(0, "2026-07-21", ["afternoon"]);
+  assert.match(context.els["purchase-threshold-snapshot-date"].textContent, /necesita datos/);
+  assert.match(context.els["purchase-threshold-body"].innerHTML, /cantidades del último turno/);
 
   const purchaseSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/purchase-entry.js"), "utf8");
+  const appSource = fs.readFileSync(path.join(__dirname, "../assets/js/app.js"), "utf8");
+  const templateSource = fs.readFileSync(path.join(__dirname, "../assets/js/modules/inventory-detail-template.js"), "utf8");
+  const indexSource = fs.readFileSync(path.join(__dirname, "../index.html"), "utf8");
   assert.doesNotMatch(purchaseSource, /inventoryPurchaseAlert|inventoryPurchaseMetrics|DAILY_CONSUMPTION_BY_ITEM/);
-  assert.match(purchaseSource, /renderPurchaseThresholdTable\(snapshotItems\)/);
+  assert.match(purchaseSource, /renderPurchaseThresholdTable\(snapshotItems, inventoryPurchaseDraftSnapshot\)/);
+  assert.match(appSource, /openPurchaseEntryForItem\([^\n]+inventoryPurchaseDraftSnapshot\)/);
+  assert.match(templateSource, /aria-label="\$\{escapeHtml\(`\$\{row\.itemName\}, cantidad Mañana`\)\}"/);
+  assert.match(templateSource, /Contador Alipack, cantidad Tarde/);
+  assert.match(indexSource, /id="purchase-threshold-snapshot-date" role="status" aria-live="polite"/);
+});
+
+test("valuacion normaliza Kg de proveedor al costo historico por rollo sin depender del proveedor mutable", () => {
+  const tables = bobinaValuationTables();
+  const { calculations, valuation, cache } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.valuationSource, "historical_reception_count_unit");
+  assert.equal(cost.countUnitCost, 96284.91);
+  valuation.valueBackendInventories(cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].costo_unitario_usado, 96284.91);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 9435921.18);
+  assert.equal(tables.inventarios.rows[0].valor_total, 9435921.18);
+
+  tables.insumos_proveedores.rows[0].cantidad_proveedor = 1;
+  tables.insumos_proveedores.rows[0].ud_proveedor = "Presentacion_mutada";
+  tables.insumos_proveedores.rows[0].precio = 999999999;
+  valuation.valueBackendInventories(cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].costo_unitario_usado, 96284.91);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 9435921.18);
+});
+
+test("Barra_Pop persiste costo por bolson y la receta consume unidades individuales una sola vez", () => {
+  const tables = {
+    items: table([
+      { id_item: 3, origen_tipo: "subproducto", id_origen: 3, ud_conteo: "Bolsones" },
+      { id_item: 4, origen_tipo: "insumo", id_origen: 4, ud_conteo: "Kg" },
+      { id_item: 8, origen_tipo: "insumo", id_origen: 8, ud_conteo: "Rollo" },
+      { id_item: 115, origen_tipo: "insumo", id_origen: 115, ud_conteo: "Pack" },
+      { id_item: 118, origen_tipo: "producto", id_origen: 118, ud_conteo: "Ud" }
+    ]),
+    subproductos: table([{ id_subproducto: 3, nombre_subproducto: "Barra_Pop", ud_conteo: "Bolsones" }]),
+    insumos: table([
+      { id_insumo: 4, cantidad_receta: 1 },
+      { id_insumo: 8, cantidad_receta: 1 },
+      { id_insumo: 115, cantidad_receta: 1 }
+    ]),
+    recetas: table([
+      { id_item_resultado: 3, id_item_componente: 4, cantidad_componente: 0.0165 },
+      { id_item_resultado: 3, id_item_componente: 8, cantidad_componente: 1 },
+      { id_item_resultado: 118, id_item_componente: 3, cantidad_componente: 140 },
+      { id_item_resultado: 118, id_item_componente: 115, cantidad_componente: 1 }
+    ]),
+    inventarios: table([{ id_inventario: 1, fecha: "2026-07-31", turno: "Tarde", valor_total: 0 }]),
+    detalle_inventarios: table([
+      { id_detalle_inventario: 1, id_inventario: 1, id_item: 3, cantidad: 1.5 },
+      { id_detalle_inventario: 2, id_inventario: 1, id_item: 118, cantidad: 2 }
+    ])
+  };
+  const historical = new Map([
+    ["4", { unitCost: 10, countUnitCost: 10, valuationSource: "historical_reception_count_unit" }],
+    ["8", { unitCost: 2, countUnitCost: 2, valuationSource: "historical_reception_count_unit" }],
+    ["115", { unitCost: 100, countUnitCost: 100, valuationSource: "historical_reception_count_unit" }]
+  ]);
+  const valuation = createInventoryValuationService({
+    backendGroupRowsById: groupRowsById,
+    backendId: id,
+    backendInventoryQuantity: number,
+    backendIsoDate: isoDate,
+    backendLatestSupplyCostMap: () => historical,
+    backendNormalizeText: normalize,
+    backendNumber: number,
+    backendRecipeQuantity: number,
+    backendRowsById: rowsById,
+    backendTurnRank: () => 3,
+    expectedBackendColumns: { inventarios: [], detalle_inventarios: [] }
+  });
+
+  const result = valuation.valueBackendInventories({ tables }, [1], {
+    allowStoredDetailCostFallback: false,
+    requireHistoricalEvidence: true
+  });
+
+  assert.equal(result.issues.length, 0);
+  assert.equal(tables.detalle_inventarios.rows[0].costo_unitario_usado, 4340);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 6510);
+  assert.equal(tables.detalle_inventarios.rows[1].costo_unitario_usado, 403.8);
+  assert.equal(tables.detalle_inventarios.rows[1].valor_total, 807.6);
+  assert.equal(tables.inventarios.rows[0].valor_total, 7317.6);
+});
+
+test("valuacion agrega recepciones parciales una vez y conserva una unidad ya coincidente", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows[0].ud_conteo = "Kg";
+  tables.insumos.rows[0].ud_receta = "Kg";
+  tables.insumos.rows[0].cantidad_receta = 1;
+  tables.detalle_compras.rows[0].cantidad = 10;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 1;
+  tables.recepciones.rows = [
+    { id_recepcion: 201, id_compra: 200, id_egreso: 7939, fecha_recepcion: "2026-07-10" },
+    { id_recepcion: 202, id_compra: 200, id_egreso: 7939, fecha_recepcion: "2026-07-14" }
+  ];
+  tables.detalle_recepciones.rows = [
+    { id_detalle_recepcion: 1, id_recepcion: 201, id_insumo: 5, cantidad_recibida: 4 },
+    { id_detalle_recepcion: 2, id_recepcion: 202, id_insumo: 5, cantidad_recibida: 6 }
+  ];
+  tables.egresos.rows[0].subtotal = 1000;
+  tables.detalle_inventarios.rows[0].cantidad = 3;
+  const { calculations, valuation, cache } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.countUnitCost, 100);
+  assert.equal(cost.unitCost, 100);
+  valuation.valueBackendInventories(cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 300);
+  assert.equal(tables.inventarios.rows[0].valor_total, 300);
+});
+
+test("valuacion conserva una recepcion historica registrada en unidad del proveedor", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows[0].ud_conteo = "Pack_20Ud";
+  tables.insumos.rows[0].cantidad_receta = 20;
+  tables.detalle_compras.rows[0].cantidad = 100;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 25;
+  tables.detalle_recepciones.rows[0].cantidad_recibida = 100;
+  tables.egresos.rows[0].subtotal = 1455300;
+  tables.detalle_inventarios.rows[0].cantidad = 91;
+  const { calculations, valuation, cache } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.valuationSource, "historical_reception_provider_unit");
+  assert.equal(cost.countUnitCost, 11642.4);
+  valuation.valueBackendInventories(cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 1059458.4);
+});
+
+test("valuacion reconoce una recepcion parcial historica en unidad del proveedor", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows[0].ud_conteo = "Lt";
+  tables.insumos.rows[0].ud_receta = "Lt";
+  tables.insumos.rows[0].cantidad_receta = 1;
+  tables.detalle_compras.rows[0].cantidad = 1;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 1000;
+  tables.detalle_recepciones.rows[0].cantidad_recibida = 0.9756097561;
+  tables.egresos.rows[0].subtotal = 930372;
+  const { calculations } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.valuationSource, "historical_reception_provider_unit");
+  assert.equal(cost.countUnitCost, 953.63);
+});
+
+test("valuacion no duplica un egreso compartido sin reparto historico demostrable", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows.push({ id_item: 9, origen_tipo: "insumo", id_origen: 6, ud_conteo: "Kg" });
+  tables.insumos.rows.push({ id_insumo: 6, nombre: "Segundo insumo", ud_receta: "Kg", cantidad_receta: 1 });
+  tables.insumos_proveedores.rows.push({ id_insumos_proveedores: 61, id_insumo: 6, cantidad_proveedor: 1, precio: 0 });
+  tables.compras.rows.push({ id_compra: 201, fecha_pedido: "2026-07-01" });
+  tables.detalle_compras.rows.push({ id_detalle_compra: 215, id_compra: 201, id_insumos_proveedores: 61, id_insumo: 6, cantidad: 1, cantidad_proveedor: 1 });
+  tables.recepciones.rows.push({ id_recepcion: 201, id_compra: 201, id_egreso: 7939, fecha_recepcion: "2026-07-14" });
+  tables.detalle_recepciones.rows.push({ id_detalle_recepcion: 216, id_recepcion: 201, id_insumo: 6, cantidad_recibida: 1 });
+  tables.egresos.rows[0].subtotal = 1000;
+  const { calculations } = inventoryValuationHarness(tables);
+  const costs = calculations.backendLatestSupplyCostMap(tables, "2026-07-31");
+
+  assert.equal(costs.get("5").valuationSource, "ambiguous_shared_expense");
+  assert.equal(costs.get("6").valuationSource, "ambiguous_shared_expense");
+  assert.equal(costs.get("5").countUnitCost + costs.get("6").countUnitCost, 0);
+  assert.match(costs.get("5").diagnostic, /no existe un reparto historico demostrable/i);
+});
+
+test("valuacion excluye recepciones parciales posteriores a la fecha de corte", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows[0].ud_conteo = "Kg";
+  tables.insumos.rows[0].ud_receta = "Kg";
+  tables.insumos.rows[0].cantidad_receta = 1;
+  tables.detalle_compras.rows[0].cantidad = 10;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 1;
+  tables.recepciones.rows = [
+    { id_recepcion: 200, id_compra: 200, id_egreso: 7939, fecha_recepcion: "2026-07-20" },
+    { id_recepcion: 201, id_compra: 200, id_egreso: 7939, fecha_recepcion: "2026-08-10" }
+  ];
+  tables.detalle_recepciones.rows = [
+    { id_detalle_recepcion: 1, id_recepcion: 200, id_insumo: 5, cantidad_recibida: 1 },
+    { id_detalle_recepcion: 2, id_recepcion: 201, id_insumo: 5, cantidad_recibida: 9 }
+  ];
+  tables.egresos.rows[0].subtotal = 100;
+  const { calculations } = inventoryValuationHarness(tables);
+
+  assert.equal(calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5").countUnitCost, 100);
+  assert.equal(calculations.backendLatestSupplyCostMap(tables, "2026-08-31").get("5").countUnitCost, 10);
+});
+
+test("valuacion aplica la recepcion del mismo dia desde Manana y no en Madrugada", () => {
+  const tables = bobinaValuationTables();
+  tables.compras.rows[0].fecha_pedido = "2026-08-01";
+  tables.compras.rows[0].fecha_entrega_prevista = "2026-08-01";
+  tables.recepciones.rows[0].fecha_recepcion = "2026-07-14";
+  const { calculations } = inventoryValuationHarness(tables);
+
+  assert.equal(calculations.backendLatestSupplyCostMap(tables, "2026-07-14", "Madrugada").has("5"), false);
+  assert.equal(calculations.backendLatestSupplyCostMap(tables, "2026-07-14", "Manana").get("5").countUnitCost, 96284.91);
+  assert.equal(calculations.backendLatestSupplyCostMap(tables, "2026-07-14", "Tarde").get("5").countUnitCost, 96284.91);
+});
+
+test("valuacion conserva el ultimo costo valido si una compra posterior es incompleta", () => {
+  const tables = bobinaValuationTables();
+  tables.insumos_proveedores.rows.push({ id_insumos_proveedores: 61, id_insumo: 5, cantidad_proveedor: 0, precio: 0 });
+  tables.compras.rows.push({ id_compra: 201, fecha_pedido: "2026-07-20" });
+  tables.detalle_compras.rows.push({ id_detalle_compra: 215, id_compra: 201, id_insumos_proveedores: 61, id_insumo: 5, cantidad: 0, cantidad_proveedor: 0 });
+  tables.recepciones.rows.push({ id_recepcion: 201, id_compra: 201, id_egreso: 7940, fecha_recepcion: "2026-07-20" });
+  tables.detalle_recepciones.rows.push({ id_detalle_recepcion: 216, id_recepcion: 201, id_insumo: 5, cantidad_recibida: 0 });
+  tables.egresos.rows.push({ id_egreso: 7940, subtotal: 100 });
+  const { calculations } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.valuationSource, "historical_reception_count_unit");
+  assert.equal(cost.countUnitCost, 96284.91);
+});
+
+test("valuacion redondea una sola vez la conversion proveedor a conteo", () => {
+  const tables = bobinaValuationTables();
+  tables.items.rows[0].ud_conteo = "Pack_500Ud";
+  tables.insumos.rows[0].cantidad_receta = 500;
+  tables.detalle_compras.rows[0].cantidad = 3;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 1000;
+  tables.detalle_recepciones.rows[0].cantidad_recibida = 3;
+  tables.egresos.rows[0].subtotal = 100;
+  const { calculations } = inventoryValuationHarness(tables);
+  const cost = calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.valuationSource, "historical_reception_provider_unit");
+  assert.equal(cost.countUnitCost, 16.67);
+});
+
+test("valuacion usa fallback seguro y diagnostico ante factores ausentes, cero o invalidos", () => {
+  const tables = bobinaValuationTables();
+  tables.insumos.rows[0].cantidad_receta = 0;
+  tables.detalle_recepciones.rows[0].cantidad_recibida = 10;
+  tables.egresos.rows[0].subtotal = 1000;
+  let harness = inventoryValuationHarness(tables);
+  let cost = harness.calculations.backendLatestSupplyCostMap(tables, "2026-07-31").get("5");
+
+  assert.equal(cost.countUnitCost, 100);
+  assert.equal(cost.unitCost, 0);
+  assert.match(cost.diagnostic, /falta un factor historico valido/i);
+  harness.valuation.valueBackendInventories(harness.cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].valor_total, 9800);
+  assert.equal(Number.isFinite(tables.detalle_inventarios.rows[0].valor_total), true);
+
+  const unavailable = bobinaValuationTables();
+  unavailable.detalle_recepciones.rows[0].cantidad_recibida = 0;
+  unavailable.detalle_compras.rows[0].cantidad = 0;
+  unavailable.detalle_compras.rows[0].cantidad_proveedor = 0;
+  unavailable.insumos_proveedores.rows[0].cantidad_proveedor = 0;
+  unavailable.insumos_proveedores.rows[0].precio = "invalido";
+  unavailable.insumos.rows[0].cantidad_receta = 0;
+  harness = inventoryValuationHarness(unavailable);
+  cost = harness.calculations.backendLatestSupplyCostMap(unavailable, "2026-07-31").get("5");
+  assert.equal(cost.countUnitCost, 0);
+  assert.equal(cost.unitCost, 0);
+  assert.equal(cost.valuationSource, "unavailable");
+  assert.match(cost.diagnostic, /faltan cantidades historicas positivas o factores validos/i);
+  const result = harness.valuation.valueBackendInventories(harness.cache, [1744], {
+    allowStoredDetailCostFallback: false
+  });
+  assert.equal(unavailable.detalle_inventarios.rows[0].valor_total, 0);
+  assert.equal(Number.isFinite(unavailable.inventarios.rows[0].valor_total), true);
+  assert.equal(result.issues[0].code, "MISSING_COST");
+});
+
+test("valuacion historica conserva el snapshot persistido cuando el costo canonico no puede reconstruirse", () => {
+  const tables = bobinaValuationTables();
+  tables.detalle_recepciones.rows[0].cantidad_recibida = 0;
+  tables.detalle_compras.rows[0].cantidad = 0;
+  tables.detalle_compras.rows[0].cantidad_proveedor = 0;
+  tables.insumos_proveedores.rows[0].cantidad_proveedor = 0;
+  tables.insumos_proveedores.rows[0].precio = 0;
+  tables.insumos.rows[0].cantidad_receta = 0;
+  const { valuation, cache } = inventoryValuationHarness(tables);
+
+  const result = valuation.valueBackendInventories(cache, [1744]);
+  assert.equal(tables.detalle_inventarios.rows[0].costo_unitario_usado, 733853.7);
+  assert.equal(tables.inventarios.rows[0].valor_total, 71917662.6);
+  assert.equal(result.inventories[0].details[0].valuationSource, "stored_detail_cost_snapshot");
+});
+
+test("Estado de Resultados refleja al centavo la valuacion corregida de Bobina_Barra_Pop", () => {
+  const tables = { ...emptyReportTables(), ...bobinaValuationTables() };
+  tables.etiquetas.rows.push({ id_etiqueta: 1, etiqueta: "Mercaderia" });
+  tables.gastos_economicos.rows.push({
+    id_gasto_economico: 1,
+    fecha_economica: "2026-07-14",
+    id_etiqueta: 1,
+    importe: 21137641.98,
+    estado: "confirmado"
+  });
+
+  const buildReport = reportHarness(tables);
+  const report = buildReport(2026, 6);
+  const detail = buildReport.buildDetail(2026, 6, "cost.merchandise");
+  assert.equal(report.finalInventory.value, 9435921.18);
+  assert.equal(report.costOfSales.merchandise, 11701720.8);
+  assert.equal(detail.rows.find((row) => /Inventario final/.test(row.reference)).amount, -9435921.18);
+  assert.equal(detail.total, report.costOfSales.merchandise);
+  assert.equal(tables.inventarios.rows[0].valor_total, 78691346.96);
+  assert.equal(tables.detalle_inventarios.rows[0].costo_unitario_usado, 733853.7);
+  assert.equal(Number.isFinite(report.finalInventory.value), true);
+  assert.equal(Number.isFinite(report.costOfSales.merchandise), true);
 });
 
 test("Bootstrap carga solo Dashboard y difiere los modulos cerrados", () => {
@@ -1702,6 +2111,7 @@ test("Compras comparte la inicializacion al abrir desde una sugerencia", async (
   let finishLoad;
   const initializationPromises = new Map();
   const context = {
+    inventoryPurchaseSnapshot: {},
     loadPurchaseBackendOptions: () => {
       loadCalls += 1;
       return new Promise((resolve) => {

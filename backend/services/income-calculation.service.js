@@ -12,7 +12,7 @@ function createIncomeCalculationService({
   backendInventoryQuantity,
   backendRowsById
 }) {
-  function backendLastInventorySummary(tables, startIso, endIso, inventoryById, detailsByInventory, productByItemId, itemsById) {
+  function backendLastInventoryRow(tables, startIso, endIso) {
     const rows = (tables.inventarios?.rows || [])
       .map((inventory) => ({ inventory, date: backendIsoDate(inventory.fecha) }))
       .filter((row) => row.date && (!startIso || row.date >= startIso) && (!endIso || row.date <= endIso))
@@ -20,9 +20,12 @@ function createIncomeCalculationService({
         if (left.date !== right.date) return right.date.localeCompare(left.date);
         return backendTurnRank(right.inventory.turno) - backendTurnRank(left.inventory.turno);
       });
-  
-    if (!rows.length) return null;
-    const latest = rows[0].inventory;
+    return rows[0]?.inventory || null;
+  }
+
+  function backendLastInventorySummary(tables, startIso, endIso, inventoryById, detailsByInventory, productByItemId, itemsById) {
+    const latest = backendLastInventoryRow(tables, startIso, endIso);
+    if (!latest) return null;
     let units = 0;
     let calculatedValueCents = 0;
     let valuedDetailCount = 0;
@@ -65,20 +68,49 @@ function createIncomeCalculationService({
     };
   }
   
-  function backendLatestSupplyCostMap(tables, dateIso) {
+  function backendLatestSupplyCostMap(tables, dateIso, cutoffTurn = "") {
     const purchasesById = backendRowsById(tables.compras?.rows, "id_compra");
     const expensesById = backendRowsById(tables.egresos?.rows, "id_egreso");
     const receptionsByPurchase = backendGroupRowsById(tables.recepciones?.rows, "id_compra");
     const receptionDetailsByReception = backendGroupRowsById(tables.detalle_recepciones?.rows, "id_recepcion");
     const suppliesById = backendRowsById(tables.insumos?.rows, "id_insumo");
     const supplierItemsById = backendRowsById(tables.insumos_proveedores?.rows, "id_insumos_proveedores");
+    const countItemsBySupplyId = new Map((tables.items?.rows || [])
+      .filter((row) => backendNormalizeText(row.origen_tipo) === "insumo")
+      .map((row) => [backendId(row.id_origen), row])
+      .filter(([id]) => id));
     const candidatesBySupply = new Map();
+    const cutoffTurnRank = backendTurnRank(cutoffTurn);
+    const eligibleReceptions = (tables.recepciones?.rows || []).filter((reception) => {
+      if (!dateIso) return true;
+      const receptionDate = backendIsoDate(reception.fecha_recepcion);
+      if (!receptionDate || receptionDate > dateIso) return false;
+      if (receptionDate < dateIso || !cutoffTurnRank) return true;
+      // Recepciones no persiste hora. El contrato de Inventario las incorpora
+      // una sola vez desde Manana; Madrugada del mismo dia queda antes del corte.
+      return cutoffTurnRank >= backendTurnRank("Manana");
+    });
+    const expenseUses = new Map();
+    (tables.recepciones?.rows || []).forEach((reception) => {
+      const expenseId = backendId(reception.id_egreso);
+      if (!expenseId) return;
+      (receptionDetailsByReception.get(backendId(reception.id_recepcion)) || []).forEach((receptionDetail) => {
+        const supplyId = backendId(receptionDetail.id_insumo);
+        if (!supplyId) return;
+        if (!expenseUses.has(expenseId)) expenseUses.set(expenseId, new Set());
+        expenseUses.get(expenseId).add(`${backendId(reception.id_compra)}:${supplyId}`);
+      });
+    });
+    const ambiguousExpenseIds = new Set([...expenseUses]
+      .filter(([, uses]) => uses.size > 1)
+      .map(([expenseId]) => expenseId));
   
     (tables.detalle_compras?.rows || []).forEach((detail) => {
       const purchase = purchasesById.get(backendId(detail.id_compra));
       if (!purchase) return;
   
-      const receptionRows = receptionsByPurchase.get(backendId(detail.id_compra)) || [];
+      const receptionRows = (receptionsByPurchase.get(backendId(detail.id_compra)) || [])
+        .filter((reception) => eligibleReceptions.includes(reception));
       const receptionDate = receptionRows
         .map((row) => backendIsoDate(row.fecha_recepcion))
         .filter(Boolean)
@@ -87,29 +119,36 @@ function createIncomeCalculationService({
       const purchaseDate = receptionDate || backendIsoDate(purchase.fecha_pedido) || backendIsoDate(purchase.fecha_entrega_prevista);
       if (!purchaseDate) return;
   
-      const supplierItem = supplierItemsById.get(backendId(detail.id_insumos_proveedores));
-      if (!supplierItem) return;
-  
-      const supplyId = backendId(supplierItem.id_insumo);
+      const supplierItem = supplierItemsById.get(backendId(detail.id_insumos_proveedores)) || {};
+      const supplyId = backendId(detail.id_insumo) || backendId(supplierItem.id_insumo);
       if (!supplyId) return;
-  
-      const supplyRecipeUnitsPerCountUnit = backendRecipeQuantity(suppliesById.get(supplyId)?.cantidad_receta) || 1;
-      const supplierRecipeUnitsPerProviderUnit = backendNumber(supplierItem.cantidad_proveedor) || 1;
-      const unitCost = backendReceptionRecipeUnitCost({
+
+      const supply = suppliesById.get(supplyId) || {};
+      const countItem = countItemsBySupplyId.get(supplyId) || {};
+      const configuredCountFactor = positiveRecipeQuantity(supply.cantidad_receta);
+      const matchingBaseUnits = backendNormalizeText(countItem.ud_conteo)
+        && backendNormalizeText(countItem.ud_conteo) === backendNormalizeText(supply.ud_receta);
+      const supplyRecipeUnitsPerCountUnit = configuredCountFactor || (matchingBaseUnits ? 1 : 0);
+      const supplierSnapshotRecipeUnitsPerProviderUnit = positiveBackendNumber(detail.cantidad_proveedor);
+      const supplierRecipeUnitsPerProviderUnit = supplierSnapshotRecipeUnitsPerProviderUnit
+        || backendNumber(supplierItem.cantidad_proveedor);
+      const costSnapshot = backendReceptionCostSnapshot({
         detail,
+        ambiguousExpenseIds,
         expenseRows: expensesById,
         receptionRows,
         receptionDetailsByReception,
         supplyId,
+        supplyRecipeUnitsPerCountUnit,
+        supplierSnapshotRecipeUnitsPerProviderUnit,
         supplierRecipeUnitsPerProviderUnit,
         supplierItem
       });
-      if (!unitCost) return;
-  
+
       if (!candidatesBySupply.has(supplyId)) candidatesBySupply.set(supplyId, []);
       candidatesBySupply.get(supplyId).push({
         date: purchaseDate,
-        unitCost,
+        ...costSnapshot,
         supplierItemId: supplierItem.id_insumos_proveedores,
         supplyRecipeUnitsPerCountUnit,
         supplierRecipeUnitsPerProviderUnit
@@ -119,8 +158,10 @@ function createIncomeCalculationService({
     const selectedBySupply = new Map();
     candidatesBySupply.forEach((candidates, supplyId) => {
       const sorted = candidates.slice().sort((left, right) => left.date.localeCompare(right.date));
-      const previous = dateIso ? sorted.filter((candidate) => candidate.date <= dateIso).at(-1) : sorted.at(-1);
-      selectedBySupply.set(supplyId, previous || sorted[0]);
+      const eligible = dateIso ? sorted.filter((candidate) => candidate.date <= dateIso) : sorted;
+      const valid = eligible.filter((candidate) => candidate.countUnitCost > 0 || candidate.unitCost > 0);
+      const selected = valid.at(-1) || eligible.at(-1);
+      if (selected) selectedBySupply.set(supplyId, selected);
     });
   
     return selectedBySupply;
@@ -128,29 +169,177 @@ function createIncomeCalculationService({
   
   function backendReceptionRecipeUnitCost({
     detail,
+    ambiguousExpenseIds = new Set(),
     expenseRows,
     receptionRows,
     receptionDetailsByReception,
     supplyId,
+    supplyRecipeUnitsPerCountUnit = 1,
+    supplierSnapshotRecipeUnitsPerProviderUnit = 0,
     supplierRecipeUnitsPerProviderUnit,
     supplierItem
   }) {
-    for (const reception of receptionRows) {
-      const expense = expenseRows.get(backendId(reception.id_egreso));
-      const expenseSubtotal = backendNumber(expense?.subtotal);
-      if (!expenseSubtotal) continue;
-  
-      const receivedQuantity = (receptionDetailsByReception.get(backendId(reception.id_recepcion)) || [])
-        .filter((row) => backendId(row.id_insumo) === supplyId)
-        .reduce((total, row) => total + backendNumber(row.cantidad_recibida), 0);
-      const providerUnits = receivedQuantity || backendNumber(detail.cantidad);
-      const recipeUnits = providerUnits * supplierRecipeUnitsPerProviderUnit;
-      if (recipeUnits > 0) return divide(expenseSubtotal, recipeUnits);
+    return backendReceptionCostSnapshot({
+      detail,
+      ambiguousExpenseIds,
+      expenseRows,
+      receptionRows,
+      receptionDetailsByReception,
+      supplyId,
+      supplyRecipeUnitsPerCountUnit,
+      supplierSnapshotRecipeUnitsPerProviderUnit,
+      supplierRecipeUnitsPerProviderUnit,
+      supplierItem
+    }).unitCost;
+  }
+
+  function backendReceptionCostSnapshot({
+    detail,
+    ambiguousExpenseIds = new Set(),
+    expenseRows,
+    receptionRows,
+    receptionDetailsByReception,
+    supplyId,
+    supplyRecipeUnitsPerCountUnit,
+    supplierSnapshotRecipeUnitsPerProviderUnit,
+    supplierRecipeUnitsPerProviderUnit,
+    supplierItem
+  }) {
+    let receivedCountUnits = 0;
+    let expenseSubtotal = 0;
+    let hasAmbiguousExpense = false;
+    const countedExpenseIds = new Set();
+
+    receptionRows.forEach((reception) => {
+      const receptionSupplyRows = (receptionDetailsByReception.get(backendId(reception.id_recepcion)) || [])
+        .filter((row) => backendId(row.id_insumo) === supplyId);
+      if (!receptionSupplyRows.length) return;
+      const receptionCountUnits = receptionSupplyRows
+        .reduce((total, row) => total + positiveBackendNumber(row.cantidad_recibida), 0);
+      receivedCountUnits += receptionCountUnits;
+      const expenseId = backendId(reception.id_egreso);
+      if (!expenseId || countedExpenseIds.has(expenseId)) return;
+      if (ambiguousExpenseIds.has(expenseId)) {
+        hasAmbiguousExpense = true;
+        return;
+      }
+      const subtotal = positiveBackendNumber(expenseRows.get(expenseId)?.subtotal);
+      if (!(subtotal > 0)) return;
+      countedExpenseIds.add(expenseId);
+      expenseSubtotal += subtotal;
+    });
+
+    if (hasAmbiguousExpense) {
+      return {
+        unitCost: 0,
+        countUnitCost: 0,
+        valuationSource: "ambiguous_shared_expense",
+        diagnostic: "El subtotal pertenece a mas de una compra o insumo y no existe un reparto historico demostrable."
+      };
     }
-  
-    const supplierUnitQuantity = backendNumber(supplierItem.cantidad_proveedor) || 1;
-    const supplierUnitPrice = backendNumber(supplierItem.precio);
-    return supplierUnitPrice ? divide(supplierUnitPrice, supplierUnitQuantity) : 0;
+
+    const providerUnits = positiveBackendNumber(detail.cantidad);
+    const providerRecipeFactor = positiveBackendNumber(supplierRecipeUnitsPerProviderUnit);
+    const recipeFactor = positiveRecipeQuantity(supplyRecipeUnitsPerCountUnit);
+    if (expenseSubtotal > 0 && receivedCountUnits > 0) {
+      const historicalProviderRecipeFactor = positiveBackendNumber(supplierSnapshotRecipeUnitsPerProviderUnit)
+        || providerRecipeFactor;
+      const expectedCountUnits = providerUnits > 0 && historicalProviderRecipeFactor > 0 && recipeFactor > 0
+        ? (providerUnits * historicalProviderRecipeFactor) / recipeFactor
+        : 0;
+      const matchesProviderUnits = approximatelyEqual(receivedCountUnits, providerUnits);
+      const matchesCountUnits = approximatelyEqual(receivedCountUnits, expectedCountUnits);
+      const receptionLooksLikeProviderUnits = matchesProviderUnits || (
+        !matchesCountUnits
+        && relativeDistance(receivedCountUnits, providerUnits) < relativeDistance(receivedCountUnits, expectedCountUnits)
+      );
+
+      if (receptionLooksLikeProviderUnits && !matchesCountUnits && providerRecipeFactor > 0 && recipeFactor > 0) {
+        const countUnitCost = divide(
+          expenseSubtotal,
+          (receivedCountUnits * providerRecipeFactor) / recipeFactor
+        );
+        return {
+          unitCost: divide(countUnitCost, recipeFactor),
+          countUnitCost,
+          valuationSource: "historical_reception_provider_unit",
+          diagnostic: "La recepcion historica coincide con la cantidad del proveedor; se normalizo con la presentacion de la linea."
+        };
+      }
+
+      const countUnitCost = divide(expenseSubtotal, receivedCountUnits);
+      return {
+        unitCost: recipeFactor ? divide(countUnitCost, recipeFactor) : 0,
+        countUnitCost,
+        valuationSource: "historical_reception_count_unit",
+        diagnostic: recipeFactor
+          ? ""
+          : "Costo por unidad de conteo disponible; falta un factor historico valido hacia la unidad de receta."
+      };
+    }
+
+    if (expenseSubtotal > 0 && providerUnits > 0 && providerRecipeFactor > 0) {
+      const countUnitCost = recipeFactor
+        ? divide(expenseSubtotal, (providerUnits * providerRecipeFactor) / recipeFactor)
+        : 0;
+      return {
+        unitCost: divide(expenseSubtotal, providerUnits * providerRecipeFactor),
+        countUnitCost,
+        valuationSource: "historical_provider_quantity_fallback",
+        diagnostic: recipeFactor
+          ? "No habia cantidad de conteo historica; se uso la presentacion persistida de la linea."
+          : "No habia cantidad de conteo historica ni factor valido hacia la unidad de conteo."
+      };
+    }
+
+    const historicalSupplierQuantity = positiveBackendNumber(detail.cantidad_proveedor);
+    const historicalSupplierPrice = positiveBackendNumber(detail.precio);
+    const supplierUnitQuantity = historicalSupplierQuantity
+      || positiveBackendNumber(supplierItem.cantidad_proveedor);
+    const supplierUnitPrice = historicalSupplierPrice
+      || positiveBackendNumber(supplierItem.precio);
+    if (supplierUnitPrice > 0 && supplierUnitQuantity > 0) {
+      const countUnitCost = recipeFactor
+        ? divide(supplierUnitPrice, supplierUnitQuantity / recipeFactor)
+        : 0;
+      return {
+        unitCost: divide(supplierUnitPrice, supplierUnitQuantity),
+        countUnitCost,
+        valuationSource: historicalSupplierPrice && historicalSupplierQuantity
+          ? "historical_purchase_line_fallback"
+          : "current_supplier_fallback",
+        diagnostic: recipeFactor
+          ? "Sin costo de recepcion; se uso el precio de proveedor disponible como fallback."
+          : "Sin costo de recepcion ni factor valido hacia la unidad de conteo."
+      };
+    }
+
+    return {
+      unitCost: 0,
+      countUnitCost: 0,
+      valuationSource: "unavailable",
+      diagnostic: "No se pudo normalizar el costo: faltan cantidades historicas positivas o factores validos."
+    };
+  }
+
+  function positiveBackendNumber(value) {
+    const number = backendNumber(value);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  }
+
+  function positiveRecipeQuantity(value) {
+    const number = backendRecipeQuantity(value);
+    return Number.isFinite(number) && number > 0 ? number : 0;
+  }
+
+  function approximatelyEqual(left, right) {
+    if (!(left > 0) || !(right > 0)) return false;
+    return Math.abs(left - right) <= Math.max(0.000001, Math.abs(right) * 0.000001);
+  }
+
+  function relativeDistance(left, right) {
+    if (!(left > 0) || !(right > 0)) return Number.POSITIVE_INFINITY;
+    return Math.abs(left - right) / Math.max(Math.abs(left), Math.abs(right));
   }
   
   function backendIsoDate(value) {
@@ -291,7 +480,7 @@ function createIncomeCalculationService({
     return 0;
   }
 
-  return { backendComparisonPeriod, backendCurrentDateIso, backendIsGrossRevenueTaxInvoice, backendIsoDate, backendIsSchoolClient, backendLastInventorySummary, backendLatestSupplyCostMap, backendMonthEndIso, backendMonthStartIso, backendNormalizeText, backendNumber, backendObjectSum, backendOffsetIsoDate, backendRate, backendReceptionRecipeUnitCost, backendRecipeQuantity, backendTurnRank, normalizeBackendNumberText };
+  return { backendComparisonPeriod, backendCurrentDateIso, backendIsGrossRevenueTaxInvoice, backendIsoDate, backendIsSchoolClient, backendLastInventoryRow, backendLastInventorySummary, backendLatestSupplyCostMap, backendMonthEndIso, backendMonthStartIso, backendNormalizeText, backendNumber, backendObjectSum, backendOffsetIsoDate, backendRate, backendReceptionCostSnapshot, backendReceptionRecipeUnitCost, backendRecipeQuantity, backendTurnRank, normalizeBackendNumberText };
 }
 
 module.exports = { createIncomeCalculationService };
