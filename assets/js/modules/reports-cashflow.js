@@ -922,10 +922,11 @@ function renderCashflow() {
   const tableGroups = searchTerm
     ? visibleGroups.filter((group) => cashflowGroupMatchesSearch(group, searchTerm))
     : visibleGroups;
-  const initialCash = centsToMoney(
-    moneyToCents(backendCashflowReport.cards?.banks || 0)
-    + moneyToCents(backendCashflowReport.cards?.cash || 0)
-  );
+  const banks = backendCashflowReport.cards?.banks;
+  const cash = backendCashflowReport.cards?.cash;
+  const initialCash = Number.isFinite(banks) && Number.isFinite(cash)
+    ? centsToMoney(moneyToCents(banks) + moneyToCents(cash))
+    : null;
   const weeklyTimeline = buildCashflowWeeklyTimeline(tableGroups, initialCash)
     .filter((week) => !searchTerm || tableGroups.some((group) => group.week.number === week.number));
 
@@ -990,12 +991,16 @@ function buildLegacyCashflowGroups() {
 
 function renderBackendCashflowCards(report) {
   const cards = report.cards || {};
-  els["financial-overdue-balance"].textContent = formatMoney(cards.debts || 0);
-  els["financial-month-balance"].textContent = formatMoney(cards.receivable || 0);
-  els["financial-cash-banks"].textContent = formatMoney(cards.banks || 0);
-  els["financial-cash-cash"].textContent = formatMoney(cards.cash || 0);
-  els["financial-checks-on-hand"].textContent = formatMoney(cards.checksOnHand || 0);
-  els["financial-checks-to-cover"].textContent = formatMoney(cards.checksToCover || 0);
+  els["financial-overdue-balance"].textContent = cashflowCardValue(cards.debts);
+  els["financial-month-balance"].textContent = cashflowCardValue(cards.receivable);
+  els["financial-cash-banks"].textContent = cashflowCardValue(cards.banks);
+  els["financial-cash-cash"].textContent = cashflowCardValue(cards.cash);
+  els["financial-checks-on-hand"].textContent = cashflowCardValue(cards.checksOnHand);
+  els["financial-checks-to-cover"].textContent = cashflowCardValue(cards.checksToCover);
+}
+
+function cashflowCardValue(value) {
+  return Number.isFinite(value) ? formatMoney(value) : "No disponible";
 }
 
 function buildBackendCashflowGroupsForUi(report) {
@@ -1294,7 +1299,7 @@ function cashflowReceivedCheckEvents() {
 }
 
 function buildCashflowWeeklyTimeline(groups, initialCash) {
-  let balanceCents = moneyToCents(initialCash);
+  let balanceCents = Number.isFinite(initialCash) ? moneyToCents(initialCash) : null;
   const byWeek = new Map();
 
   for (let weekNumber = 1; weekNumber <= 4; weekNumber += 1) {
@@ -1312,13 +1317,13 @@ function buildCashflowWeeklyTimeline(groups, initialCash) {
   });
 
   return [...byWeek.values()].sort((a, b) => a.number - b.number).map((week) => {
-    balanceCents += week.net;
+    if (balanceCents !== null) balanceCents += week.net;
     return {
       ...week,
       income: centsToMoney(week.income),
       outcome: centsToMoney(week.outcome),
       net: centsToMoney(week.net),
-      balance: centsToMoney(balanceCents)
+      balance: balanceCents === null ? null : centsToMoney(balanceCents)
     };
   });
 }
@@ -1403,6 +1408,7 @@ function cashflowTypeSort(type) {
 }
 
 function cashflowWeekRow(week, forceOpen = false) {
+  const balanceClass = Number.isFinite(week.balance) ? (week.balance < 0 ? "negative" : "positive") : "";
   return `
     <tr class="cashflow-week-summary" data-cashflow-drop-week="${week.number}" data-cashflow-week-start="${week.startIso}">
       <td>
@@ -1413,7 +1419,7 @@ function cashflowWeekRow(week, forceOpen = false) {
       </td>
       <td class="num positive">${formatMoney(week.income)}</td>
       <td class="num negative">${formatMoney(week.outcome)}</td>
-      <td class="num ${week.balance < 0 ? "negative" : "positive"}">${formatMoney(week.balance)}</td>
+      <td class="num ${balanceClass}">${cashflowCardValue(week.balance)}</td>
     </tr>
   `;
 }

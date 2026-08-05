@@ -47,6 +47,7 @@ function baseCache() {
     tables: {
       inventarios: { rows: [], headers: [], rowCount: 0 },
       detalle_inventarios: { rows: [], headers: [], rowCount: 0 },
+      contadores_alipack: { rows: [], headers: [], rowCount: 0 },
       items: {
         rows: [
           { id_item: 101, origen_tipo: "insumo", id_origen: 10, ud_conteo: "Kg" },
@@ -480,6 +481,10 @@ test("preparar sin foto queda separado del OCR y el preview es una lectura sin p
     path.join(root, "assets/js/modules/inventory-detail-submit.js"),
     "utf8"
   );
+  const counterSource = fs.readFileSync(
+    path.join(root, "assets/js/modules/inventory-counter-review.js"),
+    "utf8"
+  );
   const { READ_ONLY_POSTS } = require("./audit.service");
   const theoreticalSource = fs.readFileSync(
     path.join(root, "assets/js/modules/inventory-theoretical-model.js"),
@@ -504,6 +509,10 @@ test("preparar sin foto queda separado del OCR y el preview es una lectura sin p
   assert.match(purchaseSource, /renderPurchaseInventorySuggestions\(payload\.snapshot\);[\s\S]*scheduleInventoryPurchaseDraftEvaluation\(\)/);
   assert.doesNotMatch(granelSource, /inventoryPhotoApplied|foto de inventario/);
   assert.doesNotMatch(submitSource, /receivedStock|receptionEntries/);
+  assert.match(submitSource, /const counters = collectInventoryAlipackCounters\(\)/);
+  assert.match(submitSource, /filter\(\(row\) => !isCounterAlipackName/);
+  assert.match(counterSource, /counterFromLastPhotoTranscription\(shift\)/);
+  assert.doesNotMatch(counterSource, /function syncManualCounterCorrection/);
   assert.match(submitSource, /if \(!response\.ok\) \{[\s\S]*?payload\.requestId[\s\S]*?throw new Error/);
   assert.match(submitSource, /renderInventoryDetailTemplate\(null\);[\s\S]*?catch \(error\)/);
   assert.equal(READ_ONLY_POSTS.has("/api/inventory/purchase-snapshot/preview"), true);
@@ -526,6 +535,7 @@ test("el envio manual exitoso persiste cabecera, detalle, snapshot e idempotenci
     date: "2026-07-06",
     employee: "Operario",
     selectedShifts: ["morning", "afternoon"],
+    counters: { morning: "1234.5", afternoon: "2345.75" },
     rows: [
       { itemId: 101, morning: 2400, afternoon: 2300 },
       { itemId: 102, morning: "", afternoon: 20 }
@@ -542,6 +552,11 @@ test("el envio manual exitoso persiste cabecera, detalle, snapshot e idempotenci
   assert.deepEqual(saved.tables.inventarios.rows.map((row) => row.valor_total), [123.45, 123.45]);
   assert.equal(valuationOptions.allowStoredDetailCostFallback, false);
   assert.equal(saved.tables.detalle_inventarios.rows.length - before.tables.detalle_inventarios.rows.length, 3);
+  assert.deepEqual(saved.tables.contadores_alipack.rows, [
+    { id_contador_alipack: 1, id_inventario: 1, valor_contador: 1234.5 },
+    { id_contador_alipack: 2, id_inventario: 2, valor_contador: 2345.75 }
+  ]);
+  assert.equal(response.payload.countersWritten, 2);
   assert.equal(saved.inventoryPurchaseSnapshot.inventoryDate, "2026-07-06");
   assert.equal(saved._inventoryFullEntryOperations.length, 1);
   assert.equal(saved.tables.recepciones, undefined);
@@ -627,6 +642,7 @@ test("reintentar exactamente el mismo payload devuelve los mismos ids sin duplic
     date: "2026-07-06",
     employee: "Operario",
     selectedShifts: ["afternoon", "morning"],
+    counters: { morning: 111.25, afternoon: 222.5 },
     rows: [
       { itemId: 102, morning: 20, afternoon: 19 },
       { itemId: 101, morning: 2400, afternoon: 2300 }
@@ -648,6 +664,161 @@ test("reintentar exactamente el mismo payload devuelve los mismos ids sin duplic
   assert.equal(second.rowsWritten, first.rowsWritten);
   assert.equal(harness.saveCount(), 1);
   assert.deepEqual(harness.cache(), afterFirst);
+});
+
+test("un turno guarda un contador decimal y un contador vacio conserva el contrato opcional", async () => {
+  const withCounter = createHarness();
+  await submit(createInventoryEntryService(withCounter.dependencies), {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    counters: { afternoon: "42.125" },
+    rows: [{ itemId: 101, afternoon: 5 }]
+  });
+  assert.equal(withCounter.responses.at(-1).status, 200);
+  assert.deepEqual(withCounter.cache().tables.contadores_alipack.rows, [
+    { id_contador_alipack: 1, id_inventario: 1, valor_contador: 42.125 }
+  ]);
+
+  const withoutCounter = createHarness();
+  await submit(createInventoryEntryService(withoutCounter.dependencies), {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    counters: { afternoon: "" },
+    rows: [{ itemId: 101, afternoon: 5 }]
+  });
+  assert.equal(withoutCounter.responses.at(-1).status, 200);
+  assert.equal(withoutCounter.responses.at(-1).payload.countersWritten, 0);
+  assert.deepEqual(withoutCounter.cache().tables.contadores_alipack.rows, []);
+});
+
+test("un item historico llamado Contador Alipack no vuelve a persistirse como detalle", async () => {
+  const harness = createHarness();
+  harness.dependencies.inventoryItemNameMap = () => new Map([
+    ["101", "Azucar"],
+    ["999", "Contador Alipack"]
+  ]);
+  await submit(createInventoryEntryService(harness.dependencies), {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    counters: { afternoon: 321.5 },
+    rows: [
+      { itemId: 101, afternoon: 5 },
+      { itemId: 999, afternoon: 321.5 }
+    ]
+  });
+  assert.equal(harness.responses.at(-1).status, 200);
+  assert.deepEqual(harness.cache().tables.detalle_inventarios.rows.map((row) => row.id_item), ["101"]);
+  assert.equal(harness.cache().tables.contadores_alipack.rows[0].valor_contador, 321.5);
+});
+
+test("la plantilla oculta el item historico y conserva solo la fila canonica de interfaz", async () => {
+  const cache = historicalCache();
+  cache.tables.items.rows.push({ id_item: 0, origen_tipo: "contador", id_origen: 0, ud_conteo: "Ud" });
+  cache.tables.detalle_inventarios.rows.push({
+    id_detalle_inventario: 7,
+    id_inventario: 1706,
+    id_item: 0,
+    cantidad: 456.75
+  });
+  const harness = createHarness(cache);
+  harness.dependencies.inventoryItemNameMap = () => new Map([
+    ["0", "Contador Alipack"],
+    ["101", "Azucar"],
+    ["102", "Aceite"],
+    ["103", "Bobina_Barra_Pop"]
+  ]);
+  await createInventoryEntryService(harness.dependencies).handleInventoryDetailTemplate({});
+  assert.equal(harness.responses.at(-1).status, 200);
+  assert.equal(harness.responses.at(-1).payload.rows.some((row) => row.itemName === "Contador Alipack"), false);
+});
+
+test("la carga integral exige la migracion explicita y no autocrea la tabla", async () => {
+  const cache = baseCache();
+  delete cache.tables.contadores_alipack;
+  const harness = createHarness(cache);
+  const before = harness.cache();
+  await submit(createInventoryEntryService(harness.dependencies), {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    counters: { afternoon: 12.5 },
+    rows: [{ itemId: 101, afternoon: 5 }]
+  });
+  assert.equal(harness.responses.at(-1).status, 503);
+  assert.equal(harness.responses.at(-1).payload.code, "INVENTORY_ALIPACK_MIGRATION_REQUIRED");
+  assert.match(harness.responses.at(-1).payload.error, /Falta aplicar la migracion/i);
+  assert.equal(harness.saveCount(), 0);
+  assert.deepEqual(harness.cache(), before);
+});
+
+test("un contador invalido se rechaza con mensaje comprensible antes de mutar", async () => {
+  for (const invalid of [-1, "NaN", "Infinity", {}, true]) {
+    const harness = createHarness();
+    const before = harness.cache();
+    await submit(createInventoryEntryService(harness.dependencies), {
+      date: "2026-07-06",
+      employee: "Operario",
+      selectedShifts: ["afternoon"],
+      counters: { afternoon: invalid },
+      rows: [{ itemId: 101, afternoon: 5 }]
+    });
+    assert.equal(harness.responses.at(-1).status, 400);
+    assert.equal(harness.responses.at(-1).payload.code, "INVALID_ALIPACK_COUNTER");
+    assert.match(harness.responses.at(-1).payload.error, /finito y no negativo/i);
+    assert.equal(harness.saveCount(), 0);
+    assert.deepEqual(harness.cache(), before);
+  }
+});
+
+test("el contador participa de la misma atomicidad sin alterar el cache persistido ante una falla", async () => {
+  const harness = createHarness();
+  const before = harness.cache();
+  harness.dependencies.valueBackendInventories = (cache) => {
+    assert.equal(cache.tables.contadores_alipack.rows.length, 1);
+    throw new Error("fallo posterior al contador");
+  };
+  await submit(createInventoryEntryService(harness.dependencies), {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    counters: { afternoon: 99.5 },
+    rows: [{ itemId: 101, afternoon: 5 }]
+  });
+  assert.equal(harness.responses.at(-1).status, 500);
+  assert.equal(harness.saveCount(), 0);
+  assert.deepEqual(harness.cache(), before);
+});
+
+test("agregar el contador no cambia cabeceras, detalles, snapshot ni valuacion", async () => {
+  const withoutCounter = createHarness();
+  const withCounter = createHarness();
+  const valuation = (cache, inventoryIds) => {
+    const selected = new Set(inventoryIds.map(String));
+    cache.tables.inventarios.rows
+      .filter((row) => selected.has(String(row.id_inventario)))
+      .forEach((row) => { row.valor_total = 250.75; });
+    return { issues: [] };
+  };
+  withoutCounter.dependencies.valueBackendInventories = valuation;
+  withCounter.dependencies.valueBackendInventories = valuation;
+  const basePayload = {
+    date: "2026-07-06",
+    employee: "Operario",
+    selectedShifts: ["afternoon"],
+    rows: [{ itemId: 101, afternoon: 5.25 }]
+  };
+  await submit(createInventoryEntryService(withoutCounter.dependencies), basePayload);
+  await submit(createInventoryEntryService(withCounter.dependencies), {
+    ...basePayload,
+    counters: { afternoon: 99.125 }
+  });
+  assert.deepEqual(withCounter.cache().tables.inventarios.rows, withoutCounter.cache().tables.inventarios.rows);
+  assert.deepEqual(withCounter.cache().tables.detalle_inventarios.rows, withoutCounter.cache().tables.detalle_inventarios.rows);
+  assert.deepEqual(withCounter.cache().inventoryPurchaseSnapshot, withoutCounter.cache().inventoryPurchaseSnapshot);
+  assert.equal(withCounter.cache().tables.inventarios.rows[0].valor_total, 250.75);
 });
 
 test("un payload sin items se rechaza antes de abrir la transaccion", async () => {

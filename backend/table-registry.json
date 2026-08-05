@@ -58,6 +58,7 @@
     { "name": "gastos_egresos", "label": "Aplicaciones gasto-egreso", "module": "contabilidad", "workbook": "Backend", "sheet": "gastos_egresos", "primaryKey": "id_gasto_egreso" },
 
     { "name": "inventarios", "label": "Inventarios", "module": "inventario", "workbook": "Backend", "sheet": "inventarios", "primaryKey": "Id_Inventario" },
-    { "name": "detalle_inventarios", "label": "Detalle inventarios", "module": "inventario", "workbook": "Backend", "sheet": "detalle_inventarios", "primaryKey": "Id_Detalle_Inventario" }
+    { "name": "detalle_inventarios", "label": "Detalle inventarios", "module": "inventario", "workbook": "Backend", "sheet": "detalle_inventarios", "primaryKey": "Id_Detalle_Inventario" },
+    { "name": "contadores_alipack", "label": "Contadores Alipack", "module": "inventario", "workbook": "Backend", "sheet": "contadores_alipack", "primaryKey": "id_contador_alipack", "synthetic": true }
   ]
 }

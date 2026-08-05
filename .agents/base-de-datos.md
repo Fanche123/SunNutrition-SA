@@ -32,6 +32,7 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 - Modelo: `backend/table-registry.json`, `backend/config/backend-columns.js`, `backend/config/backend-projections.js`.
 - Migraciones preparadas: `backend/migrations/20260724-received-check-endorsement.js`, `backend/migrations/20260727-investment-fund.js`, `backend/migrations/20260727-economic-expenses-history.js`, `backend/migrations/20260728-icbc-cash-reconciliation.js` y las reparaciones puntuales `backend/migrations/20260728-icbc-duplicate-repair.js` y `backend/migrations/20260728-icbc-one-to-one-repair.js`, no automáticas y probadas sobre copias aisladas.
 - Reparación derivada de Inventario: `backend/migrations/20260804-inventory-values.js` recalcula los dos campos monetarios derivados de cada detalle elegible y deriva la cabecera exclusivamente de su suma. La elegibilidad es atómica por inventario; los inventarios con algún costo no demostrable se omiten completos. Incluye dry-run, backup SHA-256, escritura atómica, auditoría, restore e idempotencia posterior; no agrega tabla ni columna.
+- Esquema aditivo de Inventario: `backend/migrations/20260804-inventory-alipack-counters.js` crea vacía `contadores_alipack`, sin backfill, con backup SHA-256, dry-run, apply idempotente y rollback localizado que retira solo la tabla vacía y conserva cambios posteriores ajenos.
 - Acceso compartido: `backend/services/backend-table.service.js`, `backend-map.service.js`, `sql.service.js`, `backend/utils/runtime.js`, `backend/routes/router.js`.
 - Herramientas: `tools/audit-erp-data.js`, `tools/backend-sqlite-query.py`.
 - Evidencia histórica: `docs/AUDITORIA_DATOS_ERP_2026-07-18.json`, `docs/REPORTE_INTEGRAL_ERP_2026-07-18.md`. Describen una arquitectura anterior; el código actual manda.
@@ -52,16 +53,16 @@ Fuera de alcance: reglas operativas, fórmulas contables, UI del editor/SQL y de
 
 ## Tablas y claves actuales
 
-La clave efectiva del editor se toma de la primera columna canónica de `backend-columns.js`. El registro tiene 48 definiciones (47 visibles y `sueldos_calculo` oculta):
+La clave efectiva del editor se toma de la primera columna canónica de `backend-columns.js`. El registro tiene 52 definiciones (51 visibles y `sueldos_calculo` oculta):
 
 - **Maestros:** `etiquetas(id_etiqueta)`, `acreedores(id_acreedor)`, `otros_acreedores(id_otro_acreedor)`, `acreedores_etiquetas(id_acreedor_etiqueta)`, `proveedores(id_proveedor)`, `clientes(id_cliente)`, `empleados(id_empleado)`, `canales(id_canal)`, `fletes(id_flete)`.
-- **Inventario:** `items(id_item)`, `productos(id_producto)`, `subproductos(id_subproducto)`, `insumos(id_insumo)`, `insumos_proveedores(id_insumos_proveedores)`, `recetas(id_receta)`, `inventarios(id_inventario)`, `detalle_inventarios(id_detalle_inventario)`.
+- **Inventario:** `items(id_item)`, `productos(id_producto)`, `subproductos(id_subproducto)`, `insumos(id_insumo)`, `insumos_proveedores(id_insumos_proveedores)`, `recetas(id_receta)`, `inventarios(id_inventario)`, `detalle_inventarios(id_detalle_inventario)`, `contadores_alipack(id_contador_alipack)` con `id_inventario` único y obligatorio.
 - **Ventas:** `pedidos(id_pedido)`, `detalle_pedidos(id_detalle_pedido)`, `entregas(id_entrega)`, `entregas_detalle(id_entregas_detalle)`, `ventas(id_venta)`, `cobros(id_cobro)`, `cobros_detalle(id_cobros_detalle)`, `retenciones_ganancias(id_retencion_ganancias)`, `retenciones_iibb(id_retencion_iibb)`, `cheques_recibidos(id_cheque_recibido)`.
 - **Tesorería:** `datos_bancarios(id_dato_bancario)`, `movimientos_bancarios(id_movimiento_bancario)`, `fondos_inversion_movimientos(id_movimiento_fondo)`, `caja(cuenta)`, `cheques_entregados(id_cheque_entregado)`, `planes_pagos(id_plan_pago)`, `cuotas_planes_pagos(id_cuota_plan_pago)`.
 - **Compras/RRHH:** `compras(id_compra)`, `detalle_compras(id_detalle_compra)`, `recepciones(id_recepcion)`, `detalle_recepciones(id_detalle_recepcion)`, `otros_gastos(id_otros_gastos)`, `aportes_socios(id_aporte_socio)`, `egresos(id_egreso)`, `pagos(id_pago)`, `detalle_pagos(id_detalle_pago)`, `comisiones(id_comision)`, `sueldos(id_sueldo)`, `sueldos_calculo(id_sueldo)`.
 - **Contabilidad:** `gastos_economicos(id_gasto_economico)` con `fecha_economica` diaria y `gastos_egresos(id_gasto_egreso)`, registradas y administrables mediante servicios especializados; la carga histórica exige backup verificable.
 
-Relaciones críticas a verificar en el servicio y `tools/audit-erp-data.js`: acreedor-etiqueta; insumo-proveedor; receta resultado/componente-item; pedido-detalle-producto; entrega-pedido; venta-pedido/cliente/entrega; cobro-venta y retenciones; compra-detalle-recepción; egreso-pago; sueldos/comisiones/recepciones-egreso; inventario-detalle-item. Son convenciones por IDs, no constraints del motor.
+Relaciones críticas a verificar en el servicio y `tools/audit-erp-data.js`: acreedor-etiqueta; insumo-proveedor; receta resultado/componente-item; pedido-detalle-producto; entrega-pedido; venta-pedido/cliente/entrega; cobro-venta y retenciones; compra-detalle-recepción; egreso-pago; sueldos/comisiones/recepciones-egreso; inventario-detalle-item; inventario-contador Alipack uno a uno. Son convenciones por IDs, no constraints del motor.
 
 ## Gaps confirmados del modelo
 

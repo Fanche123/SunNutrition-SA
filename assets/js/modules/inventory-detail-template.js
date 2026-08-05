@@ -99,7 +99,6 @@ function cacheInventoryCounterInputs() {
 function bindInventoryCounterInputs() {
   ["inventory-counter-manual-morning", "inventory-counter-manual-afternoon", "inventory-counter-manual-dawn"].forEach((id) => {
     els[id]?.addEventListener("input", () => {
-      syncManualCounterCorrection(id);
       updateInventoryCounterReview();
       updateTheoreticalInventoryStock();
     });

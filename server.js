@@ -18,6 +18,8 @@ const {
   APP_STATE_FILE,
   BACKEND_CACHE_FILE,
   BACKEND_SQL_SCRIPT,
+  OPERATIONAL_CUTOVER_AUDIT_FILE,
+  OPERATIONAL_CUTOVER_STATE_FILE,
   PYTHON_EXECUTABLE,
   ROOT_DIR,
   SECURITY_AUDIT_FILE,
@@ -61,6 +63,7 @@ const { createBankMatchingService } = require("./backend/services/bank-matching.
 const { createBankReferenceService } = require("./backend/services/bank-reference.service");
 const { createInventoryEntryService } = require("./backend/services/inventory-entry.service");
 const { createInventoryPurchaseSnapshotService } = require("./backend/services/inventory-purchase-snapshot.service");
+const { createOperationalCutoverService } = require("./backend/services/operational-cutover.service");
 const { payrollCalendarForYear } = require("./assets/js/config/payroll-calendars");
 const {
   filterInventoryRowsBySelectedShifts,
@@ -319,41 +322,6 @@ const {
   readJsonBody,
   rootDir: ROOT_DIR,
   sendJson
-});
-const buildBackendCashflowReport = createCashflowService({
-  backendCreditorDisplayName,
-  backendCurrentDateIso,
-  backendExpenseSupplierName,
-  backendId,
-  backendIsoDate,
-  backendNormalizeText,
-  backendNumber,
-  backendObjectSum,
-  backendRowsById,
-  loadCache
-});
-const {
-  handleAppStateGet,
-  handleAppStateSave,
-  handleBackendSqlGenerate,
-  handleBackendSqlQuery,
-  handleCashflowReport,
-  handleIncomeStatementDetail,
-  handleIncomeStatementReport,
-  handleProductionReport
-} = createCoreHandlers({
-  APP_STATE_FILE,
-  backendComparisonPeriod,
-  buildBackendCashflowReport,
-  buildBackendIncomeStatementDetail,
-  buildBackendIncomeStatementReport,
-  buildProductionReport,
-  generateBackendSql,
-  readAppState,
-  readJsonBody,
-  runBackendSqlQuery,
-  sendJson,
-  writeAppState
 });
 const backendColumnsMap = createBackendMapService({
   EXPECTED_BACKEND_COLUMNS,
@@ -617,10 +585,15 @@ const { handleCreditorCreate } = createCreditorEntryService({
   saveBackendCache,
   sendJson
 });
+const operationalCutover = createOperationalCutoverService({
+  auditFile: OPERATIONAL_CUTOVER_AUDIT_FILE,
+  stateFile: OPERATIONAL_CUTOVER_STATE_FILE
+});
 const applyRequestAccess = createAccessControl({
   accessConfig,
   authenticateRequest: authService.authenticateRequest,
   beginAuditRequest: auditService.beginRequest,
+  operationalCutover,
   sendJson,
   setCorsHeaders
 });
@@ -645,7 +618,7 @@ const { handlePaymentFullEntry } = createPaymentEntryService({
   sendJson,
   synchronizeEconomicExpenses: (cache) => backfillHistoricalEconomicExpenses(cache).cache
 });
-const { handleCashBoxesGet } = createCashBoxesService({
+const { buildTreasuryManagementSnapshot, handleCashBoxesGet } = createCashBoxesService({
   backendBankMatches,
   backendExpenseCounterpartyInfo,
   backendGroupRowsById,
@@ -656,6 +629,41 @@ const { handleCashBoxesGet } = createCashBoxesService({
   canonicalPendingBankMovements,
   loadCache,
   sendJson
+});
+const buildBackendCashflowReport = createCashflowService({
+  backendCreditorDisplayName,
+  backendCurrentDateIso,
+  backendExpenseSupplierName,
+  backendId,
+  backendIsoDate,
+  backendNormalizeText,
+  backendNumber,
+  backendRowsById,
+  buildTreasuryManagementSnapshot,
+  loadCache
+});
+const {
+  handleAppStateGet,
+  handleAppStateSave,
+  handleBackendSqlGenerate,
+  handleBackendSqlQuery,
+  handleCashflowReport,
+  handleIncomeStatementDetail,
+  handleIncomeStatementReport,
+  handleProductionReport
+} = createCoreHandlers({
+  APP_STATE_FILE,
+  backendComparisonPeriod,
+  buildBackendCashflowReport,
+  buildBackendIncomeStatementDetail,
+  buildBackendIncomeStatementReport,
+  buildProductionReport,
+  generateBackendSql,
+  readAppState,
+  readJsonBody,
+  runBackendSqlQuery,
+  sendJson,
+  writeAppState
 });
 const {
   handleCreate: handleInvestmentFundCreate,
@@ -907,6 +915,7 @@ const server = http.createServer(createRequestHandler({
   backendColumnsMap,
   backendOverview,
   backendSchema,
+  operationalState: () => operationalCutover.getPublicState(),
   runtimeIdentity: runtimeSession.publicIdentity,
   handlers: {
     handleAuditEventsList: (request, response) => auditService.handleList(request, response, sendJson),

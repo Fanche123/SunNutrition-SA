@@ -8,6 +8,7 @@
   async function initialize() {
     await domReady();
     bindAuthenticationEvents();
+    await loadOperationalState();
     try {
       const response = await nativeFetch("/api/auth/session", { cache: "no-store" });
       const payload = await response.json();
@@ -84,6 +85,37 @@
       const items = [...group.querySelectorAll(".nav-group-items .nav-item")];
       if (items.length && items.every((item) => item.hidden)) group.hidden = true;
     });
+  }
+
+  async function loadOperationalState() {
+    const banner = document.getElementById("operational-source-banner");
+    if (!banner) return;
+    try {
+      const response = await nativeFetch("/api/health", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.ok) throw new Error("No se pudo verificar el estado operativo.");
+      const operational = payload.operational || {};
+      if (!operational.localReadOnly) {
+        banner.hidden = true;
+        document.body.classList.remove("local-read-only-active");
+        return;
+      }
+      const siteLabel = operational.siteUrl ? ` en ${operational.siteUrl}` : "";
+      banner.textContent = operational.canonicalSource === "sites"
+        ? `LOCAL RESPALDO / SOLO LECTURA · Sites es la fuente canónica operativa${siteLabel}.`
+        : "CORTE EN CURSO · Local está congelado y no acepta operaciones. Sites todavía no es escritor.";
+      banner.dataset.mode = operational.canonicalSource === "sites" ? "sites-canonical" : "frozen";
+      banner.hidden = false;
+      document.body.classList.add("local-read-only-active");
+      const updateHeight = () => document.documentElement.style.setProperty("--operational-banner-height", `${banner.offsetHeight}px`);
+      updateHeight();
+      root.addEventListener("resize", updateHeight, { passive: true });
+    } catch {
+      banner.textContent = "ESTADO OPERATIVO NO VERIFICADO · Las operaciones deben considerarse bloqueadas hasta validar el backend.";
+      banner.dataset.mode = "guard-error";
+      banner.hidden = false;
+      document.body.classList.add("local-read-only-active");
+    }
   }
 
   function showLogin(bootstrapRequired, message = "") {

@@ -1393,8 +1393,15 @@ function testCashflowDebtAndDashboardConsumers() {
     backendIsoDate: (value) => cleanBackendText(value).slice(0, 10),
     backendNormalizeText: (value) => cleanBackendText(value).toLowerCase(),
     backendNumber,
-    backendObjectSum: (values) => values.reduce((sum, value) => sum + backendNumber(value), 0),
     backendRowsById: rowsById,
+    buildTreasuryManagementSnapshot: () => ({
+      position: {
+        banksTotalCents: 0,
+        cash: { available: true, balanceCents: 0 },
+        receivedChecks: { availableTotalCents: 0 },
+        issuedChecks: { pendingTotalCents: 0 }
+      }
+    }),
     loadCache: () => clone(cashflowCache)
   });
   assert.strictEqual(buildCashflow().cards.debts, 50.15);

@@ -662,14 +662,22 @@ test("UI del detalle es lazy, accesible y se cierra al cambiar periodo o compara
 });
 
 test("cashflow cubre saldos parciales/completos, cheques, signos, centavos y cuatro semanas", () => {
+  let cashAvailable = true;
   const tables = {
-    caja: table([{ cuenta: "Banco ICBC", monto: 100.25 }, { cuenta: "Efectivo", monto: 50.5 }]),
+    caja: table([{ cuenta: "Banco ICBC", monto: 999999 }, { cuenta: "Efectivo", monto: -999999 }]),
     egresos: table([{ id_egreso: 1, total: 100.75, fecha_prevista_pago: "2026-07-25" }, { id_egreso: 2, total: 20, fecha_prevista_pago: "2026-07-25" }]),
     detalle_pagos: table([{ id_egreso: 1, monto_cancelado: 40.25 }, { id_egreso: 2, monto_cancelado: 20 }]),
     ventas: table([{ id_venta: 1, total: 200.5, fecha_factura: "2026-07-24", fecha_cobro: "2026-07-30", id_cliente: 1 }, { id_venta: 2, total: 20, fecha_factura: "2026-07-24" }]),
     cobros_detalle: table([{ id_venta: 1, monto_cancelado: 50.25 }, { id_venta: 2, monto_cancelado: 20 }]),
-    cheques_recibidos: table([{ id_cheque_recibido: 1, estado: "Pendiente", fecha_uso: "2026-08-01", monto: 30.25, id_cliente: 1 }]),
-    cheques_entregados: table([{ id_cheque_entregado: 1, estado: "Pendiente", fecha_uso: "2026-08-08", monto: 40.5, id_acreedor: 1 }]),
+    cheques_recibidos: table([
+      { id_cheque_recibido: 1, estado: "Pendiente", fecha_uso: "2026-08-01", monto: 30.25, id_cliente: 1 },
+      { id_cheque_recibido: 2, estado: "Pendiente", fecha_uso: "2026-07-20", monto: 15, id_cliente: 1 },
+      { id_cheque_recibido: 3, estado: "Depositado", fecha_uso: "2026-08-02", monto: 99, id_cliente: 1 }
+    ]),
+    cheques_entregados: table([
+      { id_cheque_entregado: 1, estado: "Pendiente", fecha_uso: "2026-08-08", monto: 40.5, id_acreedor: 1 },
+      { id_cheque_entregado: 2, estado: "Debitado", fecha_uso: "2026-08-09", monto: 90, id_acreedor: 1 }
+    ]),
     clientes: table([{ id_cliente: 1, nombre_cliente: "Cliente" }]),
     acreedores: table([{ id_acreedor: 1, acuerdo_de_pago: "Proveedor" }]),
     cobros: table()
@@ -682,19 +690,31 @@ test("cashflow cubre saldos parciales/completos, cheques, signos, centavos y cua
     backendIsoDate: isoDate,
     backendNormalizeText: normalize,
     backendNumber: number,
-    backendObjectSum: (values) => values.reduce((total, value) => total + number(value), 0),
     backendRowsById: rowsById,
+    buildTreasuryManagementSnapshot: () => ({
+      position: {
+        banksTotalCents: 10025,
+        cash: { available: cashAvailable, balanceCents: cashAvailable ? 5050 : null },
+        receivedChecks: { availableTotalCents: 4525 },
+        issuedChecks: { pendingTotalCents: 4050 }
+      }
+    }),
     loadCache: () => ({ tables })
   });
   const report = build();
   assert.deepEqual(report.cards, {
     banks: 100.25, cash: 50.5,
-    debts: 60.5, receivable: 150.25, checksOnHand: 30.25, checksToCover: 40.5
+    debts: 60.5, receivable: 150.25, checksOnHand: 45.25, checksToCover: 40.5
   });
+  assert.equal(report.groups.filter((group) => group.type === "received-check").reduce((total, group) => total + group.amount, 0), 30.25);
   assert.equal(report.groups.find((group) => group.type === "payable").amount, -60.5);
   assert.equal(report.groups.find((group) => group.type === "receivable").amount, 150.25);
   assert.equal(report.weeks.length, 4);
   assert.equal(report.visibleGroups.every((group) => group.week.number <= 4), true);
+  cashAvailable = false;
+  const unavailableCashReport = build();
+  assert.equal(unavailableCashReport.cards.cash, null);
+  assert.equal(unavailableCashReport.weeks.every((week) => week.balance === null), true);
 });
 
 test("UI de cashflow aplica búsqueda y overrides sin mutar el reporte backend", () => {
@@ -720,6 +740,11 @@ test("UI de cashflow aplica búsqueda y overrides sin mutar el reporte backend",
   assert.equal(groups[0].date, "2026-08-06");
   assert.equal(context.cashflowGroupMatchesSearch(groups[0], "azul"), true);
   assert.equal(context.cashflowGroupMatchesSearch(groups[0], "inexistente"), false);
+  assert.equal(context.cashflowCardValue(null), "No disponible");
+  assert.equal(context.cashflowCardValue(0), "0");
+  const unavailableTimeline = context.buildCashflowWeeklyTimeline([], null);
+  assert.equal(unavailableTimeline.every((week) => week.balance === null), true);
+  assert.match(context.cashflowWeekRow(unavailableTimeline[0]), /No disponible/);
   assert.equal(JSON.stringify(report), before);
 });
 

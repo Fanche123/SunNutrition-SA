@@ -54,7 +54,8 @@ const EXPECTED_BACKEND_COLUMNS = {
   gastos_economicos: ["id_gasto_economico", "fecha_economica", "id_etiqueta", "concepto", "tipo_economico", "tipo_movimiento", "importe", "estado", "origen_tipo", "origen_id", "origen_subclave", "id_gasto_precedente", "motivo", "clave_idempotencia", "hash_payload", "creado_en", "actualizado_en", "confirmado_en"],
   gastos_egresos: ["id_gasto_egreso", "id_gasto_economico", "id_egreso", "importe_aplicado", "componente_egreso", "componente_otro", "tipo_aplicacion", "estado", "id_aplicacion_precedente", "motivo", "clave_idempotencia", "hash_payload", "creado_en"],
   inventarios: ["id_inventario", "fecha", "turno", "id_empleado", "valor_total"],
-  detalle_inventarios: ["id_detalle_inventario", "id_inventario", "id_item", "cantidad", "costo_unitario_usado", "valor_total"]
+  detalle_inventarios: ["id_detalle_inventario", "id_inventario", "id_item", "cantidad", "costo_unitario_usado", "valor_total"],
+  contadores_alipack: ["id_contador_alipack", "id_inventario", "valor_contador"]
 };
 
 module.exports = { EXPECTED_BACKEND_COLUMNS };

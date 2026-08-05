@@ -1,61 +1,49 @@
 const { fromCents, normalize: normalizeMoney, toCents } = require("../../shared/money");
 
-function createCashflowService({ backendCreditorDisplayName, backendCurrentDateIso, backendExpenseSupplierName, backendId, backendIsoDate, backendNormalizeText, backendNumber, backendRowsById, loadCache }) {
+function createCashflowService({ backendCreditorDisplayName, backendCurrentDateIso, backendExpenseSupplierName, backendId, backendIsoDate, backendNormalizeText, backendNumber, backendRowsById, buildTreasuryManagementSnapshot, loadCache }) {
   function buildBackendCashflowReport() {
     const cache = loadCache();
     const tables = cache.tables || {};
     const startIso = backendCurrentDateIso();
-    const initialCash = backendInitialCash(tables);
+    const treasuryPosition = buildTreasuryManagementSnapshot(cache, "icbc").position;
+    const payables = backendCashflowPayableEvents(tables);
+    const receivables = backendCashflowReceivableEvents(tables);
+    const receivedChecks = backendCashflowReceivedCheckEvents(tables, startIso);
+    const issuedChecks = backendCashflowIssuedCheckEvents(tables);
     const events = [
-      ...backendCashflowPayableEvents(tables),
-      ...backendCashflowReceivableEvents(tables),
-      ...backendCashflowIssuedCheckEvents(tables),
-      ...backendCashflowReceivedCheckEvents(tables, startIso)
+      ...payables,
+      ...receivables,
+      ...issuedChecks,
+      ...receivedChecks
     ].filter((event) => event.date && Math.abs(toCents(event.amount)) > 1000);
   
     const groups = backendCashflowGroups(events, startIso);
     const visibleGroups = groups.filter((group) => group.week.number <= 4);
-    const weeks = backendCashflowWeeks(visibleGroups, initialCash.total, startIso);
-    const payables = events.filter((event) => event.type === "payable");
-    const receivables = events.filter((event) => event.type === "receivable");
-    const checks = events.filter((event) => event.type === "received-check");
-    const issuedChecks = events.filter((event) => event.type === "issued-check");
+    const banks = fromCents(treasuryPosition.banksTotalCents);
+    const cash = treasuryPosition.cash.available
+      ? fromCents(treasuryPosition.cash.balanceCents)
+      : null;
+    const weeks = backendCashflowWeeks(
+      visibleGroups,
+      cash === null ? null : sumMoney([banks, cash]),
+      startIso
+    );
   
     return {
       source: "backend",
       startIso,
       cards: {
-        banks: initialCash.banks,
-        cash: initialCash.cash,
-        checksOnHand: sumMoney(checks.map((event) => event.amount)),
+        banks,
+        cash,
+        checksOnHand: fromCents(treasuryPosition.receivedChecks.availableTotalCents),
         receivable: sumMoney(receivables.map((event) => event.amount)),
         debts: sumMoney(payables.map((event) => Math.abs(event.amount))),
-        checksToCover: sumMoney(issuedChecks.map((event) => Math.abs(event.amount)))
+        checksToCover: fromCents(treasuryPosition.issuedChecks.pendingTotalCents)
       },
       groups,
       visibleGroups,
       weeks
     };
-  }
-  
-  function backendInitialCash(tables) {
-    const cashRows = tables.caja?.rows || tables.cash?.rows || [];
-    const latestByAccount = new Map();
-  
-    cashRows.forEach((row) => {
-      const account = String(row.cuenta || row.banco || row.account || row.nombre || "").trim();
-      const amount = normalizeMoney(backendNumber(row.monto ?? row.total ?? row.valor ?? row.amount));
-      if (!account || toCents(amount) === 0) return;
-      latestByAccount.set(backendNormalizeText(account), { account, amount });
-    });
-  
-    const amountFor = (...names) => fromCents(names.reduce((total, name) => {
-      const normalized = backendNormalizeText(name);
-      return total + toCents(latestByAccount.get(normalized)?.amount || 0);
-    }, 0));
-    const banks = sumMoney([amountFor("Banco ICBC", "ICBC"), amountFor("Banco GAL", "GAL")]);
-    const cash = amountFor("Efectivo");
-    return { banks, cash, total: sumMoney([banks, cash]) };
   }
   
   function backendCashflowPayableEvents(tables) {
@@ -205,7 +193,7 @@ function createCashflowService({ backendCreditorDisplayName, backendCurrentDateI
   }
   
   function backendCashflowWeeks(groups, initialCash, startIso) {
-    let balanceCents = toCents(initialCash);
+    let balanceCents = Number.isFinite(initialCash) ? toCents(initialCash) : null;
     const weeks = new Map();
     for (let number = 1; number <= 4; number += 1) {
       weeks.set(number, {
@@ -226,7 +214,7 @@ function createCashflowService({ backendCreditorDisplayName, backendCurrentDateI
     });
   
     return [...weeks.values()].map((week) => {
-      balanceCents += week.netCents;
+      if (balanceCents !== null) balanceCents += week.netCents;
       return {
         number: week.number,
         startIso: week.startIso,
@@ -234,7 +222,7 @@ function createCashflowService({ backendCreditorDisplayName, backendCurrentDateI
         income: fromCents(week.incomeCents),
         outcome: fromCents(week.outcomeCents),
         net: fromCents(week.netCents),
-        balance: fromCents(balanceCents)
+        balance: balanceCents === null ? null : fromCents(balanceCents)
       };
     });
   }

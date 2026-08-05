@@ -10,6 +10,8 @@
   <link rel="stylesheet" href="assets/css/styles.css?v=20260803-treasury-pending-only">
 </head>
 <body class="auth-pending">
+  <div class="operational-source-banner" id="operational-source-banner" role="status" aria-live="polite" hidden></div>
+
   <section class="auth-screen" id="auth-screen" aria-labelledby="auth-title">
     <form class="auth-card" id="auth-login-form">
       <span class="auth-eyebrow">SunNutrition ERP</span>
@@ -96,6 +98,13 @@
           </div>
         </div>
       </nav>
+
+      <footer class="sidebar-footer">
+        <div class="session-control" aria-label="Sesión actual">
+          <span><strong id="session-user-name">—</strong><small id="session-user-role">—</small></span>
+          <button type="button" class="secondary" id="session-logout">Cerrar sesión</button>
+        </div>
+      </footer>
     </aside>
 
     <!-- Contenido de trabajo. Todas las pantallas viven aquí y se alternan por JS. -->
@@ -115,10 +124,6 @@
           </select>
           <label for="period-select">Período</label>
           <select id="period-select"></select>
-        </div>
-        <div class="session-control" aria-label="Sesión actual">
-          <span><strong id="session-user-name">—</strong><small id="session-user-role">—</small></span>
-          <button type="button" class="secondary" id="session-logout">Cerrar sesión</button>
         </div>
       </header>
 
@@ -2472,7 +2477,7 @@
                 </div>
                 <dl class="sales-invoice-comparison-values">
                   <div><dt>Esperado según pedido</dt><dd id="sales-invoice-comparison-expected">—</dd></div>
-                  <div><dt id="sales-invoice-comparison-invoice-label">Subtotal de factura</dt><dd id="sales-invoice-comparison-invoice">—</dd></div>
+                  <div><dt id="sales-invoice-comparison-invoice-label">Subtotal del comprobante</dt><dd id="sales-invoice-comparison-invoice">—</dd></div>
                   <div><dt>Diferencia</dt><dd id="sales-invoice-comparison-difference">—</dd></div>
                   <div><dt>Diferencia porcentual</dt><dd id="sales-invoice-comparison-percent">—</dd></div>
                 </dl>

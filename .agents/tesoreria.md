@@ -85,7 +85,7 @@ Endpoints confirmados en `backend/routes/router.js`:
 - Un cheque recibido endosado conserva su consulta en la gestión completa de endosos, pero no es un compromiso bancario pendiente: el modelo lo registra como pago `Endoso` y la regla ICBC excluye ese método. El popup de cheques entregados sólo incluye filas `cheques_entregados.estado=Pendiente`.
 - El fondo calcula en centavos `depósitos + rendimientos - rescates`. Depósitos y rescates crean respectivamente pagos ICBC positivos y negativos, vinculados por `fondos_inversion_movimientos.id_pago`; nunca crean cobros. Un rendimiento conserva importe positivo en Tesorería y crea en el mismo snapshot un gasto económico confirmado negativo, sin pago ni impacto bancario separado.
 - Persistencia/rutas: `data-store.js`, `backend-table.service.js`, `router.js`; composición solamente en `server.js`.
-- Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`.
+- Impacto: saldos pendientes en `payment-entry.js`, dashboard y `cashflow.service.js`. Cashflow reutiliza `buildTreasuryManagementSnapshot` para Bancos, Caja Efectivo, cheques recibidos disponibles y cheques entregados pendientes; no vuelve a leer `caja` ni replica estados de cheques.
 - El Dashboard consume los endpoints de Planes de pago en modo de solo lectura y conserva como autoridad el estado `Pagada` derivado por este servicio.
 - `received-check-entry.js` centraliza en `pendingReceivedCheckCollections` la detección de cobros con método cheque sin `cheques_recibidos.id_cobro` asociado; la pantalla operativa y el dashboard consumen la misma regla, deduplicada por `cobros.id_cobro`.
 

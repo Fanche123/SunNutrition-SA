@@ -120,7 +120,8 @@ const FOREIGN_KEYS = {
   detalle_inventarios: {
     id_inventario: ["inventarios", "id_inventario"],
     id_item: ["items", "id_item"]
-  }
+  },
+  contadores_alipack: { id_inventario: ["inventarios", "id_inventario"] }
 };
 
 const OPTIONAL_FOREIGN_KEYS = new Set([
@@ -339,6 +340,7 @@ function duplicateBusinessKeys() {
     ["sueldos", ["id_empleado", "fecha"]],
     ["inventarios", ["fecha", "turno"]],
     ["detalle_inventarios", ["id_inventario", "id_item"]],
+    ["contadores_alipack", ["id_inventario"]],
     ["egresos", ["fecha_factura", "nro_factura", "total"]],
     ["ventas", ["fecha_factura", "nro_factura", "total"]],
     ["cheques_entregados", ["nro_cheque", "banco"]],

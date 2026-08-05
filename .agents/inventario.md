@@ -20,6 +20,7 @@ Corregís y ampliás el código de captura de inventario, detalle por turno, fot
 - Revisión del contador Alipack, stock teórico, producción/consumo por recetas y diferencias visuales.
 - Alertas que pueden abrir una compra.
 - Persistencia de encabezados y detalles; la carga integral aplica antes de guardar el cálculo backend de costos por item y valuación solo a los inventarios recién creados.
+- Persistencia opcional del Contador Alipack por turno en `contadores_alipack`, relacionado uno a uno con la cabecera creada y fuera del detalle/valuación.
 - Consumo por Dashboard y Estado de Resultados.
 
 La cantidad real se persiste en `detalle_inventarios.cantidad`. No existen columnas persistidas `cantidad_teorica`, `cantidad_real` ni `diferencia`: son cálculos de interfaz.
@@ -61,9 +62,11 @@ Propios de backend:
 - `backend/services/inventory-photo-mapping.service.js`
 - `backend/services/inventory-valuation.service.js`
 - `backend/migrations/20260804-inventory-values.js`
+- `backend/migrations/20260804-inventory-alipack-counters.js`
 - `backend/utils/inventory-numbers.js`
 - `backend/services/inventory-entry.service.test.js`
 - `tests/inventory-value-backfill.test.js`
+- `tests/inventory-alipack-counter-migration.test.js`
 
 Compartidos o consumidores relevantes; no son de propiedad exclusiva:
 
@@ -82,6 +85,7 @@ Tablas propias confirmadas en `backend/table-registry.json` y `backend/config/ba
 
 - `inventarios` — PK canónica `id_inventario`; campos críticos `fecha`, `turno`, `id_empleado`, `valor_total`.
 - `detalle_inventarios` — PK `id_detalle_inventario`; relación por `id_inventario`; campos `id_item`, `cantidad`, `costo_unitario_usado`, `valor_total`.
+- `contadores_alipack` — PK `id_contador_alipack`; relación lógica obligatoria y única `id_inventario`; `valor_contador` finito y no negativo. Es de solo lectura administrativa y no participa de items, detalle ni valuación.
 
 Maestros leídos: `items`, `productos`, `subproductos`, `insumos`, `insumos_proveedores`, `recetas`, `empleados`. Para costos/producción también se leen `compras`, `detalle_compras`, `recepciones`, `detalle_recepciones`, `egresos`, `pedidos`, `detalle_pedidos` y `ventas`.
 
@@ -89,7 +93,7 @@ Endpoints específicos registrados en `backend/routes/router.js`:
 
 - `POST /api/inventory/append` — encabezado simple; `{ date, employee, employeeId?, shift?|turno? }`.
 - `GET /api/inventory/latest-date` — `{ lastDate, nextDate }`.
-- `POST /api/inventory/full-entry` — `{ date, employee, employeeId?, selectedShifts, rows }`; cada fila usa `itemId`, `dawn`, `morning`, `afternoon`.
+- `POST /api/inventory/full-entry` — `{ date, employee, employeeId?, selectedShifts, counters?, rows }`; cada fila usa `itemId`, `dawn`, `morning`, `afternoon` y `counters` aporta el valor opcional por turno.
 - `GET /api/inventory/purchase-snapshot` — `{ ok, snapshot }`; expone en solo lectura la evaluación fija del último inventario integral, con `inventoryDate`, `inventoryIds` e `items`.
 - `POST /api/inventory/purchase-snapshot/preview` — evalúa en memoria `{ date, selectedShifts, rows }` con la misma regla y el mismo `inventoryPurchaseConfig.barsPerDay`; no persiste el borrador ni el snapshot.
 - `GET /api/inventory-detail/template` — último detalle por turno y próximo ID orientativo.
@@ -127,7 +131,7 @@ La carga integral calcula la recomendación mediante `shared/inventory-purchase-
 - Backfill auditable de valuación: `backend/migrations/20260804-inventory-values.js`; por cada inventario completamente demostrable corrige primero `detalle_inventarios.costo_unitario_usado` y `detalle_inventarios.valor_total`, deriva luego `inventarios.valor_total` de su suma, omite completo cualquier inventario ambiguo, exige backup verificable y confirma idempotencia con un segundo dry-run.
 - Reportes: localizar primero el consumidor en Dashboard/Estado de Resultados; no mover allí reglas operativas.
 
-- **Envio manual:** `POST /api/inventory/full-entry` arma cabeceras, detalles, valuacion, snapshot y clave de idempotencia sobre una copia del cache y ejecuta un unico guardado atomico. El mismo payload normalizado devuelve los IDs ya confirmados sin duplicarlos. El desglose `Entradas` es informativo y no forma parte del payload ni crea recepciones; ante un fallo se conserva el formulario y se registra request ID + stack en `tmp/inventory-entry-errors.jsonl`.
+- **Envio manual/OCR:** `POST /api/inventory/full-entry` arma cabeceras, detalles, contadores Alipack, valuacion, snapshot y clave de idempotencia sobre una copia del cache y ejecuta un unico guardado atomico. El mismo payload normalizado devuelve los IDs ya confirmados sin duplicarlos. El contador vacio sigue siendo opcional; uno presente se valida como finito y no negativo y se asocia al inventario del mismo turno. El desglose `Entradas` es informativo y no forma parte del payload ni crea recepciones; ante un fallo se conserva el formulario y se registra request ID + stack en `tmp/inventory-entry-errors.jsonl`.
 
 ## Flujo de trabajo
 

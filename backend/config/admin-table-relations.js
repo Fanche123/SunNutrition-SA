@@ -4,6 +4,7 @@ const ADMIN_TABLE_RELATIONS = Object.freeze([
   relation("recepciones", "id_empleado", "empleados", "id_empleado", "nombre_empleado", "Empleado"),
   relation("sueldos", "id_empleado", "empleados", "id_empleado", "nombre_empleado", "Empleado"),
   relation("inventarios", "id_empleado", "empleados", "id_empleado", "nombre_empleado", "Empleado"),
+  relation("contadores_alipack", "id_inventario", "inventarios", "id_inventario", "id_inventario", "Inventario"),
   relation("cuotas_planes_pagos", "id_plan_pago", "planes_pagos", "id_plan_pago", "nombre", "Plan de pago"),
   relation("detalle_pedidos", "id_producto", "productos", "id_producto", "nombre_producto", "Producto")
 ]);

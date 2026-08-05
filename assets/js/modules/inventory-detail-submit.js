@@ -24,6 +24,7 @@ async function submitInventoryDetail(event) {
   }
 
   const rows = collectEditableInventoryDetailRows();
+  const counters = collectInventoryAlipackCounters();
 
   const button = els["inventory-detail-submit"];
   const originalText = button.textContent;
@@ -39,6 +40,7 @@ async function submitInventoryDetail(event) {
         date,
         employee,
         selectedShifts: selectedInventoryShifts(),
+        counters,
         rows
       })
     });
@@ -63,12 +65,21 @@ async function submitInventoryDetail(event) {
 }
 
 function collectEditableInventoryDetailRows() {
-  return [...els["inventory-detail-body"].querySelectorAll(":scope > tr[data-item-id]")].map((row) => ({
-    itemId: row.dataset.itemId,
-    afternoon: isInventoryShiftEnabled("afternoon") ? detailInputValue(row, "afternoon") : "",
-    morning: isInventoryShiftEnabled("morning") ? detailInputValue(row, "morning") : "",
-    dawn: isInventoryShiftEnabled("dawn") ? detailInputValue(row, "dawn") : ""
-  }));
+  return [...els["inventory-detail-body"].querySelectorAll(":scope > tr[data-item-id]")]
+    .filter((row) => !isCounterAlipackName(row.dataset.itemName || ""))
+    .map((row) => ({
+      itemId: row.dataset.itemId,
+      afternoon: isInventoryShiftEnabled("afternoon") ? detailInputValue(row, "afternoon") : "",
+      morning: isInventoryShiftEnabled("morning") ? detailInputValue(row, "morning") : "",
+      dawn: isInventoryShiftEnabled("dawn") ? detailInputValue(row, "dawn") : ""
+    }));
+}
+
+function collectInventoryAlipackCounters() {
+  return Object.fromEntries(selectedInventoryShifts().map((shift) => [
+    shift,
+    String(els[`inventory-counter-manual-${shift}`]?.value || "").trim()
+  ]));
 }
 
 function detailInputValue(row, field) {

@@ -62,7 +62,7 @@ test("comparte con ARCA el redondeo final después de aplicar la bonificación",
   assert.equal(result.subtotal_esperado, 0.01);
 });
 
-test("Factura B conserva el total IVA incluido esperado por pedido", () => {
+test("el subtotal esperado no agrega IVA al precio individual del pedido", () => {
   const result = expectedOrderSubtotal([{
     id_producto: 20,
     cantidad_cajas: 1,

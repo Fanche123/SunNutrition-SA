@@ -77,10 +77,25 @@ test("genera una página fiel con los datos calculados y sin valores del ejemplo
   assert.match(source, /\/Count 1/);
   assert.match(source, /\(00042\) Tj/);
   assert.match(source, /\(Cliente_Prueba_Ágil_SRL\) Tj/);
+  assert.match(source, /\(30-12345678-9\) Tj/);
   assert.match(source, /\(Producto_Prueba_1\) Tj/);
   assert.match(source, /\(\$25\.00\) Tj/);
   assert.doesNotMatch(source, /Galletitas_Individuales_SRL|Barra_Pop_140Ud|\$348,651\.00|0\.00%/);
   assert.equal(remitoXFileName(data), "Remito_X_Pedido_42_Cliente_Prueba_Agil_SRL.pdf");
+});
+
+test("deja el espacio de CUIT completamente vacío cuando falta o es inválido", () => {
+  for (const cuit of ["", "CUIT incompleto 30-1234"]) {
+    const source = fixture();
+    source.tables.clientes.rows[0].cuit = cuit;
+    const data = buildRemitoXData(source, 42, backendId);
+    const pdf = generateRemitoXPdf(template, data);
+    const overlaySource = pdf.subarray(template.length).toString("latin1");
+
+    assert.equal(data.cuit, "");
+    assert.doesNotMatch(overlaySource, /\(\) Tj/);
+    assert.doesNotMatch(overlaySource, /30-1234|Sin CUIT|N\/A/);
+  }
 });
 
 test("pagina todos los productos sin perder líneas y deja el total general en la última página", () => {
@@ -164,28 +179,56 @@ test("el endpoint completa el workflow sólo después de generar el PDF", async 
   }), tablesBefore);
 });
 
-test("un error de generación responde claro y no completa el workflow", async () => {
-  const source = fixture();
-  source.tables.clientes.rows[0].cuit = "incompleto";
-  const responses = [];
-  const service = createSalesWorkflowService({
-    backendId,
-    backendNextNumericId: nextId,
-    ensureBackendTable: (tables, name) => { tables[name] ||= { headers: [], rows: [], rowCount: 0 }; },
-    loadCache: () => source,
-    readJsonBody: async (request) => request.body,
-    saveBackendCache: () => assert.fail("No debe guardar ante un error de generación"),
-    sendJson: (_response, status, payload) => { responses.push({ status, payload }); return payload; },
-    fs,
-    path,
-    rootDir
-  });
+test("el endpoint genera el PDF y completa el workflow con CUIT ausente o inválido", async () => {
+  for (const cuit of ["", "incompleto"]) {
+    let source = fixture();
+    source.tables.clientes.rows[0].cuit = cuit;
+    const responses = [];
+    const response = {
+      status: 0,
+      headers: {},
+      body: null,
+      writeHead(status, headers) { this.status = status; this.headers = headers; },
+      end(body) { this.body = body; }
+    };
+    const service = createSalesWorkflowService({
+      backendId,
+      backendNextNumericId: nextId,
+      ensureBackendTable: (tables, name) => { tables[name] ||= { headers: [], rows: [], rowCount: 0 }; },
+      loadCache: () => source,
+      readJsonBody: async (request) => request.body,
+      saveBackendCache: (cache) => { source = cache; },
+      sendJson: (_response, status, payload) => { responses.push({ status, payload }); return payload; },
+      fs,
+      path,
+      rootDir
+    });
 
-  await service.handleRemitoX({ body: { orderId: 42 } }, {});
+    await service.handleRemitoX({ body: { orderId: 42 } }, response);
 
-  assert.equal(responses.at(-1).status, 422);
-  assert.match(responses.at(-1).payload.error, /CUIT válido de 11 dígitos/);
-  assert.equal(source.tables.gestion_ventas.rows.length, 0);
+    assert.equal(responses.length, 0);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers["Content-Type"], "application/pdf");
+    assert.equal(response.body.subarray(0, 5).toString("ascii"), "%PDF-");
+    assert.ok(source.tables.gestion_ventas.rows[0].factura_arca_confirmada_en);
+    assert.equal(source.tables.gestion_ventas.rows[0].origen, "remito_x_generado");
+  }
+});
+
+test("Factura A/B y ARCA conservan la exigencia de CUIT válido", () => {
+  const arcaServiceSource = fs.readFileSync(
+    path.join(rootDir, "backend", "services", "arca-invoicing.service.js"),
+    "utf8"
+  );
+  const fiscalContractSource = fs.readFileSync(
+    path.join(rootDir, "tools", "arca-extension", "arca-fiscal-contract.js"),
+    "utf8"
+  );
+
+  assert.match(arcaServiceSource, /digits\(client\.cuit\)\.length !== 11/);
+  assert.match(fiscalContractSource, /customer\?\.cuit[\s\S]{0,80}length !== 11/);
+  assert.match(fiscalContractSource, /Factura_A/);
+  assert.match(fiscalContractSource, /Factura_B/);
 });
 
 test("la UI bifurca Remito X antes de cargar ARCA y conserva el botón Crear factura", () => {

@@ -13,6 +13,8 @@ function initializeSalesInvoiceEntry() {
   document.getElementById("sales-invoice-file")?.addEventListener("change", handleSalesInvoiceFileChange);
   document.getElementById("sales-invoice-file-clear")?.addEventListener("click", clearSalesInvoiceFile);
   document.getElementById("sales-invoice-orders-body")?.addEventListener("change", selectSalesInvoiceOrder);
+  document.getElementById("sales-invoice-date")?.addEventListener("input", updateSalesInvoiceAgreedDate);
+  document.getElementById("sales-invoice-date")?.addEventListener("change", updateSalesInvoiceAgreedDate);
   ["sales-invoice-subtotal", "sales-invoice-total", "sales-invoice-type"].forEach((id) => {
     document.getElementById(id)?.addEventListener("input", updateSalesInvoiceComparison);
     document.getElementById(id)?.addEventListener("change", updateSalesInvoiceComparison);
@@ -77,6 +79,7 @@ function selectSalesInvoiceOrder(event) {
   selectedSalesInvoiceOrderId = String(event.target.value || "");
   updateSalesInvoiceComparison();
   setSalesInvoiceStatus("Pedido seleccionado. La factura se guardará sólo después de tu confirmación.", "success");
+  updateSalesInvoiceAgreedDate();
 }
 
 async function readSalesInvoiceAttachment() {
@@ -110,9 +113,7 @@ async function readSalesInvoiceAttachment() {
     const warnings = Array.isArray(payload.reviewWarnings) && payload.reviewWarnings.length
       ? ` ${payload.reviewWarnings.join(" ")}`
       : "";
-    const agreedDateWarning = proposal.needsManualAgreedDate
-      ? " El cliente no tiene un Plazo cobro válido; completá Fecha acordada manualmente si corresponde."
-      : "";
+    const agreedDateWarning = salesInvoiceAgreedDateWarning(proposal.agreedDateIssue);
     setSalesInvoiceStatus(
       `Lectura completada. Revisá y corregí todos los campos antes de guardar.${missing}${warnings}${agreedDateWarning}`,
       warnings || agreedDateWarning ? "pending" : "success"
@@ -220,14 +221,12 @@ function clearSalesInvoiceFile() {
   updateSalesInvoiceFileUi();
 }
 
-function applySalesInvoiceProposal(invoice) {
-  const selectedOrder = salesInvoiceOrders.find(
+function applySalesInvoiceProposal(invoice, order = null) {
+  const selectedOrder = order || salesInvoiceOrders.find(
     (order) => String(order.id_pedido) === selectedSalesInvoiceOrderId
   );
-  const isRemitoX = invoice.tipo_factura === "Remito_X";
-  const agreedDate = isRemitoX
-    ? salesInvoiceAgreedDate(invoice.fecha_factura, selectedOrder?.plazo_cobro)
-    : invoice.fecha_acordada || "";
+  const agreedDateState = salesInvoiceAgreedDateState(invoice.fecha_factura, selectedOrder);
+  const agreedDate = agreedDateState.value;
   const values = {
     "sales-invoice-type": invoice.tipo_factura,
     "sales-invoice-number": invoice.nro_factura,
@@ -239,14 +238,47 @@ function applySalesInvoiceProposal(invoice) {
   };
   Object.entries(values).forEach(([id, value]) => {
     const input = document.getElementById(id);
-    if (input && id === "sales-invoice-due-date" && isRemitoX) input.value = value || "";
+    if (input && id === "sales-invoice-due-date") input.value = value || "";
     else if (input && value !== null && value !== undefined && value !== "") input.value = value;
   });
   updateSalesInvoiceComparison();
   return {
     agreedDate,
-    needsManualAgreedDate: isRemitoX && Boolean(invoice.fecha_factura) && !agreedDate
+    agreedDateIssue: agreedDateState.issue,
+    needsManualAgreedDate: Boolean(agreedDateState.issue)
   };
+}
+
+function updateSalesInvoiceAgreedDate() {
+  const selectedOrder = salesInvoiceOrders.find(
+    (order) => String(order.id_pedido) === selectedSalesInvoiceOrderId
+  );
+  const invoiceDate = document.getElementById("sales-invoice-date")?.value || "";
+  const state = salesInvoiceAgreedDateState(invoiceDate, selectedOrder);
+  const dueDate = document.getElementById("sales-invoice-due-date");
+  if (dueDate) dueDate.value = state.value;
+  const warning = salesInvoiceAgreedDateWarning(state.issue);
+  if (warning) setSalesInvoiceStatus(warning.trim(), "pending");
+  return state;
+}
+
+function salesInvoiceAgreedDateState(invoiceDate, order) {
+  if (!String(invoiceDate || "").trim()) return { value: "", issue: "missing_invoice_date" };
+  if (!order || salesInvoiceCollectionTermDays(order.plazo_cobro) === null) {
+    return { value: "", issue: "invalid_collection_term" };
+  }
+  const value = salesInvoiceAgreedDate(invoiceDate, order.plazo_cobro);
+  return value ? { value, issue: "" } : { value: "", issue: "invalid_invoice_date" };
+}
+
+function salesInvoiceAgreedDateWarning(issue) {
+  if (issue === "missing_invoice_date" || issue === "invalid_invoice_date") {
+    return " Completá una Fecha de factura válida para calcular Fecha acordada.";
+  }
+  if (issue === "invalid_collection_term") {
+    return " El cliente no tiene un Plazo cobro válido; completá Fecha acordada manualmente si corresponde.";
+  }
+  return "";
 }
 
 function salesInvoiceAgreedDate(invoiceDate, collectionTermDays) {
@@ -283,11 +315,10 @@ function salesInvoiceCollectionTermDays(value) {
 function salesInvoiceComparison(
   order,
   invoiceSubtotal,
-  invoiceType,
+  _invoiceType,
   money = ErpMoney,
-  invoiceTotal = invoiceSubtotal
+  _invoiceTotal = invoiceSubtotal
 ) {
-  if (invoiceType === "Remito_X") return { state: "not_applicable", label: "No aplica" };
   const expected = order?.comparacion_factura;
   if (!order) return { state: "insufficient", label: "Datos insuficientes", missing: ["pedido"] };
   if (expected?.estado !== "calculable") {
@@ -302,19 +333,14 @@ function salesInvoiceComparison(
     return { state: "insufficient", label: "Datos insuficientes", missing: ["subtotal esperado"] };
   }
   const lines = expected.lineas || [];
-  const comparesGrossTotal = invoiceType === "Factura_B";
-  const invoiceCents = salesInvoiceCentsOrNull(
-    comparesGrossTotal ? invoiceTotal : invoiceSubtotal,
-    money
-  );
+  const invoiceCents = salesInvoiceCentsOrNull(invoiceSubtotal, money);
   if (invoiceCents === null) {
     return {
       state: "insufficient",
       label: "Datos insuficientes",
-      missing: [comparesGrossTotal ? "total de factura" : "subtotal de factura"],
+      missing: ["subtotal del comprobante"],
       expectedCents,
-      lines,
-      comparesGrossTotal
+      lines
     };
   }
   const differenceCents = invoiceCents - expectedCents;
@@ -325,8 +351,7 @@ function salesInvoiceComparison(
     invoiceCents,
     differenceCents,
     differencePercent: expectedCents === 0 ? null : (differenceCents * 100) / expectedCents,
-    lines,
-    comparesGrossTotal
+    lines
   };
 }
 
@@ -345,9 +370,8 @@ function updateSalesInvoiceComparison() {
   if (!panel) return;
   const order = salesInvoiceOrders.find((item) => String(item.id_pedido) === selectedSalesInvoiceOrderId);
   const subtotal = document.getElementById("sales-invoice-subtotal")?.value ?? "";
-  const total = document.getElementById("sales-invoice-total")?.value ?? "";
   const invoiceType = document.getElementById("sales-invoice-type")?.value || "";
-  const result = salesInvoiceComparison(order, subtotal, invoiceType, ErpMoney, total);
+  const result = salesInvoiceComparison(order, subtotal, invoiceType, ErpMoney);
   panel.dataset.state = result.state;
   setSalesInvoiceComparisonText("sales-invoice-comparison-state", result.label);
   setSalesInvoiceComparisonText("sales-invoice-comparison-expected",
@@ -356,7 +380,7 @@ function updateSalesInvoiceComparison() {
     result.invoiceCents === undefined ? "—" : ErpMoney.format(ErpMoney.fromCents(result.invoiceCents)));
   setSalesInvoiceComparisonText(
     "sales-invoice-comparison-invoice-label",
-    result.comparesGrossTotal ? "Total de factura" : "Subtotal de factura"
+    "Subtotal del comprobante"
   );
   setSalesInvoiceComparisonText("sales-invoice-comparison-difference",
     result.differenceCents === undefined ? "—" : signedSalesInvoiceMoney(result.differenceCents));
@@ -369,14 +393,12 @@ function updateSalesInvoiceComparison() {
     explanation.textContent = result.missing?.length
       ? `Falta: ${result.missing.join(", ")}.`
       : result.differenceCents > 0
-        ? "La factura es mayor que el pedido."
+        ? "El comprobante es mayor que el pedido."
         : result.differenceCents < 0
-          ? "La factura es menor que el pedido."
+          ? "El comprobante es menor que el pedido."
           : result.state === "match"
-            ? result.comparesGrossTotal
-              ? "Los totales con IVA incluido coinciden al centavo."
-              : "Los subtotales netos coinciden al centavo."
-            : "El remito no tiene subtotal fiscal comparable.";
+            ? "Los subtotales coinciden al centavo."
+            : "No se pudo comparar el comprobante con el pedido.";
   }
   renderSalesInvoiceComparisonLines(result.lines || []);
 }
@@ -501,6 +523,7 @@ function selectSalesInvoiceWorkflowOrder(order) {
     updateSalesInvoiceComparison();
   }
   setSalesInvoiceStatus(`Pedido #${normalized.id_pedido} seleccionado. Adjuntá la factura y revisá los datos antes de guardar.`, "success");
+  if (!sale) updateSalesInvoiceAgreedDate();
 }
 
 if (typeof window !== "undefined") window.selectSalesInvoiceWorkflowOrder = selectSalesInvoiceWorkflowOrder;
@@ -536,6 +559,8 @@ if (typeof module !== "undefined" && module.exports) {
     salesInvoiceFileUiState,
     salesInvoiceReadErrorMessage,
     salesInvoiceAgreedDate,
+    salesInvoiceAgreedDateState,
+    salesInvoiceAgreedDateWarning,
     salesInvoiceCollectionTermDays
   };
 }

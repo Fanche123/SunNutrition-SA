@@ -89,20 +89,82 @@ test("Ventas completa subtotal neto, IVA incluido y total de la propuesta normal
   }
 });
 
-test("Remito X interpreta el Plazo cobro canónico y suma días locales al cambiar de mes", () => {
+test("Ventas interpreta el Plazo cobro canónico y suma días civiles para cualquier comprobante", () => {
   const {
     salesInvoiceAgreedDate,
+    salesInvoiceAgreedDateState,
     salesInvoiceCollectionTermDays
   } = require("../assets/js/modules/sales-invoice-entry.js");
 
+  assert.equal(salesInvoiceCollectionTermDays("0_Dias"), 0);
   assert.equal(salesInvoiceCollectionTermDays("30_Dias"), 30);
+  assert.equal(salesInvoiceCollectionTermDays("45_Dias"), 45);
   assert.equal(salesInvoiceCollectionTermDays(" 30 días "), 30);
   assert.equal(salesInvoiceCollectionTermDays(30), 30);
+  assert.equal(salesInvoiceAgreedDate("2026-07-21", "0_Dias"), "2026-07-21");
+  assert.equal(salesInvoiceAgreedDate("2026-07-21", "30_Dias"), "2026-08-20");
+  assert.equal(salesInvoiceAgreedDate("2026-07-22", "30_Dias"), "2026-08-21");
+  assert.equal(salesInvoiceAgreedDate("2026-11-30", "45_Dias"), "2027-01-14");
   assert.equal(salesInvoiceAgreedDate("2026-08-30", "30_Dias"), "2026-09-29");
   assert.equal(salesInvoiceAgreedDate("2026-08-30", "0"), "2026-08-30");
   assert.equal(salesInvoiceAgreedDate("2026-02-29", 10), "");
   assert.equal(salesInvoiceAgreedDate("2026-08-30", "sin plazo"), "");
   assert.equal(salesInvoiceCollectionTermDays("30 días hábiles"), null);
+  assert.deepEqual(salesInvoiceAgreedDateState("2026-07-21", { plazo_cobro: "30_Dias" }), {
+    value: "2026-08-20",
+    issue: ""
+  });
+  assert.deepEqual(salesInvoiceAgreedDateState("2026-07-21", { plazo_cobro: "45_Dias" }), {
+    value: "2026-09-04",
+    issue: ""
+  });
+  assert.equal(salesInvoiceAgreedDateState("", { plazo_cobro: "30_Dias" }).issue, "missing_invoice_date");
+  assert.equal(salesInvoiceAgreedDateState("2026-07-21", { plazo_cobro: "ambiguo" }).issue, "invalid_collection_term");
+});
+
+test("Fecha acordada se recalcula al leer, editar fecha o cambiar de pedido sin fórmula exclusiva de Remito X", () => {
+  const source = fs.readFileSync(path.join(root, "assets/js/modules/sales-invoice-entry.js"), "utf8");
+
+  assert.match(source, /sales-invoice-date"\)\?\.addEventListener\("input", updateSalesInvoiceAgreedDate\)/);
+  assert.match(source, /sales-invoice-date"\)\?\.addEventListener\("change", updateSalesInvoiceAgreedDate\)/);
+  assert.match(source, /const agreedDateState = salesInvoiceAgreedDateState\(invoice\.fecha_factura, selectedOrder\)/);
+  assert.match(source, /if \(!sale\) updateSalesInvoiceAgreedDate\(\)/);
+  assert.doesNotMatch(source, /const isRemitoX = invoice\.tipo_factura === "Remito_X"/);
+});
+
+test("el popup propone Fecha acordada para Factura A, Factura B y Remito X sin bloquear su edición", () => {
+  const values = {};
+  const dueDateInput = {
+    disabled: false,
+    get value() { return values["sales-invoice-due-date"] || ""; },
+    set value(nextValue) { values["sales-invoice-due-date"] = nextValue; }
+  };
+  const previousDocument = global.document;
+  global.document = {
+    getElementById(id) {
+      if (id === "sales-invoice-comparison") return null;
+      if (id === "sales-invoice-due-date") return dueDateInput;
+      return {
+        get value() { return values[id] || ""; },
+        set value(nextValue) { values[id] = nextValue; }
+      };
+    }
+  };
+
+  try {
+    const { applySalesInvoiceProposal } = require("../assets/js/modules/sales-invoice-entry.js");
+    const order = { id_pedido: "1009", plazo_cobro: "30_Dias" };
+    for (const tipo_factura of ["Factura_A", "Factura_B", "Remito_X"]) {
+      const proposal = applySalesInvoiceProposal({ tipo_factura, fecha_factura: "2026-07-21" }, order);
+      assert.equal(proposal.agreedDate, "2026-08-20");
+      assert.equal(dueDateInput.value, "2026-08-20");
+    }
+    assert.equal(dueDateInput.disabled, false);
+    dueDateInput.value = "2026-08-25";
+    assert.equal(dueDateInput.value, "2026-08-25");
+  } finally {
+    global.document = previousDocument;
+  }
 });
 
 test("el estado del archivo habilita lectura, expone el nombre y vuelve a vacío al quitarlo", () => {
@@ -187,7 +249,7 @@ test("Ventas usa su ruta de lectura y diferencia errores reales sin guardar", ()
   );
 });
 
-test("compara al centavo y conserva el signo factura mayor o menor", () => {
+test("Factura A compara el subtotal al centavo y conserva el signo", () => {
   const { salesInvoiceComparison } = require("../assets/js/modules/sales-invoice-entry.js");
   const money = { toCents: (value) => Math.round(Number(value) * 100) };
   const order = {
@@ -199,32 +261,50 @@ test("compara al centavo y conserva el signo factura mayor o menor", () => {
   };
 
   assert.equal(salesInvoiceComparison(order, "100.00", "Factura_A", money).state, "match");
-  assert.equal(salesInvoiceComparison(order, "101.25", "Factura_B", money).differenceCents, 125);
   assert.equal(salesInvoiceComparison(order, "99.50", "Factura_A", money).differenceCents, -50);
 });
 
-test("Factura B compara total IVA incluido contra total IVA incluido", () => {
+test("Factura B #451 compara el subtotal neto y nunca usa el total bruto", () => {
   const { salesInvoiceComparison } = require("../assets/js/modules/sales-invoice-entry.js");
   const money = { toCents: (value) => Math.round(Number(value) * 100) };
   const order = {
     comparacion_factura: {
       estado: "calculable",
-      subtotal_esperado: 2178,
+      subtotal_esperado: 529200,
       lineas: []
     }
   };
 
-  const result = salesInvoiceComparison(order, "1800.00", "Factura_B", money, "2178.00");
+  const result = salesInvoiceComparison(order, "529200.00", "Factura_B", money, "640332.00");
   assert.equal(result.state, "match");
   assert.equal(result.differenceCents, 0);
-  assert.equal(result.comparesGrossTotal, true);
+  assert.equal(result.differencePercent, 0);
+  assert.equal(result.invoiceCents, 52920000);
 });
 
-test("Remito X no aplica y los faltantes quedan explícitos", () => {
+test("Remito X compara el subtotal visible con la misma regla", () => {
+  const { salesInvoiceComparison } = require("../assets/js/modules/sales-invoice-entry.js");
+  const source = fs.readFileSync(path.join(root, "assets/js/modules/sales-invoice-entry.js"), "utf8");
+  const money = { toCents: (value) => Math.round(Number(value) * 100) };
+  const order = {
+    comparacion_factura: {
+      estado: "calculable",
+      subtotal_esperado: 2469852,
+      lineas: []
+    }
+  };
+
+  const result = salesInvoiceComparison(order, "2469852.00", "Remito_X", money, "2469852.00");
+  assert.equal(result.state, "match");
+  assert.equal(result.differenceCents, 0);
+  assert.equal(result.differencePercent, 0);
+  assert.doesNotMatch(source, /not_applicable|El remito no tiene subtotal fiscal comparable/);
+});
+
+test("los faltantes del pedido quedan explícitos para cualquier comprobante", () => {
   const { salesInvoiceComparison } = require("../assets/js/modules/sales-invoice-entry.js");
   const money = { toCents: (value) => Math.round(Number(value) * 100) };
 
-  assert.equal(salesInvoiceComparison(null, "", "Remito_X", money).state, "not_applicable");
   assert.deepEqual(
     salesInvoiceComparison({
       comparacion_factura: {
@@ -234,6 +314,30 @@ test("Remito X no aplica y los faltantes quedan explícitos", () => {
     }, "", "Factura_A", money).missing,
     ["unidades por caja"]
   );
+});
+
+test("subtotal vacío o inválido queda insuficiente sin fallback al total", () => {
+  const { salesInvoiceComparison } = require("../assets/js/modules/sales-invoice-entry.js");
+  const money = {
+    toCents: (value) => {
+      if (!/^\d+(?:\.\d+)?$/.test(String(value))) throw new Error("invalid");
+      return Math.round(Number(value) * 100);
+    }
+  };
+  const order = {
+    comparacion_factura: {
+      estado: "calculable",
+      subtotal_esperado: 100,
+      lineas: []
+    }
+  };
+
+  for (const subtotal of ["", "importe inválido"]) {
+    const result = salesInvoiceComparison(order, subtotal, "Factura_B", money, "121.00");
+    assert.equal(result.state, "insufficient");
+    assert.deepEqual(result.missing, ["subtotal del comprobante"]);
+    assert.equal(result.invoiceCents, undefined);
+  }
 });
 
 test("conserva esperado y desglose cuando falta subtotal de factura", () => {

@@ -67,7 +67,15 @@ const ADMIN_TABLE_POLICY = {
   comisiones: editable(),
   sueldos: editable(),
   inventarios: editable(),
-  detalle_inventarios: editable()
+  detalle_inventarios: editable(),
+  contadores_alipack: policy(
+    true,
+    false,
+    false,
+    false,
+    "operational-readonly",
+    "Los contadores Alipack se registran unicamente con la carga integral de Inventario."
+  )
 };
 
 function editable(required = [], validation = {}) {

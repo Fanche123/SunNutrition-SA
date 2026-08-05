@@ -22,6 +22,7 @@ function createAccessControl({
   setCorsHeaders,
   authenticateRequest,
   beginAuditRequest = async () => {},
+  operationalCutover = null,
   authorizeIdentity = allowLocalIdentity
 }) {
   return async function applyRequestAccess(request, response) {
@@ -76,6 +77,18 @@ function createAccessControl({
         ok: false,
         code: "MUTATION_ORIGIN_REQUIRED",
         error: "No se pudo verificar el origen de la operación."
+      });
+      return false;
+    }
+
+    const operationalBlock = operationalCutover?.mutationBlock(request.method, pathname);
+    if (operationalBlock) {
+      response.setHeader("Cache-Control", "no-store");
+      sendJson(response, operationalBlock.status, {
+        ok: false,
+        code: operationalBlock.code,
+        error: operationalBlock.error,
+        operational: operationalBlock.operational
       });
       return false;
     }

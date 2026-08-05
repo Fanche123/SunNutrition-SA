@@ -66,7 +66,6 @@ function buildRemitoXData(cache, orderId, backendId) {
   const deliveryDate = validIsoDate(order.fecha_entrega) ? order.fecha_entrega : "";
   if (!deliveryDate) missing.push("fecha de entrega prevista del pedido");
   const cuit = formatCuit(client.cuit || client.CUIT);
-  if (!cuit) missing.push("CUIT válido de 11 dígitos del cliente");
   if (!details.length) missing.push("detalle del pedido");
   details.forEach((detail, index) => {
     if (!detail.id_producto) missing.push(`código del producto en la línea ${index + 1}`);
@@ -160,7 +159,7 @@ function overlayForPage(data, lines, pageIndex, pageCount) {
   drawLeft(commands, data.clientName, 78.2, 637.5, 10, true, 287);
   drawLeft(commands, data.address, 78.2, 616.4, 10, false, 287);
   drawLeft(commands, data.locality, 476.7, 616.4, 10, false, 112);
-  drawCentered(commands, data.cuit, 368.2, 544.0, 222.8, 55, 9, false);
+  if (data.cuit) drawCentered(commands, data.cuit, 368.2, 544.0, 222.8, 55, 9, false);
 
   lines.forEach((line, index) => {
     const baseline = 480.7 - (index * 21.76);

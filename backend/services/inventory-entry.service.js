@@ -3,6 +3,7 @@ const { individualUnits } = require("../../shared/order-pricing");
 
 const INVENTORY_ENTRY_OPERATIONS_KEY = "_inventoryFullEntryOperations";
 const MAX_INVENTORY_ENTRY_OPERATIONS = 500;
+const INVENTORY_ALIPACK_COUNTERS_TABLE = "contadores_alipack";
 
 function createInventoryEntryService(dependencies) {
   const {
@@ -72,16 +73,27 @@ function createInventoryEntryService(dependencies) {
       const employee = String(body.employee || "").trim();
       const employeeId = resolveInventoryEmployeeId(body.employeeId || employee);
       const selectedShifts = normalizeSelectedInventoryShifts(body.selectedShifts);
-      const cleanRows = normalizeInventoryDetailRows(Array.isArray(body.rows) ? body.rows : []);
+      const itemNames = inventoryItemNameMap();
+      const cleanRows = normalizeInventoryDetailRows(Array.isArray(body.rows) ? body.rows : [])
+        .filter((row) => !isAlipackCounterName(itemNames.get(backendId(row.itemId))));
       if (!isIsoDate(date)) return sendJson(response, 400, { error: "Falta una fecha valida para el inventario." });
       if (!employee) return sendJson(response, 400, { error: "Falta el empleado responsable." });
       if (!selectedShifts.length) return sendJson(response, 400, { error: "Falta indicar al menos un turno realizado." });
       if (!cleanRows.length) return sendJson(response, 400, { error: "No hay items para cargar." });
+      const normalizedCounters = normalizeInventoryAlipackCounters(body.counters, selectedShifts);
+      if (normalizedCounters.error) {
+        return sendJson(response, 400, {
+          ok: false,
+          code: "INVALID_ALIPACK_COUNTER",
+          error: normalizedCounters.error
+        });
+      }
+      const counters = normalizedCounters.values;
 
       // La transaccion trabaja sobre una copia. Valuacion, snapshot y metadatos deben
       // completarse antes del unico reemplazo atomico del cache persistido.
       const cache = cloneInventoryTransactionCache(loadCache());
-      const operationKey = inventoryFullEntryOperationKey({ date, employeeId, selectedShifts, cleanRows });
+      const operationKey = inventoryFullEntryOperationKey({ date, employeeId, selectedShifts, cleanRows, counters });
       const previousOperation = inventoryFullEntryOperation(cache, operationKey);
       if (previousOperation) {
         return sendJson(response, 200, {
@@ -95,15 +107,30 @@ function createInventoryEntryService(dependencies) {
       ensureBackendTable(cache.tables, "detalle_inventarios");
       const inventories = cache.tables.inventarios;
       const details = cache.tables.detalle_inventarios;
+      const alipackCounters = cache.tables[INVENTORY_ALIPACK_COUNTERS_TABLE];
+      if (!alipackCounters || !Array.isArray(alipackCounters.rows)) {
+        throw inventoryAlipackMigrationRequiredError();
+      }
+      assertInventoryAlipackCounterIntegrity(cache);
       let nextInventoryId = backendNextNumericId(inventories.rows, "id_inventario");
       let nextDetailId = backendNextNumericId(details.rows, "id_detalle_inventario");
+      let nextCounterId = backendNextNumericId(alipackCounters.rows, "id_contador_alipack");
       const inventoryIds = {};
       let rowsWritten = 0;
+      let countersWritten = 0;
 
       orderedShifts(selectedShifts).forEach((shift) => {
         const inventoryId = nextInventoryId++;
         inventoryIds[shift] = inventoryId;
         inventories.rows.push({ id_inventario: inventoryId, fecha: date, turno: shiftLabel(shift), id_empleado: employeeId, valor_total: "" });
+        if (counters[shift] !== "") {
+          alipackCounters.rows.push({
+            id_contador_alipack: nextCounterId++,
+            id_inventario: inventoryId,
+            valor_contador: counters[shift]
+          });
+          countersWritten += 1;
+        }
         cleanRows.forEach((row) => {
           if (row[shift] === "") return;
           details.rows.push({
@@ -130,12 +157,15 @@ function createInventoryEntryService(dependencies) {
       }));
       finalizeTable(inventories);
       finalizeTable(details);
+      finalizeTable(alipackCounters);
+      assertInventoryAlipackCounterIntegrity(cache);
       const result = {
         date,
         employee,
         inventoryIds,
         rowsWritten,
-        backendTables: ["inventarios", "detalle_inventarios"]
+        countersWritten,
+        backendTables: ["inventarios", "detalle_inventarios", INVENTORY_ALIPACK_COUNTERS_TABLE]
       };
       storeInventoryFullEntryOperation(cache, operationKey, result);
       saveBackendCache(cache);
@@ -144,11 +174,14 @@ function createInventoryEntryService(dependencies) {
       const requestId = String(request?.auditRequestId || "untracked").trim();
       logError(`[INVENTORY_FULL_ENTRY_FAILED] requestId=${requestId}\n${error?.stack || error}`);
       const valuationRejected = ["INVENTORY_COST_UNAVAILABLE", "INVENTORY_NEGATIVE_QUANTITY"].includes(error?.code);
-      return sendJson(response, valuationRejected ? 422 : 500, {
+      const migrationRequired = error?.code === "INVENTORY_ALIPACK_MIGRATION_REQUIRED";
+      return sendJson(response, migrationRequired ? 503 : valuationRejected ? 422 : 500, {
         ok: false,
-        code: valuationRejected ? error.code : "INVENTORY_FULL_ENTRY_FAILED",
+        code: migrationRequired ? error.code : valuationRejected ? error.code : "INVENTORY_FULL_ENTRY_FAILED",
         requestId,
-        error: valuationRejected
+        error: migrationRequired
+          ? error.message
+          : valuationRejected
           ? `${error.message} No se realizo ningun cambio; revisa costos, unidades y cantidades antes de reintentar.`
           : "No se pudo guardar el inventario. No se realizo ningun cambio y las cantidades del formulario se conservaron."
       });
@@ -173,13 +206,15 @@ function createInventoryEntryService(dependencies) {
       valuesByItem.get(itemId)[shift] = detail.cantidad ?? "";
     });
     const itemNames = inventoryItemNameMap();
-    const rows = [...valuesByItem.entries()].map(([itemId, values]) => ({
-      itemId,
-      itemName: itemNames.get(itemId) || defaultInventoryItemName(itemId),
-      previousAfternoon: values.afternoon ?? "",
-      previousMorning: values.morning ?? "",
-      previousDawn: values.dawn ?? ""
-    }));
+    const rows = [...valuesByItem.entries()]
+      .map(([itemId, values]) => ({
+        itemId,
+        itemName: itemNames.get(itemId) || defaultInventoryItemName(itemId),
+        previousAfternoon: values.afternoon ?? "",
+        previousMorning: values.morning ?? "",
+        previousDawn: values.dawn ?? ""
+      }))
+      .filter((row) => !isAlipackCounterName(row.itemName));
     const lastInventoryId = Math.max(...latestInventories.map((row) => Number(row.id_inventario)).filter(Number.isFinite));
     return sendJson(response, 200, {
       lastInventoryId,
@@ -341,7 +376,7 @@ function assertCompleteInventoryValuation(result) {
   throw error;
 }
 
-function inventoryFullEntryOperationKey({ date, employeeId, selectedShifts, cleanRows }) {
+function inventoryFullEntryOperationKey({ date, employeeId, selectedShifts, cleanRows, counters = {} }) {
   const canonicalRows = cleanRows
     .map((row) => ({
       itemId: String(row.itemId || "").trim(),
@@ -350,13 +385,93 @@ function inventoryFullEntryOperationKey({ date, employeeId, selectedShifts, clea
       afternoon: String(row.afternoon ?? "").trim()
     }))
     .sort((left, right) => left.itemId.localeCompare(right.itemId, "en", { numeric: true }));
-  const canonical = JSON.stringify({
+  const canonicalPayload = {
     date,
     employeeId: String(employeeId || "").trim(),
     selectedShifts: orderedInventoryShifts(selectedShifts),
     rows: canonicalRows
-  });
+  };
+  const canonicalCounters = Object.fromEntries(orderedInventoryShifts(selectedShifts).map((shift) => [shift, counters[shift] ?? ""]));
+  if (Object.values(canonicalCounters).some((value) => value !== "")) canonicalPayload.counters = canonicalCounters;
+  const canonical = JSON.stringify(canonicalPayload);
   return crypto.createHash("sha256").update(canonical).digest("hex");
+}
+
+function normalizeInventoryAlipackCounters(input, selectedShifts) {
+  if (input !== undefined && input !== null && (typeof input !== "object" || Array.isArray(input))) {
+    return { values: {}, error: "Los contadores Alipack deben enviarse por turno." };
+  }
+  const source = input || {};
+  const values = {};
+  for (const shift of orderedInventoryShifts(selectedShifts)) {
+    const raw = source[shift];
+    if (raw === undefined || raw === null || String(raw).trim() === "") {
+      values[shift] = "";
+      continue;
+    }
+    if (!["string", "number"].includes(typeof raw)) {
+      return { values: {}, error: `El Contador Alipack de ${shiftLabelForError(shift)} debe ser un numero finito y no negativo.` };
+    }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 0) {
+      return { values: {}, error: `El Contador Alipack de ${shiftLabelForError(shift)} debe ser un numero finito y no negativo.` };
+    }
+    values[shift] = value;
+  }
+  return { values, error: "" };
+}
+
+function assertInventoryAlipackCounterIntegrity(cache) {
+  const inventoryIds = new Set((cache.tables?.inventarios?.rows || []).map((row) => String(row.id_inventario ?? "").trim()));
+  const counterIds = new Set();
+  const linkedInventoryIds = new Set();
+  for (const row of cache.tables?.[INVENTORY_ALIPACK_COUNTERS_TABLE]?.rows || []) {
+    const counterId = String(row.id_contador_alipack ?? "").trim();
+    const inventoryId = String(row.id_inventario ?? "").trim();
+    const value = Number(row.valor_contador);
+    if (!counterId || counterIds.has(counterId)) {
+      throw inventoryCounterIntegrityError("El registro de contadores Alipack contiene una clave primaria vacia o duplicada.");
+    }
+    if (!inventoryId || linkedInventoryIds.has(inventoryId)) {
+      throw inventoryCounterIntegrityError("Cada inventario puede tener como maximo un Contador Alipack.");
+    }
+    if (!inventoryIds.has(inventoryId)) {
+      throw inventoryCounterIntegrityError(`El Contador Alipack referencia un inventario inexistente (${inventoryId || "sin id"}).`);
+    }
+    if (!Number.isFinite(value) || value < 0 || String(row.valor_contador ?? "").trim() === "") {
+      throw inventoryCounterIntegrityError(`El Contador Alipack del inventario ${inventoryId} no es valido.`);
+    }
+    counterIds.add(counterId);
+    linkedInventoryIds.add(inventoryId);
+  }
+  return true;
+}
+
+function inventoryCounterIntegrityError(message) {
+  const error = new Error(message);
+  error.code = "INVENTORY_ALIPACK_COUNTER_INTEGRITY";
+  return error;
+}
+
+function inventoryAlipackMigrationRequiredError() {
+  const error = new Error(
+    "Falta aplicar la migracion de Contadores Alipack. No se realizo ningun cambio; aplica la migracion autorizada y reintenta."
+  );
+  error.code = "INVENTORY_ALIPACK_MIGRATION_REQUIRED";
+  return error;
+}
+
+function shiftLabelForError(shift) {
+  return { dawn: "Madrugada", morning: "Manana", afternoon: "Tarde" }[shift] || shift;
+}
+
+function isAlipackCounterName(value) {
+  const normalized = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+  return normalized.includes("contador") && normalized.includes("alipack");
 }
 
 function orderedInventoryShifts(shifts) {
@@ -496,9 +611,12 @@ function inventoryReceptionEntries(cache) {
 }
 
 module.exports = {
+  INVENTORY_ALIPACK_COUNTERS_TABLE,
   assertCompleteInventoryValuation,
+  assertInventoryAlipackCounterIntegrity,
   createInventoryEntryService,
   deliveredIndividualUnits,
   inventoryDeliveryExits,
-  inventoryReceptionEntries
+  inventoryReceptionEntries,
+  normalizeInventoryAlipackCounters
 };

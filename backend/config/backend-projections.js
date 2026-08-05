@@ -516,6 +516,14 @@ const BACKEND_TABLE_PROJECTIONS = {
       costo_unitario_usado: ["costo_unitario_usado"],
       valor_total: ["valor_total"]
     }
+  },
+  contadores_alipack: {
+    columns: EXPECTED_BACKEND_COLUMNS.contadores_alipack,
+    aliases: {
+      id_contador_alipack: ["id_contador_alipack"],
+      id_inventario: ["id_inventario"],
+      valor_contador: ["valor_contador", "contador_alipack"]
+    }
   }
 };
 

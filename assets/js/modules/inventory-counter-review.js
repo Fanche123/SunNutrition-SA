@@ -86,19 +86,6 @@ function currentCounterFromDetailRow(shift) {
   return counterRow ? currentDetailStockForShift(counterRow, shift) : NaN;
 }
 
-function syncManualCounterCorrection(inputId) {
-  const shift = {
-    "inventory-counter-manual-morning": "morning",
-    "inventory-counter-manual-afternoon": "afternoon",
-    "inventory-counter-manual-dawn": "dawn"
-  }[inputId];
-  const counterRow = findInventoryDetailRowByName("Contador alipack");
-  const input = shift && counterRow ? counterRow.querySelector(`[data-detail-field="${shift}"]`) : null;
-  const manualValue = els[inputId]?.value || "";
-  if (!input || !String(manualValue).trim()) return;
-  input.value = manualValue;
-}
-
 function renderCounterTheoreticalComparison(shift) {
   const theoreticalCell = els[`inventory-counter-theoretical-${shift}`];
   const diffCell = els[`inventory-counter-diff-${shift}`];

@@ -15,7 +15,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - La creación canónica de entregas usa `POST /api/sales/deliveries/full-entry`; persiste encabezado/detalles y completa el vínculo económico de ventas previamente facturadas en el mismo snapshot.
 - No existen endpoints de fuentes, refresh ni imports externos.
 - `inventoryPurchaseConfig.barsPerDay` es el único parámetro persistente de producción diaria. Vive como metadato superior del cache, no en una tabla, y se guarda atómicamente con el snapshot recalculado mediante `POST /api/inventory/purchase-snapshot/production-rate`.
-- Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `compras` y `detalle_compras`.
+- Inventario y compras escriben directamente `inventarios`, `detalle_inventarios`, `contadores_alipack`, `compras` y `detalle_compras`. El contador se vincula uno a uno con la cabecera de su turno y queda fuera de items, detalles y valuación.
 - La carga integral de Inventario reemplaza en el mismo guardado `inventoryPurchaseSnapshot`, metadato superior sin tabla ni columna nueva. `GET /api/inventory/purchase-snapshot` conserva ese resultado si está vigente o lo reconstruye en memoria desde el último lote de `inventarios`/`detalle_inventarios` si falta o está obsoleto; Inventario, Dashboard y Compras leen el mismo contrato.
 - `movimientos_bancarios` conserva importados, asociaciones y pendientes bancarios. `GET /api/bank-reconciliation/state` reanaliza las filas sin asociación y `GET /api/bank-reconciliation/summary` entrega la última fecha efectiva al Dashboard.
 - `cash-boxes.service.js` calcula Caja ICBC desde cobros/pagos ICBC por encabezado, depósitos efectivos de cheques recibidos y cheques emitidos debitados. El fondo vincula depósito/rescate con su pago mediante `fondos_inversion_movimientos.id_pago`; el rendimiento permanece exclusivamente económico.
@@ -77,6 +77,7 @@ Las tablas persistidas por `backend/data-store.js` son la unica fuente de verdad
 - `inventory-photo-mapping.service.js`: normalizacion y mapeo puro de transcripciones.
 - `inventory-valuation.service.js`: valuacion de inventarios y mapa de costos por item.
 - `backend/migrations/20260804-inventory-values.js`: reparación manual y auditable de la valuación persistida; reutiliza el motor canónico por fecha/turno, corrige detalles antes de derivar cada cabecera, omite inventarios ambiguos completos, preserva todos los datos no derivados y exige backup/segundo dry-run.
+- `backend/migrations/20260804-inventory-alipack-counters.js`: migración aditiva y explícita que crea vacía la tabla de contadores, no infiere historia y permite rollback localizado mientras no haya filas operativas, sin restaurar ni descartar cambios posteriores de otras tablas.
 - La valuación distingue unidad de conteo y unidad de receta. Los costos persistidos de inventario siempre corresponden a `items.ud_conteo`; los factores compuestos —actualmente Barra_Pop, 2.000 unidades por bolsón— se aplican una sola vez en esa frontera y las recetas operan con costo por unidad consumida. La receta canónica de Barra_Pop consume `0,0165 Kg` de Granel Dulce por unidad individual.
 - `income-calculation.service.js`: fechas, numeros y calculos reutilizados por inventario y resultados.
 - `income-statement.service.js`: composicion del Estado de Resultados backend.
