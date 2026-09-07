@@ -9,6 +9,76 @@ function createBankReconciliationService(dependencies) {
   const creditorDisplayName = backendCreditorDisplayName || ((creditor) => cleanBackendText(creditor?.acuerdo_de_pago));
   const tagNameForId = backendTagNameForId || ((id, names) => names.get(backendId(id)) || "");
 
+  function updatePendingBankMovementFromEditor(cache, bank, editRow = {}) {
+    cache.tables = cache.tables || {};
+    ensureBackendTable(cache.tables, "movimientos_bancarios");
+    const rows = cache.tables.movimientos_bancarios.rows || [];
+    const movementId = backendId(editRow.canonicalMovementId);
+    const movementKey = cleanBackendText(editRow.movementKey);
+    if (!movementId || !movementKey) {
+      const error = new Error("No se pudo identificar el movimiento bancario a editar.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const row = rows.find((candidate) => backendId(candidate.id_movimiento_bancario) === movementId);
+    if (!row || backendNormalizeText(row.banco) !== backendNormalizeText(bank)) {
+      throwConflict("El movimiento bancario ya no existe en el banco seleccionado.");
+    }
+    if (backendId(row.id_pago) || backendId(row.id_cobro) || backendId(row.id_movimiento_fondo)) {
+      throwConflict("El movimiento bancario ya fue conciliado y no puede editarse desde esta pantalla.");
+    }
+
+    const storedMovementKey = cleanBackendText(row._bankMovementKey);
+    if (storedMovementKey && storedMovementKey !== movementKey) {
+      throwConflict("El movimiento bancario cambió desde que abriste la edición. Actualizá la conciliación e intentá nuevamente.");
+    }
+    if (!storedMovementKey) {
+      const sourceFingerprint = bankMovementFingerprint(row, row.banco || bank);
+      const legacyKeyMatch = movementKey.match(/^([a-f0-9]{40}):([1-9]\d*)$/i);
+      if (!legacyKeyMatch || legacyKeyMatch[1].toLowerCase() !== sourceFingerprint) {
+        throwConflict("No se pudo conservar la identidad original del movimiento bancario.");
+      }
+      row._bankMovementKey = movementKey;
+    }
+
+    const date = normalizedBankDate(editRow.date);
+    if (!date) {
+      const error = new Error("Ingresá una fecha bancaria válida.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const cuit = cleanBackendText(editRow.cuit).replace(/\D/g, "");
+    if (cuit && cuit.length !== 11) {
+      const error = new Error("El CUIT debe tener 11 dígitos o quedar vacío.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const debit = normalizeMoney(Math.abs(backendNumber(editRow.debit)));
+    const credit = normalizeMoney(Math.abs(backendNumber(editRow.credit)));
+    if (toCents(debit) !== 0 && toCents(credit) !== 0) {
+      const error = new Error("Un movimiento no puede tener débito y crédito al mismo tiempo.");
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const timestamp = new Date().toISOString();
+    row.fecha = date;
+    row.detalle = cleanBackendText(editRow.detail);
+    row.cuit = cuit;
+    row.nro_cheque = cleanBackendText(editRow.checkNumber);
+    row.debito = debit;
+    row.credito = credit;
+    row.importe = normalizeMoney(credit - debit);
+    row.saldo = normalizeMoney(backendNumber(editRow.balance));
+    row._editedLocallyAt = timestamp;
+    cache.tables.movimientos_bancarios.rowCount = rows.length;
+    cache.generatedAt = timestamp;
+    return row;
+  }
+
   async function handleBankReconciliationAnalyze(request, response) {
     try {
       const body = await readJsonBody(request);
@@ -53,6 +123,20 @@ function createBankReconciliationService(dependencies) {
     try {
       const body = await readJsonBody(request);
       const sourceCache = JSON.parse(JSON.stringify(loadCache()));
+      if (body.applyMode === "editMovement") {
+        const bank = cleanBackendText(body.bank) || "ICBC";
+        const editedRow = updatePendingBankMovementFromEditor(sourceCache, bank, body.editRow || {});
+        failureInjector("before-bank-movement-edit-save");
+        saveBackendCache(sourceCache);
+        sendJson(response, 200, {
+          ok: true,
+          result: {
+            movementUpdated: 1,
+            canonicalMovementId: backendId(editedRow.id_movimiento_bancario)
+          }
+        });
+        return;
+      }
       const report = buildBankReconciliationReport(body, sourceCache);
       const result = applyBankReconciliationReport(report);
       sendJson(response, 200, { ok: true, result });

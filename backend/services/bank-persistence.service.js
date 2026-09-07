@@ -39,6 +39,14 @@ function createBankPersistenceService(dependencies) {
     ].join("|");
     return crypto.createHash("sha1").update(normalized).digest("hex");
   }
+
+  function bankMovementSourceFingerprint(movement, bank) {
+    const movementKey = cleanBackendText(movement?._bankMovementKey);
+    const keyMatch = movementKey.match(/^([a-f0-9]{40}):([1-9]\d*)$/i);
+    return keyMatch
+      ? keyMatch[1].toLowerCase()
+      : bankMovementFingerprint(movement, movement?.banco || bank);
+  }
   
   function bankMoneyKey(value) {
     return toCents(backendNumber(value));
@@ -49,7 +57,7 @@ function createBankPersistenceService(dependencies) {
     (tables.movimientos_bancarios?.rows || []).forEach((row) => {
       if (!backendBankMatches(row.banco, bank)) return;
       if (legacyOnly && cleanBackendText(row._bankMovementKey)) return;
-      const key = bankMovementFingerprint(row, row.banco || bank);
+      const key = bankMovementSourceFingerprint(row, row.banco || bank);
       if (!counts.has(key)) counts.set(key, []);
       counts.get(key).push({
         type: "movimiento_bancario",
@@ -129,7 +137,7 @@ function createBankPersistenceService(dependencies) {
     const existingCounts = new Map();
     (table.rows || []).forEach((row) => {
       if (!backendBankMatches(row.banco, bank)) return;
-      const fingerprint = bankMovementFingerprint(row, row.banco || bank);
+      const fingerprint = bankMovementSourceFingerprint(row, row.banco || bank);
       existingCounts.set(fingerprint, (existingCounts.get(fingerprint) || 0) + 1);
     });
 
@@ -531,6 +539,7 @@ function createBankPersistenceService(dependencies) {
     bankMovementAssociation,
     bankMovementBackendCreditorId,
     bankMovementFingerprint,
+    bankMovementSourceFingerprint,
     bankPaymentMethodFromMovement,
     bankSourceDestinationForOriginType,
     canonicalPendingBankMovements,
